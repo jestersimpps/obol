@@ -1,0 +1,29 @@
+{
+  "name": "obol",
+  "version": "0.1.0",
+  "description": "Your AI, your rules. Lightweight AI assistant — Telegram + Anthropic + Supabase.",
+  "main": "src/index.js",
+  "bin": {
+    "obol": "./bin/obol.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node tests/run.js"
+  },
+  "keywords": ["ai", "assistant", "telegram", "anthropic", "claude", "vector-memory"],
+  "author": "Jo Vinkenroye <jestersimpps@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "@xenova/transformers": "^2.17.2",
+    "grammy": "^1.35.0",
+    "commander": "^13.1.0",
+    "inquirer": "^9.2.12",
+    "open": "^10.1.0",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
