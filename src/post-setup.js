@@ -183,6 +183,7 @@ Expire-Date: 0
         const changes = [];
 
         const settings = {
+          'Port': '2222',
           'PasswordAuthentication': 'no',
           'PermitRootLogin': 'prohibit-password',
           'PubkeyAuthentication': 'yes',
@@ -245,18 +246,10 @@ Expire-Date: 0
         // Install
         execSync('apt-get update -qq && apt-get install -y -qq fail2ban', { stdio: 'pipe' });
 
-        // Detect SSH port
-        let sshPort = '22';
-        try {
-          const sshdConfig = fs.readFileSync('/etc/ssh/sshd_config', 'utf-8');
-          const portMatch = sshdConfig.match(/^Port\s+(\d+)/m);
-          if (portMatch) sshPort = portMatch[1];
-        } catch {}
-
-        // Write jail config
+        // Write jail config — port 2222 (hardened by obol)
         const jailLocal = `[sshd]
 enabled = true
-port = ${sshPort}
+port = 2222
 filter = sshd
 logpath = /var/log/auth.log
 maxretry = 3
@@ -267,7 +260,7 @@ findtime = 600
 
         execSync('systemctl enable fail2ban && systemctl restart fail2ban', { stdio: 'pipe' });
 
-        return { success: true, message: `fail2ban active (SSH port ${sshPort}, max 3 retries, 1h ban)` };
+        return { success: true, message: 'fail2ban active (SSH port 2222, max 3 retries, 1h ban)' };
       } catch (e) {
         return { success: false, message: `fail2ban setup failed: ${e.message}` };
       }
@@ -276,7 +269,7 @@ findtime = 600
 
   {
     name: 'setup-firewall',
-    description: 'Enable UFW firewall — allow SSH only',
+    description: 'Enable UFW firewall — allow SSH (port 2222) only',
     run: async () => {
       try {
         // Install ufw if not present
@@ -289,21 +282,13 @@ findtime = 600
           return { success: true, message: 'Firewall already active' };
         }
 
-        // Detect SSH port
-        let sshPort = '22';
-        try {
-          const sshdConfig = fs.readFileSync('/etc/ssh/sshd_config', 'utf-8');
-          const portMatch = sshdConfig.match(/^Port\s+(\d+)/m);
-          if (portMatch) sshPort = portMatch[1];
-        } catch {}
-
         // Default deny inbound, allow outbound
         execSync('ufw default deny incoming', { stdio: 'pipe' });
         execSync('ufw default allow outgoing', { stdio: 'pipe' });
-        execSync(`ufw allow ${sshPort}/tcp`, { stdio: 'pipe' });
+        execSync('ufw allow 2222/tcp', { stdio: 'pipe' });
         execSync('echo "y" | ufw enable', { stdio: 'pipe' });
 
-        return { success: true, message: `Firewall enabled (SSH port ${sshPort} only, deny all inbound)` };
+        return { success: true, message: 'Firewall enabled (SSH port 2222 only, deny all inbound)' };
       } catch (e) {
         return { success: false, message: `Firewall setup failed: ${e.message}` };
       }

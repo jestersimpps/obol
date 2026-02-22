@@ -49,6 +49,7 @@ No gateway. No multi-provider abstraction. No config schemas. Just a bot that ta
 - **Personality** — Customizable via SOUL.md / USER.md / AGENTS.md
 - **Backup** — Auto-commits brain to private GitHub repo daily
 - **Heartbeat** — Periodic background tasks
+- **Auto-hardening** — SSH (port 2222), fail2ban, firewall, auto-updates, kernel security
 
 ## Directory Structure
 
@@ -105,6 +106,23 @@ Edit files in `~/.obol/personality/` to customize your bot:
 - **SOUL.md** — Who is the bot? Its voice, humor, values
 - **USER.md** — Who are you? Context about the owner
 - **AGENTS.md** — How should it work? Tools, safety, workflows
+
+## Security
+
+OBOL automatically hardens your VPS on first run:
+
+- **SSH moved to port 2222** — key-only auth, no root password, max 3 retries
+- **fail2ban** — blocks brute-force attempts (1h ban after 3 failures)
+- **UFW firewall** — deny all inbound except SSH 2222
+- **Automatic security updates** — daily check, unattended upgrades
+- **Kernel hardening** — SYN flood protection, no ICMP redirects
+- **Secrets in `pass`** — GPG-encrypted, plaintext wiped from config
+- **Swap** — auto-created if RAM < 2GB
+
+> ⚠️ **After first run, SSH moves to port 2222:**
+> ```bash
+> ssh -p 2222 root@YOUR_SERVER_IP
+> ```
 
 ## Graduating to OpenClaw
 

@@ -24,6 +24,11 @@ Click **Create Droplet**. Copy the IP address.
 ssh root@YOUR_DROPLET_IP
 ```
 
+> ⚠️ **After first run**, OBOL hardens your server automatically — including moving SSH to port 2222. From then on:
+> ```bash
+> ssh -p 2222 root@YOUR_DROPLET_IP
+> ```
+
 ## 3. Install Node.js
 
 ```bash
@@ -229,6 +234,12 @@ obol start -d
 
 ## Troubleshooting
 
+### Can't SSH after first run
+OBOL moves SSH to port 2222 during security hardening:
+```bash
+ssh -p 2222 root@YOUR_DROPLET_IP
+```
+
 ### Bot doesn't respond
 ```bash
 obol status          # Is it running?
@@ -266,9 +277,10 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 OBOL only makes outbound connections (Telegram, Anthropic, Supabase). No ports need to be opened. But basic hardening is good practice:
 
 ```bash
-ufw allow OpenSSH
+ufw allow 2222/tcp
 ufw enable
 ```
+OBOL does this automatically during post-setup.
 
 ---
 
