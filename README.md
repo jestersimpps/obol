@@ -1,5 +1,7 @@
 # 🪙 OBOL
 
+![OBOL](docs/obol-banner.png)
+
 **Your AI, your rules.** A lightweight AI assistant that lives in Telegram.
 
 One process. One chat. One brain. No bloat.
