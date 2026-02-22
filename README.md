@@ -25,6 +25,8 @@ That's it. The init wizard handles everything:
 - 📱 Telegram bot setup
 - 🧠 Supabase vector memory (auto-creates project)
 - 📦 GitHub backup (auto-creates private repo)
+- 🚀 Vercel deployments (build & ship sites through chat)
+- 🪙 Self-onboarding — OBOL learns about you through conversation
 
 ## Architecture
 
@@ -42,6 +44,8 @@ No gateway. No multi-provider abstraction. No config schemas. Just a bot that ta
 - **Chat** — Talk to Claude via Telegram
 - **Remember** — Vector memory with semantic search (free local embeddings)
 - **Execute** — Run shell commands, read/write files, fetch URLs
+- **Deploy** — Build and ship websites to Vercel through chat
+- **Self-setup** — First conversation teaches OBOL who you are; it writes its own personality
 - **Personality** — Customizable via SOUL.md / USER.md / AGENTS.md
 - **Backup** — Auto-commits brain to private GitHub repo daily
 - **Heartbeat** — Periodic background tasks
@@ -85,7 +89,8 @@ obol backup            # Manual GitHub backup
 - Anthropic API key
 - Telegram bot token (from @BotFather)
 - Supabase account (free tier works)
-- GitHub account (optional, for backups)
+- GitHub account (for backups + repos)
+- Vercel account (free tier, for deploying sites)
 
 ## Memory
 

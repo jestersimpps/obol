@@ -1,8 +1,14 @@
 const { Bot } = require('grammy');
+const {
+  isFirstRun, markFirstRunComplete, FIRST_RUN_SYSTEM,
+  parseSetupResponse, cleanResponse, writePersonalityFromSetup,
+} = require('./first-run');
+const { loadConfig } = require('./config');
 
 function createBot(telegramConfig, claude, memory) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
+  const firstRunHistory = []; // Separate history for onboarding conversation
 
   // Auth middleware
   bot.use(async (ctx, next) => {
@@ -50,12 +56,41 @@ function createBot(telegramConfig, claude, memory) {
       // Show typing indicator
       await ctx.replyWithChatAction('typing');
 
-      // Get response from Claude
-      const response = await claude.chat(userMessage, {
-        userId,
-        userName,
-        chatId: ctx.chat.id,
-      });
+      let response;
+
+      // First-run onboarding — OBOL learns about the user through conversation
+      if (isFirstRun()) {
+        firstRunHistory.push({ role: 'user', content: userMessage });
+
+        const msg = await claude.client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: FIRST_RUN_SYSTEM,
+          messages: firstRunHistory,
+        });
+
+        const fullText = msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        firstRunHistory.push({ role: 'assistant', content: fullText });
+
+        // Check if OBOL has gathered enough info
+        const setup = parseSetupResponse(fullText);
+        if (setup?.ready) {
+          const config = loadConfig();
+          writePersonalityFromSetup(setup, config?.bot?.name);
+          markFirstRunComplete();
+          // Reload personality in claude instance
+          claude.reloadPersonality?.();
+        }
+
+        response = cleanResponse(fullText);
+      } else {
+        // Normal operation
+        response = await claude.chat(userMessage, {
+          userId,
+          userName,
+          chatId: ctx.chat.id,
+        });
+      }
 
       // Send response (split if too long)
       if (response.length > 4096) {

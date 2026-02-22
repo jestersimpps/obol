@@ -70,7 +70,12 @@ Before running `obol init`, have these ready:
 2. Go to [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
 3. **Generate new token** → name it "obol" → copy it
 
-### GitHub Token (optional, for backups)
+### Vercel Token
+1. Go to [vercel.com](https://vercel.com) → sign up (free)
+2. Go to [vercel.com/account/tokens](https://vercel.com/account/tokens)
+3. **Create** → name it "obol" → copy the token
+
+### GitHub Token
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens)
 2. **Generate new token (classic)**
 3. Select scope: `repo`
@@ -197,6 +202,7 @@ systemctl restart obol
 | Anthropic API (Claude Sonnet) | ~$3/mo for moderate use |
 | Supabase | Free (500MB) |
 | GitHub | Free (private repos) |
+| Vercel | Free (100GB bandwidth) |
 | Embeddings | Free (runs locally) |
 | **Total** | **~$9/mo** |
 

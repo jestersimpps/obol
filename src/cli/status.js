@@ -31,6 +31,7 @@ async function status() {
   console.log(`  🧠 Anthropic: ${config.anthropic ? 'configured' : 'not set'}`);
   console.log(`  💾 Memory: ${config.supabase ? 'configured' : 'disabled'}`);
   console.log(`  📦 Backup: ${config.github ? `${config.github.username}/${config.github.repo}` : 'disabled'}`);
+  console.log(`  🚀 Vercel: ${config.vercel ? 'configured' : 'not set'}`);
   console.log(`  👤 Owner: ${config.owner?.name || 'not set'}`);
   console.log(`  🤖 Bot: ${config.bot?.name || 'OBOL'}`);
 }

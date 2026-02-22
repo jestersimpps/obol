@@ -68,19 +68,25 @@ async function init(opts = {}) {
   }
 
   // Step 4: GitHub
-  console.log('─── GitHub (backup) ───');
-  const { githubSetup } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'githubSetup',
-    message: 'Set up GitHub backup?',
-    default: true,
+  console.log('─── GitHub (backup + repos) ───');
+  const { githubToken } = await inquirer.prompt([{
+    type: 'password',
+    name: 'githubToken',
+    message: 'GitHub personal access token (repo scope):',
+    mask: '*',
   }]);
+  config.github = await setupGitHub(githubToken);
 
-  if (githubSetup) {
-    config.github = await setupGitHub();
-  } else {
-    config.github = null;
-  }
+  // Step 4b: Vercel
+  console.log('─── Vercel (deploy sites) ───');
+  const { vercelToken } = await inquirer.prompt([{
+    type: 'password',
+    name: 'vercelToken',
+    message: 'Vercel token (from vercel.com/account/tokens):',
+    mask: '*',
+  }]);
+  config.vercel = { token: vercelToken };
+  console.log('  ✅ Vercel configured\n');
 
   // Step 5: Identity
   console.log('─── Identity ───');
@@ -203,14 +209,7 @@ async function setupSupabaseExisting() {
   return answers;
 }
 
-async function setupGitHub() {
-  const { githubToken } = await inquirer.prompt([{
-    type: 'password',
-    name: 'githubToken',
-    message: 'GitHub personal access token (repo scope):',
-    mask: '*',
-  }]);
-
+async function setupGitHub(githubToken) {
   // Get username
   const userRes = await fetch('https://api.github.com/user', {
     headers: { 'Authorization': `token ${githubToken}` },

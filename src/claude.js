@@ -77,7 +77,12 @@ function createClaude(anthropicConfig, { personality, memory }) {
     return replyText;
   }
 
-  return { chat, client };
+  function reloadPersonality() {
+    const newPersonality = require('./personality').loadPersonality();
+    Object.assign(personality, newPersonality);
+  }
+
+  return { chat, client, reloadPersonality };
 }
 
 function buildSystemPrompt(personality) {
@@ -167,6 +172,33 @@ function buildTools(memory) {
     },
   });
 
+  // Vercel deploy
+  tools.push({
+    name: 'vercel_deploy',
+    description: 'Deploy a directory to Vercel. Use to ship websites, dashboards, and web apps for the user.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Path to the project directory to deploy' },
+        name: { type: 'string', description: 'Project name' },
+        production: { type: 'boolean', description: 'Deploy to production (default false = preview)' },
+      },
+      required: ['directory'],
+    },
+  });
+
+  tools.push({
+    name: 'vercel_list',
+    description: 'List Vercel deployments for a project.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project name' },
+      },
+      required: ['project'],
+    },
+  });
+
   // Read/write files
   tools.push({
     name: 'read_file',
@@ -242,6 +274,33 @@ async function executeToolCall(toolUse, memory) {
           category: m.category,
           created: m.created_at,
         })));
+      }
+
+      case 'vercel_deploy': {
+        const { loadConfig } = require('./config');
+        const cfg = loadConfig();
+        const token = cfg?.vercel?.token;
+        if (!token) return 'Vercel not configured.';
+        const dir = input.directory;
+        const prod = input.production ? '--prod' : '';
+        const name = input.name ? `--name ${input.name}` : '';
+        const output = execSync(
+          `cd ${dir} && npx vercel ${prod} ${name} --token ${token} --yes 2>&1`,
+          { encoding: 'utf-8', timeout: 120000 }
+        );
+        return output.substring(0, 5000);
+      }
+
+      case 'vercel_list': {
+        const { loadConfig } = require('./config');
+        const cfg = loadConfig();
+        const token = cfg?.vercel?.token;
+        if (!token) return 'Vercel not configured.';
+        const output = execSync(
+          `npx vercel ls ${input.project} --token ${token} 2>&1`,
+          { encoding: 'utf-8', timeout: 30000 }
+        );
+        return output.substring(0, 5000);
       }
 
       case 'web_fetch': {
