@@ -73,6 +73,10 @@ obol status            # Show status
 obol backup            # Manual GitHub backup
 ```
 
+## Deploy
+
+**[→ Full DigitalOcean deployment guide](docs/DEPLOY.md)** — from zero to running bot in ~10 minutes on a $6/mo droplet.
+
 ## Requirements
 
 - Node.js ≥ 18
