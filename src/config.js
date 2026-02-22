@@ -12,11 +12,30 @@ function getConfigDir() {
   return OBOL_DIR;
 }
 
-function loadConfig() {
+function resolvePassValues(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const result = Array.isArray(obj) ? [...obj] : { ...obj };
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string' && result[key].startsWith('pass:')) {
+      try {
+        const { execSync } = require('child_process');
+        result[key] = execSync(`pass show ${result[key].slice(5)}`, { encoding: 'utf-8' }).trim();
+      } catch {
+        // pass not available or key missing — keep the placeholder
+      }
+    } else if (typeof result[key] === 'object') {
+      result[key] = resolvePassValues(result[key]);
+    }
+  }
+  return result;
+}
+
+function loadConfig({ resolve = true } = {}) {
   try {
     if (!fs.existsSync(CONFIG_FILE)) return null;
     const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const config = JSON.parse(raw);
+    return resolve ? resolvePassValues(config) : config;
   } catch {
     return null;
   }

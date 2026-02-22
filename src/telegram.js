@@ -4,6 +4,7 @@ const {
   parseSetupResponse, cleanResponse, writePersonalityFromSetup,
 } = require('./first-run');
 const { loadConfig } = require('./config');
+const { isPostSetupDone, runPostSetup } = require('./post-setup');
 
 function createBot(telegramConfig, claude, memory) {
   const bot = new Bot(telegramConfig.token);
@@ -80,6 +81,14 @@ function createBot(telegramConfig, claude, memory) {
           markFirstRunComplete();
           // Reload personality in claude instance
           claude.reloadPersonality?.();
+
+          // Run post-setup tasks (pass, swap, firewall)
+          if (!isPostSetupDone()) {
+            const config = loadConfig({ resolve: false });
+            await runPostSetup(config, async (msg) => {
+              await ctx.reply(msg).catch(() => {});
+            });
+          }
         }
 
         response = cleanResponse(fullText);
