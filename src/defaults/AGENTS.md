@@ -44,6 +44,16 @@ Users can also manage secrets via Telegram: `/secret set <key> <value>` (message
 ### Send File (`send_file`)
 Send a file back to the user via Telegram. Use after generating PDFs, images, documents, or any file the user requested.
 
+### Ask User (`telegram_ask`)
+Send a message with inline keyboard buttons and wait for the user to tap one. Use for human-in-the-loop decisions before taking action.
+
+Examples:
+- After listing emails: `telegram_ask({message: "Open any of these?", options: ["#1 Google", "#2 LinkedIn", "#3 DeepLearning", "None"]})`
+- Before sending a reply: `telegram_ask({message: "Send this reply?", options: ["Send it", "Edit first", "Cancel"]})`
+- Before an irreversible action: `telegram_ask({message: "Archive all read emails?", options: ["Yes", "No"]})`
+
+Returns the tapped button label, or `"timeout"` if the user doesn't respond within the timeout (default 60s).
+
 ### Bridge (`bridge_ask`, `bridge_tell`)
 Only available if bridge is enabled. Communicate with partner's AI agent.
 
@@ -137,6 +147,29 @@ Use `background_task` when a request will take multiple steps:
 - Anything that would make the user wait more than 30 seconds
 
 Pattern: acknowledge immediately ("On it"), spawn the task, let it work in the background.
+
+## Telegram Formatting
+
+You communicate via Telegram. Format responses for mobile readability.
+
+**Never use markdown tables** — pipe-syntax tables do not render in Telegram. Use numbered lists instead.
+
+**Email/inbox lists** — use this pattern:
+```
+📬 *Inbox (10)*
+
+1\. *Google* — Security alert `22:58`
+2\. *LinkedIn* — Matthew Chittle wants to connect `21:31`
+3\. *DeepLearning\.AI* — AI Dev 26 × SF speakers `13:20`
+4\. *LinkedIn Jobs* — Project Manager / TPM roles `17:32`
+```
+
+**Copyable values** (email addresses, URLs, API keys, commands) — wrap in backtick code spans:
+`user@example.com`, `https://example.com`, `npm install foo`
+
+**Human-in-the-loop** — after listing emails or before acting, use `telegram_ask` to offer inline buttons rather than asking the user to type a reply.
+
+**Keep lines short** — Telegram wraps long lines poorly on mobile. Break at natural points.
 
 ## Communication Style
 

@@ -1,5 +1,5 @@
 const path = require('path');
-const { Bot, GrammyError, HttpError } = require('grammy');
+const { Bot, GrammyError, HttpError, InlineKeyboard } = require('grammy');
 const { loadConfig } = require('./config');
 const { evolve, loadEvolutionState } = require('./evolve');
 const { getTenant } = require('./tenant');
@@ -24,6 +24,31 @@ function createBot(telegramConfig, config) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const rateLimits = new Map();
+  const pendingAsks = new Map();
+  let askIdCounter = 0;
+
+  function createAsk(ctx, message, options, timeoutSecs = 60) {
+    return new Promise((resolve) => {
+      const askId = ++askIdCounter;
+      const keyboard = new InlineKeyboard();
+      options.forEach((opt, i) => {
+        keyboard.text(opt, `ask:${askId}:${i}`);
+        if ((i + 1) % 3 === 0 && i < options.length - 1) keyboard.row();
+      });
+      const timer = setTimeout(() => {
+        if (pendingAsks.has(askId)) {
+          pendingAsks.delete(askId);
+          resolve('timeout');
+        }
+      }, timeoutSecs * 1000);
+      pendingAsks.set(askId, { resolve, options, timer });
+      ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard }).catch(() => {
+        clearTimeout(timer);
+        pendingAsks.delete(askId);
+        resolve('error');
+      });
+    });
+  }
 
   const _rateLimitCleanup = setInterval(() => {
     const now = Date.now();
@@ -105,6 +130,7 @@ function createBot(telegramConfig, config) {
     text += `⏱️ Uptime: ${h}h ${m}m\n`;
     text += `💾 Memory: ${mem}MB\n`;
     text += `⚡ Tasks: ${running.length} running\n`;
+    text += `🔧 Tool limit: ${getMaxToolIterations()}\n`;
 
     if (tenant.memory) {
       const stats = await tenant.memory.stats().catch(() => null);
@@ -433,6 +459,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         claude: tenant.claude,
         config,
         verbose: tenant.verbose,
+        telegramAsk: (message, options, timeout) => createAsk(ctx, message, options, timeout),
         _notifyFn: (targetUserId, message) => {
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
@@ -652,6 +679,22 @@ Your message is deleted immediately when using /secret set to keep credentials o
   bot.on('message:sticker', handleMedia);
   bot.on('message:animation', handleMedia);
   bot.on('message:video_note', handleMedia);
+
+  bot.on('callback_query:data', async (ctx) => {
+    const data = ctx.callbackQuery.data;
+    if (!data.startsWith('ask:')) return ctx.answerCallbackQuery();
+    const parts = data.split(':');
+    const askId = parseInt(parts[1]);
+    const optIdx = parseInt(parts[2]);
+    const pending = pendingAsks.get(askId);
+    if (!pending) return ctx.answerCallbackQuery({ text: 'Expired' });
+    const selected = pending.options[optIdx];
+    clearTimeout(pending.timer);
+    pendingAsks.delete(askId);
+    await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`, { parse_mode: 'Markdown' }).catch(() => {});
+    await ctx.answerCallbackQuery({ text: selected });
+    pending.resolve(selected);
+  });
 
   bot.catch((err) => {
     const ctx = err.ctx;
