@@ -18,11 +18,12 @@ function resolvePassValues(obj) {
   const result = Array.isArray(obj) ? [...obj] : { ...obj };
   for (const key of Object.keys(result)) {
     if (typeof result[key] === 'string' && result[key].startsWith('pass:')) {
+      const passKey = result[key].slice(5);
       try {
         const { execSync } = require('child_process');
-        result[key] = execSync(`pass show ${result[key].slice(5)}`, { encoding: 'utf-8' }).trim();
-      } catch {
-        // pass not available or key missing — keep the placeholder
+        result[key] = execSync(`pass show ${passKey}`, { encoding: 'utf-8' }).trim();
+      } catch (e) {
+        console.warn(`[config] Failed to resolve pass:${passKey} — ${e.message?.includes('not found') ? 'key not found' : 'pass not installed or unavailable'}`);
       }
     } else if (typeof result[key] === 'object') {
       result[key] = resolvePassValues(result[key]);
@@ -32,14 +33,41 @@ function resolvePassValues(obj) {
 }
 
 function loadConfig({ resolve = true } = {}) {
+  if (!fs.existsSync(CONFIG_FILE)) return null;
+  let raw;
   try {
-    if (!fs.existsSync(CONFIG_FILE)) return null;
-    const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-    const config = JSON.parse(raw);
-    return resolve ? resolvePassValues(config) : config;
-  } catch {
+    raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+  } catch (e) {
+    console.error(`[config] Cannot read ${CONFIG_FILE}: ${e.message}`);
     return null;
   }
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch (e) {
+    console.error(`[config] ${CONFIG_FILE} is corrupted (invalid JSON): ${e.message}`);
+    console.error('[config] Fix the file manually or run: obol init --reset');
+    return null;
+  }
+  const warnings = validateConfigSchema(config);
+  if (warnings.length > 0) {
+    for (const w of warnings) console.warn(`[config] ${w}`);
+  }
+  return resolve ? resolvePassValues(config) : config;
+}
+
+function validateConfigSchema(config) {
+  const warnings = [];
+  if (!config.anthropic?.apiKey && !config.anthropic?.oauth?.accessToken) {
+    warnings.push('Missing Anthropic credentials — run: obol config');
+  }
+  if (!config.telegram?.token) {
+    warnings.push('Missing Telegram bot token — run: obol config');
+  }
+  if (!config.telegram?.allowedUsers?.length) {
+    warnings.push('No allowed users — bot will reject all messages. Run: obol config');
+  }
+  return warnings;
 }
 
 function saveConfig(config) {

@@ -1,6 +1,36 @@
+# dependencies
 node_modules/
+
+# env & secrets
 .env
+.env.*
 config.json
+*.pem
+*.key
+
+# runtime
 *.pid
 *.log
+*.seed
+
+# obol data
 .backup-repo/
+.obol/
+
+# os
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# test & coverage
+coverage/
+
+# build
+dist/
+tmp/

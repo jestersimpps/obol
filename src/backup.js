@@ -45,7 +45,8 @@ async function runBackup(githubConfig, commitMessage, userDir) {
     const src = path.join(baseDir, dir);
     const dst = path.join(backupDir, dir);
     if (fs.existsSync(src)) {
-      execSync(`mkdir -p "${dst}" && cp -r "${src}"/* "${dst}"/ 2>/dev/null || true`, { stdio: 'pipe' });
+      fs.mkdirSync(dst, { recursive: true });
+      fs.cpSync(src, dst, { recursive: true, force: true });
     }
   }
 
@@ -55,11 +56,14 @@ async function runBackup(githubConfig, commitMessage, userDir) {
     const status = execSync('git status --porcelain', { cwd: backupDir, encoding: 'utf-8' });
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
-      const msg = (commitMessage || `backup: ${date}`).replace(/"/g, '\\"');
-      execSync(`git commit -m "${msg}"`, { cwd: backupDir, stdio: 'pipe' });
+      const msg = commitMessage || `backup: ${date}`;
+      const { execFileSync } = require('child_process');
+      execFileSync('git', ['commit', '-m', msg], { cwd: backupDir, stdio: 'pipe' });
       execSync('git push', { cwd: backupDir, stdio: 'pipe' });
     }
-  } catch {}
+  } catch (e) {
+    console.error('[backup] Commit/push failed:', e.message);
+  }
 }
 
 module.exports = { setupBackup, runBackup };

@@ -115,11 +115,16 @@ async function init(opts = {}) {
 
   // Create directory structure
   ensureDirs();
+  const initFlag = path.join(OBOL_DIR, '.init-in-progress');
+  fs.writeFileSync(initFlag, new Date().toISOString());
 
   const config = {};
+  let step = 0;
+  const totalSteps = 7;
+  const stepLabel = (name) => `─── Step ${++step}/${totalSteps}: ${name} ───`;
 
   // Step 1: Anthropic
-  console.log('─── Step 1/7: Anthropic (AI brain) ───\n');
+  console.log(stepLabel('Anthropic (AI brain)') + '\n');
   console.log('  OBOL uses Claude as its brain. Choose how to connect:\n');
   const { authMethod } = await inquirer.prompt([{
     type: 'list',
@@ -166,7 +171,7 @@ async function init(opts = {}) {
   console.log('');
 
   // Step 2: Telegram
-  console.log('─── Step 2/7: Telegram (chat interface) ───\n');
+  console.log(stepLabel('Telegram (chat interface)') + '\n');
   console.log('  You talk to OBOL through a Telegram bot. You need to create one.\n');
   console.log('  How to get your bot token:');
   console.log('    1. Open Telegram on your phone or desktop');
@@ -188,7 +193,7 @@ async function init(opts = {}) {
   console.log('');
 
   // Step 3: Supabase
-  console.log('─── Step 3/7: Supabase (memory) ───\n');
+  console.log(stepLabel('Supabase (memory)') + '\n');
   console.log('  Supabase gives your bot persistent vector memory so it can');
   console.log('  remember conversations, facts, and context across restarts.\n');
   console.log('  Sign up free at: https://supabase.com');
@@ -219,7 +224,7 @@ async function init(opts = {}) {
   }
 
   // Step 4: GitHub
-  console.log('─── Step 4/7: GitHub (backup) ───\n');
+  console.log(stepLabel('GitHub (backup)') + '\n');
   const { setupGithub } = await inquirer.prompt([{
     type: 'confirm',
     name: 'setupGithub',
@@ -248,7 +253,7 @@ async function init(opts = {}) {
   }
 
   // Step 5: Vercel
-  console.log('─── Step 5/7: Vercel (deploy sites) ───\n');
+  console.log(stepLabel('Vercel (deploy sites)') + '\n');
   const { setupVercel } = await inquirer.prompt([{
     type: 'confirm',
     name: 'setupVercel',
@@ -277,8 +282,9 @@ async function init(opts = {}) {
   console.log('');
 
   // Step 6: Identity
-  console.log('─── Step 6/7: Identity ───\n');
-  console.log('  Give your bot a name and tell it who you are.\n');
+  console.log(stepLabel('Identity') + '\n');
+  console.log('  Give your bot a name and tell it who you are.');
+  console.log('  The bot name appears in personality files. Change later with `obol config`.\n');
   const { ownerName, botName } = await inquirer.prompt([
     { type: 'input', name: 'ownerName', message: 'Your name:', validate: (v) => v.length > 0 },
     { type: 'input', name: 'botName', message: 'Bot name:', default: 'OBOL' },
@@ -287,7 +293,7 @@ async function init(opts = {}) {
   config.bot = { name: botName };
 
   // Step 7: Allowed Telegram users
-  console.log('\n─── Step 7/7: Access control ───\n');
+  console.log('\n' + stepLabel('Access control') + '\n');
   console.log('  Each allowed user gets their own isolated brain — separate');
   console.log('  personality, memory, evolution cycle, and workspace.');
   console.log('  You can add multiple users now or later with `obol config`.\n');
@@ -318,6 +324,7 @@ async function init(opts = {}) {
   }
 
   saveConfig(config);
+  try { fs.unlinkSync(initFlag); } catch {}
   console.log(`\n  ✅ Config saved to ${CONFIG_FILE}`);
 
   for (const userId of config.telegram.allowedUsers) {
@@ -439,11 +446,14 @@ async function collectAllowedUsers(token) {
     }]);
     selected.push(...picked);
   } else {
-    console.log('  No messages detected from this bot yet.\n');
-    console.log('  How to find your Telegram ID:');
-    console.log('    1. Send any message to your bot on Telegram');
-    console.log('    2. Re-run `obol init` — it will auto-detect you');
-    console.log('    3. Or search @userinfobot on Telegram for your numeric ID\n');
+    console.log('  ⚠️  No messages detected from this bot yet.\n');
+    console.log('  To auto-detect your ID:');
+    console.log('    1. Open Telegram and send ANY message to your bot');
+    console.log('    2. Come back here and re-run `obol init`\n');
+    console.log('  Or enter your ID manually:');
+    console.log('    1. Open Telegram and search for @raw_data_bot');
+    console.log('    2. Send /start — it replies with your numeric ID');
+    console.log('    3. Enter it below\n');
   }
 
   const { addMore } = await inquirer.prompt([{
@@ -462,7 +472,12 @@ async function collectAllowedUsers(token) {
       message: 'Telegram user ID(s) (comma-separated):',
       validate: (v) => {
         if (!v.trim()) return 'Enter at least one ID';
-        return v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)';
+        const ids = v.split(',').map(id => id.trim());
+        for (const id of ids) {
+          if (!/^\d+$/.test(id)) return `"${id}" is not a valid numeric ID`;
+          if (id.length > 15) return `"${id}" is too long — Telegram IDs are typically 9-10 digits`;
+        }
+        return true;
       },
     }]);
     const extras = extraIds.split(',').map(id => parseInt(id.trim()));
@@ -472,8 +487,18 @@ async function collectAllowedUsers(token) {
   }
 
   if (selected.length === 0) {
-    console.log('  ⚠️  No users added — nobody can talk to the bot.');
-    console.log('  Add users later with `obol config`\n');
+    console.log('');
+    console.log('  ⚠️  WARNING: No users added — your bot will reject ALL messages.');
+    console.log('  It will not respond to anyone until you add users.\n');
+    const { continueEmpty } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'continueEmpty',
+      message: 'Continue without any users? (you can add them later with `obol config`)',
+      default: false,
+    }]);
+    if (!continueEmpty) {
+      return await collectAllowedUsers(token);
+    }
     return [];
   }
 
@@ -840,7 +865,7 @@ Drop .md files in your user commands/ directory — they become slash commands.
     }
   }
 
-  console.log('  ✅ Personality files created for each user');
+  console.log('  ✅ Personality files created (SOUL.md, USER.md, AGENTS.md) for each user');
 }
 
 module.exports = { init };

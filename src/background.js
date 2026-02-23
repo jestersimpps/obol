@@ -35,21 +35,21 @@ class BackgroundRunner {
 
     this.tasks.set(taskId, taskState);
 
-    // Run the task
-    const promise = this._runTask(claude, task, taskState, ctx, memory);
-
-    taskState.promise = promise;
-
-    // Start check-in timer
+    // Start check-in timer before running task to avoid leak if task throws immediately
     taskState.checkInTimer = setInterval(async () => {
       if (taskState.status !== 'running') {
         clearInterval(taskState.checkInTimer);
+        taskState.checkInTimer = null;
         return;
       }
 
       const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
       await this._checkIn(claude, taskState, ctx, elapsed);
     }, CHECK_IN_INTERVAL);
+
+    // Run the task
+    const promise = this._runTask(claude, task, taskState, ctx, memory);
+    taskState.promise = promise;
 
     return taskId;
   }
@@ -73,7 +73,7 @@ TASK: ${task}`;
 
       taskState.status = 'done';
       taskState.result = result;
-      clearInterval(taskState.checkInTimer);
+      if (taskState.checkInTimer) { clearInterval(taskState.checkInTimer); taskState.checkInTimer = null; }
       claude.clearHistory(`bg-${taskState.id}`);
 
       // Send final result
@@ -96,7 +96,7 @@ TASK: ${task}`;
     } catch (e) {
       taskState.status = 'error';
       taskState.error = e.message;
-      clearInterval(taskState.checkInTimer);
+      if (taskState.checkInTimer) { clearInterval(taskState.checkInTimer); taskState.checkInTimer = null; }
 
       await ctx.reply(`⚠️ Background task failed: ${e.message}`).catch(() => {});
     }

@@ -7,6 +7,8 @@ const SECTIONS = [
     name: 'Anthropic',
     fields: [
       { key: 'anthropic.apiKey', label: 'API Key', secret: true },
+      { key: 'anthropic.oauth.accessToken', label: 'OAuth Access Token', secret: true },
+      { key: 'anthropic.oauth.refreshToken', label: 'OAuth Refresh Token', secret: true },
     ],
   },
   {
@@ -20,6 +22,7 @@ const SECTIONS = [
     fields: [
       { key: 'supabase.url', label: 'Project URL', secret: false },
       { key: 'supabase.serviceKey', label: 'Service Role Key', secret: true },
+      { key: 'supabase.accessToken', label: 'Access Token (for migrations)', secret: true },
     ],
   },
   {
@@ -69,16 +72,21 @@ function getNestedValue(obj, path) {
   return path.split('.').reduce((o, k) => o?.[k], obj);
 }
 
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function setNestedValue(obj, path, value) {
   const keys = path.split('.');
   let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
+    if (FORBIDDEN_KEYS.has(keys[i])) return;
     if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
       current[keys[i]] = {};
     }
     current = current[keys[i]];
   }
-  current[keys[keys.length - 1]] = value;
+  const lastKey = keys[keys.length - 1];
+  if (FORBIDDEN_KEYS.has(lastKey)) return;
+  current[lastKey] = value;
 }
 
 function maskSecret(value) {
@@ -185,7 +193,12 @@ async function manageUsers(cfg) {
         type: 'input',
         name: 'newId',
         message: 'Telegram user ID:',
-        validate: (v) => /^\d+$/.test(v.trim()) ? true : 'Must be a numeric ID (e.g. 206639616)',
+        validate: (v) => {
+          const id = v.trim();
+          if (!/^\d+$/.test(id)) return 'Must be a numeric ID (e.g. 206639616)';
+          if (id.length > 15) return 'ID too long — Telegram IDs are typically 9-10 digits';
+          return true;
+        },
       }]);
       const id = parseInt(newId.trim());
       if (currentUsers.includes(id)) {
@@ -217,6 +230,17 @@ async function manageUsers(cfg) {
     }
 
     setNestedValue(cfg, 'telegram.allowedUsers', currentUsers);
+
+    if (currentUsers.length >= 2 && !cfg.bridge?.enabled && (action === 'detect' || action === 'manual')) {
+      const { bridgeEnabled } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'bridgeEnabled',
+        message: 'You have 2+ users. Enable bridge between agents? (lets agents query each other)',
+        default: true,
+      }]);
+      setNestedValue(cfg, 'bridge.enabled', bridgeEnabled);
+    }
+
     saveConfig(cfg);
     console.log('  ✅ Saved');
   }
@@ -255,7 +279,8 @@ async function config() {
       continue;
     }
 
-    const fieldChoices = sec.fields.map(f => {
+    const fields = sec.fields;
+    const fieldChoices = fields.map(f => {
       const val = getNestedValue(cfg, f.key);
       return {
         name: `${f.label}: ${formatValue(val, f.secret)}`,
@@ -300,6 +325,9 @@ async function config() {
       };
       if (field.secret) {
         opts.mask = '*';
+        if (currentVal) {
+          console.log(`  Current: ${maskSecret(currentVal)}`);
+        }
       } else {
         opts.default = currentVal != null ? String(currentVal) : '';
       }

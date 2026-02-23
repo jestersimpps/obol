@@ -1,7 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { refreshTokens, isExpired, isOAuthToken } = require('./oauth');
 const { saveConfig, loadConfig } = require('./config');
 
@@ -56,6 +56,7 @@ async function ensureFreshToken(anthropicConfig) {
     anthropicConfig.oauth.accessToken = tokens.accessToken;
     anthropicConfig.oauth.refreshToken = tokens.refreshToken;
     anthropicConfig.oauth.expires = tokens.expires;
+    delete anthropicConfig._oauthFailed;
 
     const config = loadConfig({ resolve: false });
     if (config) {
@@ -91,7 +92,11 @@ function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEna
 
     if (useOAuth) {
       await ensureFreshToken(anthropicConfig);
-      client = createAnthropicClient(anthropicConfig, { useOAuth: !anthropicConfig._oauthFailed });
+      if (anthropicConfig._oauthFailed) {
+        client = createAnthropicClient(anthropicConfig, { useOAuth: false });
+      } else {
+        client = createAnthropicClient(anthropicConfig, { useOAuth: true });
+      }
     }
 
     // Get or create history
@@ -120,7 +125,11 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
         });
 
         const decisionText = memoryDecision.content[0]?.text || '';
-        const decision = JSON.parse(decisionText.match(/\{[\s\S]*\}/)?.[0] || '{}');
+        let decision = {};
+        try {
+          const jsonStr = decisionText.match(/\{[^{}]*\}/)?.[0];
+          if (jsonStr) decision = JSON.parse(jsonStr);
+        } catch {}
 
         // Set model based on Haiku's decision
         if (decision.model === 'opus') {
@@ -154,6 +163,9 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       }
     }
 
+    // Trim history before adding to enforce hard limit
+    while (history.length >= MAX_HISTORY) history.shift();
+
     // Add user message with memory context
     const enrichedMessage = memoryContext
       ? userMessage + memoryContext
@@ -166,9 +178,6 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     } else {
       history.push({ role: 'user', content: enrichedMessage });
     }
-
-    // Trim history if too long
-    while (history.length > MAX_HISTORY) history.shift();
 
     // Call Claude — Haiku picks the model
     const model = context._model || 'claude-sonnet-4-6';
@@ -451,6 +460,13 @@ function resolveUserPath(inputPath, userDir) {
     : path.resolve(userDir, inputPath);
   const normalizedUser = path.resolve(userDir);
 
+  const isInsideAllowed = (p) =>
+    p.startsWith(normalizedUser + path.sep) || p === normalizedUser || p.startsWith('/tmp');
+
+  if (!isInsideAllowed(resolved)) {
+    throw new Error(`Path "${inputPath}" is outside your workspace. Use paths relative to your workspace or /tmp.`);
+  }
+
   let realResolved = resolved;
   try {
     realResolved = fs.realpathSync(resolved);
@@ -458,13 +474,17 @@ function resolveUserPath(inputPath, userDir) {
     const parent = path.dirname(resolved);
     try {
       const realParent = fs.realpathSync(parent);
+      if (!isInsideAllowed(realParent)) {
+        throw new Error(`Path "${inputPath}" resolves outside your workspace via symlink.`);
+      }
       realResolved = path.join(realParent, path.basename(resolved));
-    } catch {}
+    } catch (e) {
+      if (e.message.includes('symlink')) throw e;
+    }
   }
 
-  if (!realResolved.startsWith(normalizedUser + path.sep) && realResolved !== normalizedUser) {
-    if (realResolved.startsWith('/tmp')) return realResolved;
-    throw new Error(`Path "${inputPath}" is outside your workspace. Use paths relative to your workspace or /tmp.`);
+  if (!isInsideAllowed(realResolved)) {
+    throw new Error(`Path "${inputPath}" resolves outside your workspace via symlink. Symlinks to external paths are blocked.`);
   }
   return realResolved;
 }
@@ -497,7 +517,8 @@ async function executeToolCall(toolUse, memory, context = {}) {
           cwd: userDir || undefined,
           env: userDir ? { ...process.env, HOME: userDir } : process.env,
         });
-        return output.substring(0, 10000);
+        const truncated = output.substring(0, 10000);
+        return output.length > 10000 ? truncated + '\n...(truncated)' : truncated;
       }
 
       case 'memory_search': {
@@ -544,14 +565,20 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const token = context.config?.vercel?.token;
         if (!token) return 'Vercel not configured.';
         const dir = userDir ? resolveUserPath(input.directory, userDir) : input.directory;
-        const prod = input.production ? '--prod' : '';
-        const safeName = input.name ? input.name.replace(/[^a-zA-Z0-9_-]/g, '') : '';
-        const projName = safeName ? `--name "${safeName}"` : '';
-        const output = execSync(
-          `cd "${dir}" && npx vercel ${prod} ${projName} --yes 2>&1`,
-          { encoding: 'utf-8', timeout: 120000, env: { ...process.env, VERCEL_TOKEN: token } }
-        );
-        return output.substring(0, 5000);
+        const args = ['vercel', '--yes'];
+        if (input.production) args.push('--prod');
+        if (input.name) {
+          const safeName = input.name.replace(/[^a-zA-Z0-9_-]/g, '');
+          if (safeName) args.push('--name', safeName);
+        }
+        const output = execFileSync('npx', args, {
+          encoding: 'utf-8',
+          timeout: 120000,
+          cwd: dir,
+          env: { ...process.env, VERCEL_TOKEN: token },
+        });
+        const truncated = output.substring(0, 5000);
+        return output.length > 5000 ? truncated + '\n...(truncated)' : truncated;
       }
 
       case 'vercel_list': {
@@ -576,7 +603,9 @@ async function executeToolCall(toolUse, memory, context = {}) {
 
       case 'read_file': {
         const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
-        return fs.readFileSync(filePath, 'utf-8').substring(0, 50000);
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const truncatedFile = fileContent.substring(0, 50000);
+        return fileContent.length > 50000 ? truncatedFile + '\n...(truncated)' : truncatedFile;
       }
 
       case 'write_file': {

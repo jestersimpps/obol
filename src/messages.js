@@ -117,10 +117,15 @@ Return empty array if nothing worth storing.`,
       });
 
       const text = response.content[0]?.text || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = text.match(/```json?\s*\n?([\s\S]*?)\n?\s*```/) || text.match(/\{[^{}]*"memories"\s*:\s*\[[\s\S]*?\]\s*\}/);
       if (!jsonMatch) return;
 
-      const extracted = JSON.parse(jsonMatch[0]);
+      let extracted;
+      try {
+        extracted = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+      } catch {
+        return;
+      }
 
       if (extracted.memories?.length && this.memory) {
         for (const mem of extracted.memories) {

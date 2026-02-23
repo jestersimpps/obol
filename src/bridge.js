@@ -87,7 +87,7 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   const client = createAnthropicClient(config.anthropic);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system: systemParts.join('\n'),
     messages: [{ role: 'user', content: question }],

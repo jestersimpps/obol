@@ -43,18 +43,25 @@ Start with a brief intro — you're OBOL, you're set up and running, tell me abo
 
 // Parse the setup JSON from a response
 function parseSetupResponse(text) {
-  const match = text.match(/```obol-setup\n([\s\S]*?)\n```/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
+  const fenced = text.match(/```(?:obol-setup|json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (fenced) {
+    try {
+      const parsed = JSON.parse(fenced[1]);
+      if (parsed.soul && parsed.ready) return parsed;
+    } catch {}
   }
+  const jsonBlock = text.match(/\{[^{}]*"soul"\s*:\s*"[\s\S]*?"ready"\s*:\s*true[^{}]*\}/);
+  if (jsonBlock) {
+    try {
+      return JSON.parse(jsonBlock[0]);
+    } catch {}
+  }
+  return null;
 }
 
 // Strip the setup JSON from the visible response
 function cleanResponse(text) {
-  return text.replace(/```obol-setup\n[\s\S]*?\n```/, '').trim();
+  return text.replace(/```(?:obol-setup|json)?\s*\n?[\s\S]*?\n?\s*```/, '').trim();
 }
 
 // Write the personality files from setup data
