@@ -51,6 +51,7 @@ function createBot(telegramConfig, config) {
     { command: 'traits', description: 'View or adjust personality traits' },
     { command: 'secret', description: 'Manage per-user secrets' },
     { command: 'evolution', description: 'Evolution progress' },
+    { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
 
@@ -338,7 +339,15 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /status — Bot status and uptime
 /backup — Trigger GitHub backup
 /clean — Audit workspace
+/verbose — Toggle verbose mode on/off
 /help — This message`);
+  });
+
+  bot.command('verbose', async (ctx) => {
+    if (!ctx.from) return;
+    const tenant = await getTenant(ctx.from.id, config);
+    tenant.verbose = !tenant.verbose;
+    await ctx.reply(tenant.verbose ? '🔍 Verbose mode ON' : '🔇 Verbose mode OFF');
   });
 
   function checkRateLimit(userId) {
@@ -392,7 +401,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
     try {
       tenant.messageLog?.log(ctx.chat.id, 'user', userMessage);
 
-      const response = await tenant.claude.chat(userMessage, {
+      const chatContext = {
         userId,
         userName,
         chatId: ctx.chat.id,
@@ -400,13 +409,22 @@ Your message is deleted immediately when using /secret set to keep credentials o
         ctx,
         claude: tenant.claude,
         config,
+        verbose: tenant.verbose,
         _notifyFn: (targetUserId, message) => {
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
         },
-      });
+      };
+      const response = await tenant.claude.chat(userMessage, chatContext);
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+
+      if (tenant.verbose && chatContext.verboseLog?.length) {
+        const verboseText = '```\n' + chatContext.verboseLog.join('\n') + '\n```';
+        await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() =>
+          ctx.reply(verboseText).catch(() => {})
+        );
+      }
 
       if (tenant.messageLog?._evolutionReady) {
         tenant.messageLog._evolutionReady = false;
@@ -525,7 +543,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
       if (media.isImage(fileInfo)) {
         const imageBlock = media.bufferToImageBlock(buffer, fileInfo.mimeType);
         const prompt = caption || 'The user sent this image. Describe what you see and respond naturally.';
-        const response = await tenant.claude.chat(prompt, {
+        const mediaChatCtx = {
           userId,
           userName: ctx.from.first_name || 'User',
           chatId: ctx.chat.id,
@@ -533,15 +551,22 @@ Your message is deleted immediately when using /secret set to keep credentials o
           ctx,
           claude: tenant.claude,
           config,
+          verbose: tenant.verbose,
           images: [imageBlock],
           _notifyFn: (targetUserId, message) => {
             if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
             return bot.api.sendMessage(targetUserId, message);
           },
-        });
+        };
+        const response = await tenant.claude.chat(prompt, mediaChatCtx);
 
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+
+        if (tenant.verbose && mediaChatCtx.verboseLog?.length) {
+          const verboseText = '```\n' + mediaChatCtx.verboseLog.join('\n') + '\n```';
+          await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() => ctx.reply(verboseText).catch(() => {}));
+        }
 
         stopTyping();
         if (response.length > 4096) {
@@ -553,7 +578,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         }
       } else if (caption) {
         const contextMsg = `[User sent a ${fileInfo.mediaType}: ${filename}] ${caption}`;
-        const response = await tenant.claude.chat(contextMsg, {
+        const mediaCaptionCtx = {
           userId,
           userName: ctx.from.first_name || 'User',
           chatId: ctx.chat.id,
@@ -561,14 +586,21 @@ Your message is deleted immediately when using /secret set to keep credentials o
           ctx,
           claude: tenant.claude,
           config,
+          verbose: tenant.verbose,
           _notifyFn: (targetUserId, message) => {
             if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
             return bot.api.sendMessage(targetUserId, message);
           },
-        });
+        };
+        const response = await tenant.claude.chat(contextMsg, mediaCaptionCtx);
 
         tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+
+        if (tenant.verbose && mediaCaptionCtx.verboseLog?.length) {
+          const verboseText = '```\n' + mediaCaptionCtx.verboseLog.join('\n') + '\n```';
+          await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() => ctx.reply(verboseText).catch(() => {}));
+        }
 
         stopTyping();
         if (response.length > 4096) {

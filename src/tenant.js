@@ -43,6 +43,7 @@ async function createTenant(userId, config) {
 
   return {
     claude, memory, messageLog, personality, bg, userDir, userId,
+    verbose: false,
     _personalityLoadedAt: Date.now(),
     _personalityMtime: personalityMtime,
   };

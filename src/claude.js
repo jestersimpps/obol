@@ -151,7 +151,10 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     if (!histories.has(chatId)) histories.set(chatId, []);
     const history = histories.get(chatId);
 
-    // Ask Haiku if we need memory for this message
+    const verbose = context.verbose || false;
+    if (verbose) context.verboseLog = [];
+    const vlog = (msg) => { if (verbose) context.verboseLog.push(msg); };
+
     let memoryContext = '';
     if (memory) {
       try {
@@ -179,7 +182,8 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
           if (jsonStr) decision = JSON.parse(jsonStr);
         } catch {}
 
-        // Set model based on Haiku's decision
+        vlog(`[router] model=${decision.model || 'sonnet'} memory=${decision.need_memory || false}${decision.search_query ? ` query="${decision.search_query}"` : ''}`);
+
         if (decision.model === 'opus') {
           context._model = 'claude-opus-4-6';
         }
@@ -187,11 +191,9 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
         if (decision.need_memory) {
           const query = decision.search_query || userMessage;
 
-          // Today's context + semantic search
           const todayMemories = await memory.byDate('today', { limit: 3 });
           const semanticMemories = await memory.search(query, { limit: 3, threshold: 0.5 });
 
-          // Dedupe by ID
           const seen = new Set();
           const combined = [];
           for (const m of [...todayMemories, ...semanticMemories]) {
@@ -201,6 +203,8 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
             }
           }
 
+          vlog(`[memory] ${combined.length} memories found (${todayMemories.length} today, ${semanticMemories.length} semantic)`);
+
           if (combined.length > 0) {
             memoryContext = '\n\n[Relevant memories]\n' +
               combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
@@ -208,6 +212,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
         }
       } catch (e) {
         console.error('[router] Memory/routing decision failed:', e.message);
+        vlog(`[router] ERROR: ${e.message}`);
       }
     }
 
@@ -241,8 +246,8 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       history.push({ role: 'user', content: enrichedMessage });
     }
 
-    // Call Claude — Haiku picks the model
     const model = context._model || 'claude-sonnet-4-6';
+    vlog(`[model] ${model} | history=${history.length} msgs`);
     const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
     let response = await client.messages.create({
       model,
@@ -273,6 +278,15 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       const toolResults = [];
       for (const block of assistantContent) {
         if (block.type === 'tool_use') {
+          const inputSummary = block.name === 'exec' ? block.input.command :
+            block.name === 'write_file' ? block.input.path :
+            block.name === 'read_file' ? block.input.path :
+            block.name === 'memory_search' ? block.input.query :
+            block.name === 'memory_add' ? `[${block.input.category || 'fact'}]` :
+            block.name === 'web_fetch' ? block.input.url :
+            block.name === 'background_task' ? block.input.task?.substring(0, 60) :
+            JSON.stringify(block.input).substring(0, 80);
+          vlog(`[tool] ${block.name}: ${inputSummary}`);
           const result = await executeToolCall(block, memory, context);
           toolResults.push({
             type: 'tool_result',
@@ -293,11 +307,13 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       });
     }
 
-    // Extract text response
     const textBlocks = response.content.filter(b => b.type === 'text');
     const replyText = textBlocks.map(b => b.text).join('\n');
 
-    // Add assistant response to history
+    if (response.usage) {
+      vlog(`[tokens] in=${response.usage.input_tokens} out=${response.usage.output_tokens}`);
+    }
+
     history.push({ role: 'assistant', content: response.content });
 
     return replyText;
