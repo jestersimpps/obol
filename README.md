@@ -6,11 +6,27 @@
 
 One process. One chat. One brain that grows.
 
+---
+
+🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md every 50 exchanges.
+
+🔧 **Self-healing** — Writes tests for every script. Regressions get 3 automatic fix attempts before rollback. Failures stored as lessons.
+
+🏗️ **Self-extending** — Analyzes your usage patterns and builds new tools: scripts, commands, or full web apps deployed to Vercel.
+
+🧠 **Living memory** — Vector memory with semantic search. Haiku routes queries, rewrites them for better embedding hits. Free local embeddings.
+
+🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? No wasted API calls.
+
+🛡️ **Self-hardening** — Auto-configures SSH (port 2222), firewall, fail2ban, encrypted secrets, kernel hardening on first run.
+
+---
+
 ## What is it?
 
 OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all while living in a single Telegram chat.
 
-It starts as a blank slate. Through conversation, it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 50 exchanges, it reflects on who it's becoming, refactors its own scripts, writes tests to verify they work, and self-heals when something breaks. Over months, it becomes an agent that's uniquely yours — no two OBOL instances are alike.
+It starts as a blank slate. Through conversation, it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 50 exchanges, it reflects on who it's becoming, refactors its own scripts, writes tests to verify they work, and self-heals when something breaks. It even builds you new tools — scripts, commands, or full web apps deployed to Vercel — based on patterns it spots in your conversations. Over months, it becomes an agent that's uniquely yours — no two OBOL instances are alike.
 
 Under the hood: a single Node.js process on your VPS connecting Telegram to Claude (Anthropic) with persistent vector memory in Supabase. No framework, no plugins, no config files to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
