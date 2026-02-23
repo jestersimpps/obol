@@ -33,6 +33,15 @@ async function main() {
     setupBackup(config.github);
   }
 
+  // Graceful shutdown
+  const shutdown = (signal) => {
+    console.log(`\n🪙 ${signal} received. Shutting down gracefully...`);
+    bot.stop();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   // Start bot
   console.log('🪙 OBOL is alive. Listening for messages...\n');
   await bot.start({

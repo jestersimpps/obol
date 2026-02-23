@@ -1,4 +1,4 @@
-const { Bot } = require('grammy');
+const { Bot, GrammyError, HttpError } = require('grammy');
 const {
   isFirstRun, markFirstRunComplete, FIRST_RUN_SYSTEM,
   parseSetupResponse, cleanResponse, writePersonalityFromSetup,
@@ -281,6 +281,58 @@ function createBot(telegramConfig, claude, memory, messageLog) {
   bot.on('message:photo', async (ctx) => {
     await ctx.reply('📷 Image support coming soon.');
   });
+
+  // Global error handler — catch everything, never crash
+  bot.catch((err) => {
+    const ctx = err.ctx;
+    const e = err.error;
+    console.error(`[bot.catch] Error while handling update ${ctx?.update?.update_id}:`);
+
+    if (e instanceof GrammyError) {
+      console.error(`  Grammy error: ${e.description}`);
+    } else if (e instanceof HttpError) {
+      console.error(`  HTTP error: ${e.message}`);
+    } else {
+      console.error(`  Unknown error:`, e?.message || e);
+    }
+
+    // Try to notify the user, but don't let that fail either
+    ctx?.reply?.('⚠️ Something went wrong. I\'m still alive though.').catch(() => {});
+  });
+
+  // Wrap bot.start with auto-restart on polling failures
+  const originalStart = bot.start.bind(bot);
+  bot.start = async function startWithResilience(opts = {}) {
+    const MAX_RETRIES = 10;
+    const BASE_DELAY = 1000;
+    let retries = 0;
+
+    const attempt = async () => {
+      try {
+        retries = 0; // Reset on successful start
+        await originalStart({
+          ...opts,
+          onStart: (info) => {
+            console.log(`  Bot: @${info.username}`);
+            opts.onStart?.(info);
+          },
+        });
+      } catch (e) {
+        retries++;
+        if (retries > MAX_RETRIES) {
+          console.error(`💀 Polling failed ${MAX_RETRIES} times. Giving up.`);
+          process.exit(1);
+        }
+        const delay = Math.min(BASE_DELAY * Math.pow(2, retries - 1), 60000);
+        console.error(`⚠️ Polling error (attempt ${retries}/${MAX_RETRIES}): ${e.message}`);
+        console.error(`  Retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        return attempt();
+      }
+    };
+
+    return attempt();
+  };
 
   return bot;
 }

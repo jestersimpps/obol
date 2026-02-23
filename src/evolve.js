@@ -18,7 +18,15 @@ const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
 const EVOLUTION_STATE_FILE = path.join(OBOL_DIR, '.evolution-state.json');
-const EXCHANGES_PER_EVOLUTION = 50;
+const DEFAULT_EXCHANGES_PER_EVOLUTION = 50;
+
+// Cost control: models used per evolution phase
+const MODELS = {
+  personality: 'claude-sonnet-4-20250514',   // SOUL/USER/AGENTS rewrite — Sonnet is plenty
+  code: 'claude-sonnet-4-20250514',           // Scripts/tests/commands — Sonnet handles this fine
+  codeFix: 'claude-sonnet-4-20250514',        // Fix attempts — definitely doesn't need Opus
+};
+const MAX_FIX_ATTEMPTS = 1; // One fix attempt, then rollback. Don't burn tokens.
 
 function loadEvolutionState() {
   try {
@@ -34,7 +42,10 @@ function saveEvolutionState(state) {
 
 async function shouldEvolve() {
   const state = loadEvolutionState();
-  return state.exchangesSinceLastEvolution >= EXCHANGES_PER_EVOLUTION;
+  const { loadConfig } = require('./config');
+  const config = loadConfig();
+  const threshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
+  return state.exchangesSinceLastEvolution >= threshold;
 }
 
 async function tickExchange() {
@@ -204,7 +215,7 @@ async function evolve(claudeClient, messageLog, memory) {
   const baselineResults = runTests(testsDir);
 
   const response = await claudeClient.messages.create({
-    model: 'claude-opus-4-20250514',
+    model: MODELS.personality,
     max_tokens: 16384,
     system: `You are an AI undergoing evolution #${evolutionNumber}. ${state.lastEvolution ? `Last evolution: ${state.lastEvolution}.` : 'This is your first evolution.'}
 
@@ -433,7 +444,6 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   }
 
   // ── Step 5: Run tests against NEW scripts (post-refactor verification) ──
-  const MAX_FIX_ATTEMPTS = 3;
   let scriptsFixed = false;
 
   if (hasNewTests || hasNewScripts) {
@@ -446,7 +456,7 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
 
       try {
         const fixResponse = await claudeClient.messages.create({
-          model: 'claude-opus-4-20250514',
+          model: MODELS.codeFix,
           max_tokens: 8192,
           system: `You are fixing failing tests after a script refactor. This is fix attempt ${fixAttempt}/${MAX_FIX_ATTEMPTS}.
 

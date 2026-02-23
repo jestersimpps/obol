@@ -8,9 +8,9 @@ One process. One chat. One brain that grows.
 
 ---
 
-🧬 **Self-evolving** — Grows its own personality through conversation. Opus rewrites SOUL.md, USER.md, and AGENTS.md every 50 exchanges.
+🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md every N exchanges (configurable, default 50).
 
-🔧 **Self-healing** — Writes tests for every script. Regressions get 3 automatic fix attempts before rollback. Failures stored as lessons.
+🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
 
 🏗️ **Self-extending** — Analyzes your usage patterns and builds new tools: scripts, commands, or full web apps deployed to Vercel.
 
@@ -19,6 +19,8 @@ One process. One chat. One brain that grows.
 🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? No wasted API calls.
 
 🛡️ **Self-hardening** — Auto-configures SSH (port 2222), firewall, fail2ban, encrypted secrets, and kernel hardening on first run.
+
+🔄 **Resilient** — Exponential backoff on polling failures, global error handling, graceful shutdown. Stays alive through network blips.
 
 ---
 
@@ -93,11 +95,13 @@ Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
 ### Layer 2: The Evolution Cycle
 
-Every 50 exchanges, **Opus** takes over. It reads everything — personality files, the last 100 messages, top 20 memories, all scripts, tests, and commands — then rebuilds.
+Every N exchanges (configurable, default 50), the evolution cycle kicks in. It reads everything — personality files, the last 100 messages, top 20 memories, all scripts, tests, and commands — then rebuilds.
+
+**Cost-conscious model selection:** Evolution uses Sonnet for all phases — personality rewrites, code refactoring, and fix attempts. Opus-level reasoning isn't needed for reflection and refactoring, and Sonnet keeps evolution costs negligible (~$0.02 per cycle vs ~$0.30 with Opus).
 
 **Git snapshot before.** Full commit + push so you can always diff what changed.
 
-**What Opus rewrites:**
+**What gets rewritten:**
 
 | Target | What happens |
 |--------|-------------|
@@ -116,7 +120,7 @@ Every 50 exchanges, **Opus** takes over. It reads everything — personality fil
 3. Run new tests against old scripts → pre-refactor baseline
 4. Write new scripts
 5. Run new tests against new scripts → verification
-6. Regression? → Opus gets 3 attempts to fix (tests are ground truth)
+6. Regression? → one automatic fix attempt (tests are ground truth)
 7. Still failing? → rollback to old scripts, store failure as `lesson`
 
 **Proactive tool building** — Opus scans conversation history for repeated requests, friction points, and unmet needs, then builds the right solution:
@@ -232,6 +236,31 @@ Send your first message. OBOL introduces itself, asks 2-3 questions, then writes
 
 > ⚠️ After first run, SSH moves to port 2222: `ssh -p 2222 root@YOUR_IP`
 
+## Resilience
+
+OBOL is designed to stay alive without babysitting:
+
+- **Global error handler** — individual message failures don't crash the bot
+- **Polling auto-restart** — exponential backoff (1s → 60s) with up to 10 retries on network/API failures
+- **Graceful shutdown** — clean exit on SIGINT/SIGTERM for pm2/systemd compatibility
+- **Evolution rollback** — if refactored scripts break tests, the old scripts are restored automatically
+
+## Configuration
+
+After `obol init`, config lives in `~/.obol/config.json`:
+
+```json
+{
+  "evolution": {
+    "exchanges": 50
+  }
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `evolution.exchanges` | 50 | Messages between evolution cycles. Increase to reduce API costs. |
+
 ## Telegram Commands
 
 ```
@@ -294,7 +323,7 @@ obol start -d
 | Service | Cost |
 |---------|------|
 | VPS (DigitalOcean) | $6/mo |
-| Anthropic API | ~$3/mo |
+| Anthropic API | ~$2-5/mo |
 | Supabase | Free |
 | GitHub | Free |
 | Vercel | Free |
