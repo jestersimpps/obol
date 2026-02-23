@@ -1,18 +1,11 @@
 const { execSync } = require('child_process');
-const fs = require('fs');
-const { LOG_FILE } = require('../config');
 
 async function logs(opts = {}) {
-  if (!fs.existsSync(LOG_FILE)) {
-    console.log('🪙 No logs yet. Start the bot first: obol start');
-    return;
-  }
-
   const lines = opts.lines || 50;
   try {
-    execSync(`tail -n ${lines} -f ${LOG_FILE}`, { stdio: 'inherit' });
+    execSync(`pm2 logs obol --lines ${lines}`, { stdio: 'inherit' });
   } catch {
-    // User pressed Ctrl+C
+    console.log('🪙 Not running (or pm2 not installed). Start with: obol start -d');
   }
 }
 

@@ -148,40 +148,30 @@ obol status
 obol logs
 ```
 
-## 9. Keep It Running (systemd)
+## 9. Keep It Running (pm2)
 
-Create a systemd service so OBOL survives reboots:
+pm2 keeps OBOL alive, auto-restarts on crash, and survives reboots:
 
 ```bash
-cat > /etc/systemd/system/obol.service << 'EOF'
-[Unit]
-Description=OBOL AI Assistant
-After=network.target
+# Install pm2 globally
+npm install -g pm2
 
-[Service]
-Type=simple
-User=root
-ExecStart=/usr/bin/node /usr/lib/node_modules/obol/src/index.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
+# Start OBOL with pm2
+pm2 start $(which obol) --name obol -- start
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# Auto-start on boot
+pm2 startup
+pm2 save
 
-# Enable and start
-systemctl enable obol
-systemctl start obol
-
-# Check status
-systemctl status obol
-
-# View logs
-journalctl -u obol -f
+# Useful commands
+pm2 status          # See running processes
+pm2 logs obol       # Tail logs
+pm2 restart obol    # Restart
+pm2 stop obol       # Stop
+pm2 monit           # Live monitoring dashboard
 ```
 
-Now OBOL starts automatically on boot and restarts if it crashes.
+That's it — OBOL auto-starts on boot and restarts if it crashes.
 
 ## 10. Customize Your Bot
 
@@ -196,7 +186,7 @@ nano ~/.obol/personality/AGENTS.md  # How it works
 Restart after changes:
 
 ```bash
-systemctl restart obol
+pm2 restart obol
 ```
 
 ## Costs
@@ -215,7 +205,7 @@ systemctl restart obol
 
 ```bash
 npm update -g obol
-systemctl restart obol
+pm2 restart obol
 ```
 
 ## Backup & Restore

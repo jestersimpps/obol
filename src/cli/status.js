@@ -1,29 +1,34 @@
-const fs = require('fs');
-const { PID_FILE, loadConfig } = require('../config');
+const { execSync } = require('child_process');
+const { loadConfig } = require('../config');
 
 async function status() {
   const config = loadConfig();
 
   console.log('🪙 OBOL Status\n');
 
-  // Config
   if (!config) {
     console.log('  ⚠️  Not configured. Run: obol init');
     return;
   }
   console.log('  ✅ Configured');
 
-  // Running?
-  if (fs.existsSync(PID_FILE)) {
-    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'));
-    try {
-      process.kill(pid, 0);
-      console.log(`  ✅ Running (PID ${pid})`);
-    } catch {
-      console.log('  ❌ Not running (stale PID file)');
+  // Check pm2
+  try {
+    const list = execSync('pm2 jlist', { encoding: 'utf-8' });
+    const procs = JSON.parse(list);
+    const obol = procs.find(p => p.name === 'obol');
+    if (obol) {
+      const status = obol.pm2_env.status;
+      const uptime = obol.pm2_env.pm_uptime ? Math.floor((Date.now() - obol.pm2_env.pm_uptime) / 60000) : 0;
+      const restarts = obol.pm2_env.restart_time || 0;
+      const mem = (obol.monit?.memory / 1024 / 1024).toFixed(0) || '?';
+      console.log(`  ${status === 'online' ? '✅' : '❌'} Process: ${status} (PID ${obol.pid})`);
+      console.log(`  ⏱️  Uptime: ${uptime}min | Restarts: ${restarts} | Memory: ${mem}MB`);
+    } else {
+      console.log('  ❌ Not running');
     }
-  } else {
-    console.log('  ❌ Not running');
+  } catch {
+    console.log('  ❌ Not running (pm2 not installed)');
   }
 
   // Components

@@ -1,20 +1,11 @@
-const fs = require('fs');
-const { PID_FILE } = require('../config');
+const { execSync } = require('child_process');
 
 async function stop() {
-  if (!fs.existsSync(PID_FILE)) {
-    console.log('🪙 Not running.');
-    return;
-  }
-
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'));
   try {
-    process.kill(pid, 'SIGTERM');
-    fs.unlinkSync(PID_FILE);
-    console.log(`🪙 Stopped (PID ${pid})`);
+    execSync('pm2 stop obol', { stdio: 'inherit' });
+    console.log('🪙 Stopped');
   } catch {
-    fs.unlinkSync(PID_FILE);
-    console.log('🪙 Process already stopped. Cleaned up PID file.');
+    console.log('🪙 Not running (or pm2 not installed).');
   }
 }
 

@@ -1,6 +1,5 @@
-const { loadConfig, PID_FILE, LOG_FILE } = require('../config');
-const { spawn } = require('child_process');
-const fs = require('fs');
+const { loadConfig, PID_FILE } = require('../config');
+const { execSync } = require('child_process');
 const path = require('path');
 
 async function start(opts = {}) {
@@ -10,30 +9,34 @@ async function start(opts = {}) {
     process.exit(1);
   }
 
-  // Check if already running
-  if (fs.existsSync(PID_FILE)) {
-    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'));
-    try {
-      process.kill(pid, 0);
-      console.log(`🪙 Already running (PID ${pid}). Use: obol stop`);
-      return;
-    } catch {
-      fs.unlinkSync(PID_FILE); // Stale PID file
-    }
-  }
-
   if (opts.daemon) {
-    // Daemon mode
-    const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-    const child = spawn('node', [path.join(__dirname, '..', 'index.js')], {
-      detached: true,
-      stdio: ['ignore', logStream, logStream],
-      env: { ...process.env },
-    });
-    child.unref();
-    fs.writeFileSync(PID_FILE, String(child.pid));
-    console.log(`🪙 OBOL started (PID ${child.pid})`);
-    console.log(`   Logs: obol logs`);
+    // Check if pm2 is available
+    try {
+      execSync('which pm2', { stdio: 'pipe' });
+    } catch {
+      console.log('Installing pm2...');
+      execSync('npm install -g pm2', { stdio: 'inherit' });
+    }
+
+    // Check if already running
+    try {
+      const list = execSync('pm2 jlist', { encoding: 'utf-8' });
+      const procs = JSON.parse(list);
+      const obol = procs.find(p => p.name === 'obol');
+      if (obol && obol.pm2_env.status === 'online') {
+        console.log('🪙 Already running. Use: pm2 restart obol');
+        return;
+      }
+    } catch {}
+
+    // Start with pm2
+    const entryPoint = path.join(__dirname, '..', 'index.js');
+    execSync(`pm2 start ${entryPoint} --name obol`, { stdio: 'inherit' });
+    console.log('\n🪙 OBOL started with pm2');
+    console.log('   pm2 logs obol     — tail logs');
+    console.log('   pm2 restart obol  — restart');
+    console.log('   pm2 stop obol     — stop');
+    console.log('   pm2 startup && pm2 save — auto-start on boot');
   } else {
     // Foreground mode
     console.log('🪙 Starting in foreground (Ctrl+C to stop)...\n');

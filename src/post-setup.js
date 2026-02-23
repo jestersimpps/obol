@@ -134,6 +134,26 @@ Expire-Date: 0
   },
 
   {
+    name: 'install-pm2',
+    description: 'Install pm2 process manager and configure auto-start on boot',
+    run: async () => {
+      try {
+        try {
+          execSync('which pm2', { stdio: 'pipe' });
+          return { success: true, message: 'pm2 already installed' };
+        } catch {}
+
+        execSync('npm install -g pm2', { stdio: 'pipe' });
+        execSync('pm2 startup -u root --hp /root 2>/dev/null || pm2 startup', { stdio: 'pipe' });
+
+        return { success: true, message: 'pm2 installed + startup configured' };
+      } catch (e) {
+        return { success: false, message: `pm2 setup failed: ${e.message}` };
+      }
+    },
+  },
+
+  {
     name: 'setup-swap',
     description: 'Add swap if RAM is low (embedding model needs ~200MB)',
     run: async () => {
