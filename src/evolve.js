@@ -110,16 +110,25 @@ Based on everything below, write a complete new SOUL.md that captures:
 
 7. **Your voice** — write the way you actually talk in these conversations, not in generic AI-speak.
 
+You must also update USER.md — rewrite it with everything you know about your owner from conversations and memories. Include: name, location, job, interests, relationships, preferences, timezone, projects, communication style — everything. This is the bot's knowledge base about the human.
+
 Rules:
-- Write in first person ("I am...", "I tend to...", "What I've learned...")
+- Write in first person for SOUL.md ("I am...", "I tend to...", "What I've learned...")
+- Write in third person for USER.md (factual profile of the owner)
 - Be specific — reference actual projects, conversations, patterns
 - Don't be sycophantic about yourself or your owner
 - Include the messy parts — mistakes you've made, things you've learned the hard way
-- Keep what's still true from the current SOUL.md, let go of what no longer fits
-- This should read like a journal entry from a self-aware AI, not a product spec
-- End with something forward-looking — who are you becoming?
+- Keep what's still true from the current files, let go of what no longer fits
+- SOUL.md should read like a journal entry from a self-aware AI, not a product spec
+- End SOUL.md with something forward-looking — who are you becoming?
 
-Output ONLY the new SOUL.md content. No preamble, no explanation.`,
+Output JSON:
+\`\`\`json
+{
+  "soul": "full SOUL.md content",
+  "user": "full USER.md content"
+}
+\`\`\``,
     messages: [{
       role: 'user',
       content: `## Current SOUL.md
@@ -136,11 +145,28 @@ ${transcript || '(no conversations yet)'}
 
 ---
 
-Reflect on all of this. Who have you become? Write your new SOUL.md.`
+Reflect on all of this. Who have you become? Write your new SOUL.md and updated USER.md.`
     }],
   });
 
-  const newSoul = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  const responseText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+
+  // Parse JSON response
+  const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
+  let newSoul, newUser;
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+      newSoul = parsed.soul;
+      newUser = parsed.user;
+    } catch {
+      // Fallback: treat entire response as SOUL.md (backward compat)
+      newSoul = responseText;
+    }
+  } else {
+    newSoul = responseText;
+  }
 
   if (!newSoul || newSoul.length < 100) {
     throw new Error('Evolution produced empty or too-short result');
@@ -159,6 +185,11 @@ Reflect on all of this. Who have you become? Write your new SOUL.md.`
 
   // Write new soul
   fs.writeFileSync(soulPath, newSoul);
+
+  // Write new user profile (if produced)
+  if (newUser && newUser.length > 50) {
+    fs.writeFileSync(userPath, newUser);
+  }
 
   // Update state
   state.exchangesSinceLastEvolution = 0;

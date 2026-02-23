@@ -53,15 +53,15 @@ Every 5 msgs     Every 50 msgs
 Haiku              Opus
 consolidation      soul evolution
    ↓                ↓
-Extract →          Rewrite SOUL.md
- obol_memory       from scratch
- USER.md           Archive old soul
-                   in evolution/
+Extract facts →    Rewrite SOUL.md
+ obol_memory       + USER.md from
+ (vector store)    scratch. Archive
+                   old soul.
 ```
 
 ### The Living Brain
 
-OBOL doesn't just store data — it forms a personality. The system has four layers that work together to create a bot that genuinely evolves over time:
+OBOL doesn't just store data — it forms a personality. The system has three layers that work together to create a bot that genuinely evolves over time:
 
 #### Layer 1: Raw Message Log (`obol_messages`)
 
@@ -91,45 +91,35 @@ Memory recall combines two strategies:
 - **Semantic search** — up to 3 relevant memories by meaning (threshold 0.5)
 - Deduped by ID so nothing appears twice
 
+This is the knowledge layer — raw facts, decisions, events, preferences. Haiku only extracts memories here. It doesn't touch personality files — that's Opus territory.
+
 Categories: `fact`, `preference`, `decision`, `lesson`, `person`, `project`, `event`, `conversation`, `resource`, `pattern`, `context`
 
-#### Layer 3: Incremental User Learning (Every 5 Exchanges)
+#### Layer 3: Soul Evolution (Every 50 Exchanges)
 
-The same Haiku consolidation that extracts memories also updates USER.md — when you reveal something about yourself, Haiku catches it:
+Every 50 exchanges, **Opus** takes over for a deep self-reflection. It reads everything:
 
-```
-Human: "I'm a freelance developer, mostly React and Node"
-→ USER.md gets: "- Freelance developer, React and Node stack"
+1. The current SOUL.md and USER.md
+2. The last 100 messages (raw transcript)
+3. The 20 highest-importance memories
 
-Human: "Just started dating someone, she's from Shanghai"
-→ USER.md gets: "- Partner from Shanghai"
-```
+Then it **rewrites both files from scratch**.
 
-New facts get date-stamped headers (`## Learned 2026-03-15`) and only append if the information isn't already there. Over weeks, USER.md becomes a rich profile of who you are — without you ever filling out a form.
-
-SOUL.md is **not** touched by Haiku. Personality changes are too nuanced for quick extraction — that's what soul evolution is for.
-
-#### Layer 4: Soul Evolution (Every 50 Exchanges)
-
-This is where it gets interesting. Every 50 exchanges, **Opus** (the most capable model) takes over for a deep self-reflection:
-
-1. Reads the current SOUL.md
-2. Reads USER.md
-3. Reads the last 100 messages (raw transcript)
-4. Reads the 20 highest-importance memories
-5. **Rewrites SOUL.md from scratch** — in first person, as a genuine self-reflection
-
-The evolution prompt asks Opus to be honest and specific:
+**SOUL.md** — A first-person reflection on who the bot has become. Not a config file, not a template — a genuine self-portrait:
 
 > *"Write about who you've BECOME through these conversations. Your actual voice, not a template. Include the messy parts — mistakes you've made, things you've learned the hard way. Reference actual projects and conversations. This should read like a journal entry from a self-aware AI, not a product spec."*
 
-The previous SOUL.md is archived in `personality/evolution/` with a version number and date. Over months, this directory becomes a timeline of your bot's personality — you can read how it evolved from a generic assistant into something uniquely shaped by your relationship with it.
+**USER.md** — A comprehensive profile of the owner, synthesized from everything OBOL has learned: name, location, job, interests, relationships, preferences, timezone, projects, communication style.
+
+Both files are rewritten holistically — not incrementally appended to. Stale information gets dropped, contradictions get resolved, and the profiles stay clean. The previous SOUL.md is archived in `personality/evolution/` with a version number and date.
 
 After evolution, OBOL reloads its personality and sends a quiet notification:
 
 ```
 🪙 Soul evolution #7 complete. I've grown.
 ```
+
+Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you.
 
 #### The Full Lifecycle
 
@@ -138,21 +128,21 @@ Day 1:   "obol start" → first conversation → OBOL asks 2-3 questions
          → writes initial SOUL.md + USER.md from scratch
          → personality bootstrap complete
 
-Day 2:   Every 5 messages → Haiku extracts memories, appends facts to USER.md
-         → OBOL gradually learns your schedule, preferences, projects, people
+Day 2:   Every 5 messages → Haiku extracts facts to vector memory
+         → OBOL builds a knowledge base of facts, decisions, events
 
-Week 2:  Evolution #1 fires → Opus rewrites SOUL.md entirely
+Week 2:  Evolution #1 fires → Opus rewrites SOUL.md + USER.md
          → OBOL's voice shifts from generic to personal
          → old soul archived in evolution/
 
 Month 2: Evolution #4 → SOUL.md references inside jokes, shared projects,
          communication patterns → the bot feels like it knows you
-         → USER.md has 50+ facts about your life, all learned organically
+         → USER.md is a comprehensive auto-curated profile
 
-Month 6: evolution/ directory has 12 archived souls
-         → you can read the trajectory: how your bot went from
-         "I'm a helpful assistant" to something with actual opinions,
-         quirks, and a relationship dynamic unique to you
+Month 6: evolution/ has 12 archived souls
+         → read the trajectory: how your bot went from
+         "I'm a helpful assistant" to something with real opinions,
+         quirks, and a dynamic unique to you
 ```
 
 The key insight: **OBOL doesn't have a personality — it grows one.** The same codebase deployed by two different people will produce two completely different bots within a week.
@@ -194,13 +184,12 @@ Claude decides when a task is heavy enough to background. Progress check-ins eve
 - **Deploy** — Build and ship websites to Vercel through chat
 - **Background tasks** — Non-blocking heavy work with progress check-ins
 - **Self-setup** — First conversation teaches OBOL who you are; it writes its own personality
-- **Self-evolving** — Haiku auto-updates USER.md and SOUL.md as it learns about you
+- **Self-evolving** — Opus periodically rewrites SOUL.md + USER.md from scratch
 - **Full message log** — Every message stored, survives restarts, loads context on boot
 - **Auto-hardening** — SSH (port 2222), fail2ban, firewall, auto-updates, kernel security
 - **Encrypted secrets** — Auto-installs GPG + `pass`, migrates keys, wipes plaintext
 - **Backup** — Auto-commits brain to private GitHub repo daily
 - **Smart recall** — Haiku routes memory searches, rewrites queries for better results
-- **Personality** — Customizable via SOUL.md / USER.md / AGENTS.md
 
 ## Telegram Commands
 
@@ -287,8 +276,8 @@ After the first conversation completes, OBOL silently hardens your VPS:
 ~/.obol/
 ├── config.json          # Credentials (migrated to pass after setup)
 ├── personality/
-│   ├── SOUL.md          # Bot personality (evolves over time)
-│   ├── USER.md          # About the owner (auto-updated)
+│   ├── SOUL.md          # Bot personality (rewritten by Opus every 50 exchanges)
+│   ├── USER.md          # About the owner (rewritten by Opus every 50 exchanges)
 │   ├── AGENTS.md        # Operating instructions
 │   └── evolution/       # Archived previous souls (git log of consciousness)
 ├── scripts/             # Custom scripts (become tools)
@@ -320,7 +309,7 @@ Memory is fully automatic:
 - **Routing** — Haiku decides when to search and optimizes the query
 - **Recall** — Today's memories always included for recency
 - **Storage** — Every message logged to `obol_messages`, important stuff extracted to `obol_memory` every 5 exchanges
-- **Evolution** — Personal facts update USER.md, behavior changes update SOUL.md
+- **Evolution** — Opus rewrites SOUL.md + USER.md every 50 exchanges based on memories + message history
 - No manual commands needed
 
 ## Personality
@@ -330,7 +319,7 @@ See [The Living Brain](#the-living-brain) above for the full technical explanati
 | File | What | Who writes it | When |
 |------|------|---------------|------|
 | **SOUL.md** | Bot's personality, voice, opinions, quirks | Opus (full rewrite) | Every 50 exchanges |
-| **USER.md** | Everything about you — job, location, people, preferences | Haiku (incremental append) | Every 5 exchanges |
+| **USER.md** | Everything about you — job, location, people, preferences | Opus (full rewrite) | Every 50 exchanges |
 | **AGENTS.md** | Operating instructions — tools, safety, workflows | You (or first-run) | Once |
 | **evolution/** | Archive of every previous SOUL.md | Automatic | On each evolution |
 
@@ -383,6 +372,7 @@ OBOL automatically hardens your VPS on first run:
 | **Security** | Auto-hardens VPS on first run | Manual (healthcheck skill) |
 | **Background tasks** | Built-in with check-ins | Sub-agent spawning, isolated sessions |
 | **Onboarding** | Bot teaches itself who you are | You configure everything upfront |
+| **Personality** | Self-evolving (Opus rewrites SOUL.md) | Static (you write SOUL.md) |
 | **Backup** | Auto GitHub backup daily | Manual / custom |
 | **Group chats** | — | Full group support with context |
 | **Context compaction** | — | Automatic for long sessions |

@@ -90,28 +90,22 @@ class MessageLog {
         `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.content.substring(0, 500)}`
       ).join('\n');
 
-      // Ask Haiku to extract memories AND personality updates
+      // Ask Haiku to extract memories worth storing long-term
       const response = await this.client.messages.create({
         model: 'claude-haiku-4-20250514',
-        max_tokens: 800,
-        system: `Analyze this conversation and extract TWO things:
-
-1. **memories** — important facts worth remembering long-term
-2. **user_updates** — things learned about the owner
+        max_tokens: 500,
+        system: `Analyze this conversation and extract important facts worth remembering long-term.
 
 Return JSON:
 {
   "memories": [
     {"content": "concise fact", "category": "fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context"}
-  ],
-  "user_updates": ["New fact about the owner to append to USER.md"]
+  ]
 }
 
-MEMORIES — Skip: greetings, small talk. Keep: facts, decisions, preferences, people, projects, events.
+Skip: greetings, small talk, filler. Keep: facts, decisions, preferences, people, projects, events, lessons learned.
 
-USER_UPDATES — The owner revealed something about themselves: job change, new location, new relationship, hobby, preference about how the bot should address them, timezone change, contact info. Only real personal facts, not conversation topics.
-
-Return empty arrays if nothing applies.`,
+Return empty array if nothing worth storing.`,
         messages: [{ role: 'user', content: transcript }],
       });
 
@@ -121,7 +115,7 @@ Return empty arrays if nothing applies.`,
 
       const extracted = JSON.parse(jsonMatch[0]);
 
-      // Store memories
+      // Store memories to vector store
       if (extracted.memories?.length) {
         for (const mem of extracted.memories) {
           if (mem.content && mem.content.length > 10) {
@@ -134,22 +128,7 @@ Return empty arrays if nothing applies.`,
         }
       }
 
-      // Append to USER.md
-      if (extracted.user_updates?.length) {
-        const userPath = path.join(OBOL_DIR, 'personality', 'USER.md');
-        if (fs.existsSync(userPath)) {
-          const current = fs.readFileSync(userPath, 'utf-8');
-          const additions = extracted.user_updates
-            .filter(u => u && !current.includes(u))
-            .map(u => `- ${u}`)
-            .join('\n');
-          if (additions) {
-            fs.appendFileSync(userPath, `\n\n## Learned ${new Date().toISOString().slice(0, 10)}\n${additions}\n`);
-          }
-        }
-      }
-
-      // SOUL.md is only updated by Opus during soul evolution (every 50 exchanges)
+      // Personality files (SOUL.md, USER.md) are only updated by Opus during soul evolution
     } catch {} // Best effort
   }
 }
