@@ -215,8 +215,17 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       history.shift();
       history.shift();
     }
-    if (history.length > 0 && history[0].role !== 'user') {
-      history.shift();
+    while (history.length > 0) {
+      const first = history[0];
+      if (first.role !== 'user') {
+        history.shift();
+        continue;
+      }
+      if (Array.isArray(first.content) && first.content.some(b => b.type === 'tool_result')) {
+        history.shift();
+        continue;
+      }
+      break;
     }
 
     // Add user message with memory context
