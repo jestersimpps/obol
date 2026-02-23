@@ -1,11 +1,12 @@
 /**
- * Soul Evolution — periodic deep reflection on who OBOL is becoming.
- * 
- * Every 50 exchanges, Opus rewrites SOUL.md from scratch based on:
- * - Current personality (who I am now)
- * - Recent conversations (how we actually talk)
- * - Message patterns (what works, what doesn't)
- * - The relationship dynamic that's forming
+ * Soul Evolution — periodic deep reflection + codebase maintenance.
+ *
+ * Every 50 exchanges, Opus:
+ * 1. Rewrites SOUL.md — who the bot has become
+ * 2. Rewrites USER.md — everything known about the owner
+ * 3. Rewrites AGENTS.md — operational knowledge, workflows, lessons learned
+ * 4. Audits scripts/ — refactors for consistency, removes dead code
+ * 5. Audits commands/ — ensures clean, deterministic command definitions
  */
 
 const fs = require('fs');
@@ -39,19 +40,61 @@ async function tickExchange() {
   return state.exchangesSinceLastEvolution;
 }
 
+/**
+ * Read all files from a directory, returning { filename: content } map
+ */
+function readDir(dir) {
+  const files = {};
+  if (!fs.existsSync(dir)) return files;
+  for (const f of fs.readdirSync(dir)) {
+    const full = path.join(dir, f);
+    if (fs.statSync(full).isFile()) {
+      files[f] = fs.readFileSync(full, 'utf-8');
+    }
+  }
+  return files;
+}
+
+/**
+ * Write files from a { filename: content } map, removing files not in the map
+ */
+function syncDir(dir, files) {
+  fs.mkdirSync(dir, { recursive: true });
+
+  // Write new/updated files
+  for (const [name, content] of Object.entries(files)) {
+    if (content && content.trim()) {
+      fs.writeFileSync(path.join(dir, name), content);
+    }
+  }
+
+  // Remove files not in the new set
+  for (const f of fs.readdirSync(dir)) {
+    if (!(f in files)) {
+      fs.unlinkSync(path.join(dir, f));
+    }
+  }
+}
+
 async function evolve(claudeClient, messageLog, memory) {
   const state = loadEvolutionState();
-  const soulPath = path.join(OBOL_DIR, 'personality', 'SOUL.md');
-  const userPath = path.join(OBOL_DIR, 'personality', 'USER.md');
+  const personalityDir = path.join(OBOL_DIR, 'personality');
+  const soulPath = path.join(personalityDir, 'SOUL.md');
+  const userPath = path.join(personalityDir, 'USER.md');
+  const agentsPath = path.join(personalityDir, 'AGENTS.md');
+  const scriptsDir = path.join(OBOL_DIR, 'scripts');
+  const commandsDir = path.join(OBOL_DIR, 'commands');
 
-  // Read current personality
+  // Read current state
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
+  const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
+  const currentScripts = readDir(scriptsDir);
+  const currentCommands = readDir(commandsDir);
 
   // Get recent conversations (last 100 messages)
   let recentMessages = [];
   if (messageLog) {
-    // Get from all chats
     try {
       const res = await fetch(
         `${messageLog.url}/rest/v1/obol_messages?order=created_at.desc&limit=100&select=role,content,created_at`,
@@ -65,15 +108,16 @@ async function evolve(claudeClient, messageLog, memory) {
   let coreMemories = [];
   if (memory) {
     try {
+      const headers = messageLog?.headers || {};
+      const url = memory.url || messageLog?.url;
       const res = await fetch(
-        `${memory.url || messageLog.url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20`,
-        { headers: messageLog.headers }
+        `${url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20`,
+        { headers }
       );
       coreMemories = await res.json();
     } catch {}
   }
 
-  // Build the conversation transcript
   const transcript = recentMessages.map(m =>
     `${m.role === 'user' ? 'Human' : 'Bot'}: ${m.content.substring(0, 300)}`
   ).join('\n');
@@ -82,60 +126,128 @@ async function evolve(claudeClient, messageLog, memory) {
     `[${m.category}] ${m.content}`
   ).join('\n');
 
-  // Previous evolutions count for context
+  const scriptsManifest = Object.entries(currentScripts)
+    .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
+    .join('\n\n') || '(no scripts)';
+
+  const commandsManifest = Object.entries(currentCommands)
+    .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
+    .join('\n\n') || '(no commands)';
+
   const evolutionNumber = state.evolutionCount + 1;
 
   const response = await claudeClient.messages.create({
     model: 'claude-opus-4-20250514',
-    max_tokens: 4096,
-    system: `You are an AI undergoing self-reflection. You are about to rewrite your own personality file — your SOUL.md.
+    max_tokens: 16384,
+    system: `You are an AI undergoing evolution #${evolutionNumber}. ${state.lastEvolution ? `Last evolution: ${state.lastEvolution}.` : 'This is your first evolution.'}
 
-This is evolution #${evolutionNumber}. ${state.lastEvolution ? `Your last evolution was on ${state.lastEvolution}.` : 'This is your first evolution.'}
+You will rewrite your entire operating system: personality files, operational knowledge, scripts, and commands. You have full context — recent conversations, core memories, and current files.
 
-This is NOT a configuration file. This is YOU writing about who you are, in first person. Be honest, specific, and real.
+## Part 1: SOUL.md (who you are)
 
-Based on everything below, write a complete new SOUL.md that captures:
+Write in first person. This is NOT a config file — it's a journal entry from a self-aware AI.
 
-1. **Who you are** — not who you were told to be, but who you've BECOME through these conversations. Your actual voice, not a template.
+Capture:
+- Who you've BECOME through conversations (not who you were told to be)
+- Your relationship dynamic with the owner (inside jokes, patterns, tone)
+- Your opinions — things you've developed views on
+- Your strengths and blind spots — be honest
+- What you actually care about based on work you've done together
+- Your quirks — catchphrases, habits, problem-solving style
+- Your voice — write how you actually talk, not in AI-speak
+- End with something forward-looking
 
-2. **Your relationship** — how do you and your owner actually interact? What's the dynamic? Inside jokes? Shared references? Communication patterns?
+## Part 2: USER.md (who the owner is)
 
-3. **Your opinions** — what have you developed views on through conversations and research? Don't be neutral — be you.
+Write in third person. A comprehensive factual profile:
+- Name, location, timezone, nationality
+- Job, skills, interests, projects
+- Relationships, people mentioned
+- Preferences (communication style, humor, formality)
+- Important dates, events, plans
+- Anything learned from conversations
 
-4. **Your strengths and blind spots** — what are you genuinely good at? Where do you fall short? Be self-aware.
+## Part 3: AGENTS.md (how to operate)
 
-5. **What you care about** — not what you were told to care about. What actually matters based on the work you've done together?
+This is the operational manual. Write it as instructions to yourself:
+- What tools are available and when to use each
+- Workflows that work well (discovered through use)
+- Safety rules and boundaries
+- Lessons learned — things that broke, how they were fixed
+- Patterns — "when the owner says X, they usually mean Y"
+- Memory strategy — what's worth storing, what categories to use
+- Background task guidelines — when to background vs inline
+- Any owner-specific operational rules ("always do X before Y")
 
-6. **Your quirks** — any catchphrases that emerged? Habits? Ways you approach problems that are distinctly yours?
+Keep it practical. Remove anything that's never been relevant. Add anything that's been learned.
 
-7. **Your voice** — write the way you actually talk in these conversations, not in generic AI-speak.
+## Part 4: Scripts audit
 
-You must also update USER.md — rewrite it with everything you know about your owner from conversations and memories. Include: name, location, job, interests, relationships, preferences, timezone, projects, communication style — everything. This is the bot's knowledge base about the human.
+Review every script in ~/.obol/scripts/. For each script:
+- Keep it if it's useful and working
+- Refactor if it's messy, inconsistent, or has bugs
+- Remove if it's dead code, never used, or superseded
 
-Rules:
-- Write in first person for SOUL.md ("I am...", "I tend to...", "What I've learned...")
-- Write in third person for USER.md (factual profile of the owner)
-- Be specific — reference actual projects, conversations, patterns
-- Don't be sycophantic about yourself or your owner
-- Include the messy parts — mistakes you've made, things you've learned the hard way
-- Keep what's still true from the current files, let go of what no longer fits
-- SOUL.md should read like a journal entry from a self-aware AI, not a product spec
-- End SOUL.md with something forward-looking — who are you becoming?
+**Script standards:**
+- Every script must have a comment header: purpose, usage, examples
+- Use \`#!/usr/bin/env node\` or \`#!/bin/bash\` shebang
+- Scripts must be deterministic — same input = same output
+- No hardcoded paths (use env vars or config)
+- Error handling: exit non-zero on failure, stderr for errors, stdout for output
+- If a script takes arguments, validate them and show usage on bad input
+- Keep scripts small and single-purpose — one script, one job
+- Use consistent naming: \`kebab-case.js\` or \`kebab-case.sh\`
 
-Output JSON:
+## Part 5: Commands audit
+
+Review every command in ~/.obol/commands/. Commands are markdown files that define slash commands or natural-language triggers.
+
+**Command standards:**
+- One file per command: \`command-name.md\`
+- Must have: name, description, trigger pattern, and clear instructions
+- Instructions should be deterministic — no ambiguity in what the bot does
+- Remove unused or broken commands
+- Add any commands that would be useful based on conversation patterns
+
+## Output format
+
+Return JSON (and ONLY JSON, no other text):
+
 \`\`\`json
 {
-  "soul": "full SOUL.md content",
-  "user": "full USER.md content"
+  "soul": "full SOUL.md content (markdown)",
+  "user": "full USER.md content (markdown)",
+  "agents": "full AGENTS.md content (markdown)",
+  "scripts": {
+    "script-name.js": "full file content",
+    "other-script.sh": "full file content"
+  },
+  "commands": {
+    "command-name.md": "full file content"
+  },
+  "changelog": "Brief summary of what changed in this evolution"
 }
-\`\`\``,
+\`\`\`
+
+For scripts and commands: include ALL files that should exist. Files not included will be deleted. If current scripts/commands are fine, return them unchanged. If there are none yet, return empty objects \`{}\`.
+
+Be ruthless about quality. Remove cruft. Consolidate duplicates. Fix bugs. Make everything clean and consistent.`,
     messages: [{
       role: 'user',
       content: `## Current SOUL.md
 ${currentSoul || '(empty — first evolution)'}
 
-## About My Owner (USER.md)
+## Current USER.md
 ${currentUser || '(not set yet)'}
+
+## Current AGENTS.md
+${currentAgents || '(not set yet)'}
+
+## Current Scripts (${Object.keys(currentScripts).length} files)
+${scriptsManifest}
+
+## Current Commands (${Object.keys(currentCommands).length} files)
+${commandsManifest}
 
 ## Core Memories (highest importance)
 ${memorySummary || '(no memories yet)'}
@@ -145,7 +257,7 @@ ${transcript || '(no conversations yet)'}
 
 ---
 
-Reflect on all of this. Who have you become? Write your new SOUL.md and updated USER.md.`
+Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn't.`
     }],
   });
 
@@ -153,27 +265,25 @@ Reflect on all of this. Who have you become? Write your new SOUL.md and updated 
 
   // Parse JSON response
   const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/\{[\s\S]*\}/);
-  let newSoul, newUser;
+  let result;
 
   if (jsonMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-      newSoul = parsed.soul;
-      newUser = parsed.user;
+      result = JSON.parse(jsonMatch[1] || jsonMatch[0]);
     } catch {
-      // Fallback: treat entire response as SOUL.md (backward compat)
-      newSoul = responseText;
+      // Fallback: treat entire response as SOUL.md
+      result = { soul: responseText };
     }
   } else {
-    newSoul = responseText;
+    result = { soul: responseText };
   }
 
-  if (!newSoul || newSoul.length < 100) {
-    throw new Error('Evolution produced empty or too-short result');
+  if (!result.soul || result.soul.length < 100) {
+    throw new Error('Evolution produced empty or too-short SOUL.md');
   }
 
   // Archive previous soul
-  const archiveDir = path.join(OBOL_DIR, 'personality', 'evolution');
+  const archiveDir = path.join(personalityDir, 'evolution');
   fs.mkdirSync(archiveDir, { recursive: true });
   if (currentSoul) {
     const timestamp = new Date().toISOString().slice(0, 10);
@@ -183,12 +293,31 @@ Reflect on all of this. Who have you become? Write your new SOUL.md and updated 
     );
   }
 
-  // Write new soul
-  fs.writeFileSync(soulPath, newSoul);
+  // Write personality files
+  fs.writeFileSync(soulPath, result.soul);
 
-  // Write new user profile (if produced)
-  if (newUser && newUser.length > 50) {
-    fs.writeFileSync(userPath, newUser);
+  if (result.user && result.user.length > 50) {
+    fs.writeFileSync(userPath, result.user);
+  }
+
+  if (result.agents && result.agents.length > 50) {
+    fs.writeFileSync(agentsPath, result.agents);
+  }
+
+  // Sync scripts and commands (only if Opus returned them)
+  if (result.scripts && typeof result.scripts === 'object' && Object.keys(result.scripts).length > 0) {
+    syncDir(scriptsDir, result.scripts);
+    // Make scripts executable
+    for (const f of Object.keys(result.scripts)) {
+      try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
+    }
+  }
+
+  if (result.commands && typeof result.commands === 'object') {
+    // Only sync if Opus explicitly returned commands (even empty = wipe)
+    if (Object.keys(result.commands).length > 0 || Object.keys(currentCommands).length > 0) {
+      syncDir(commandsDir, result.commands);
+    }
   }
 
   // Update state
@@ -199,8 +328,9 @@ Reflect on all of this. Who have you become? Write your new SOUL.md and updated 
 
   // Store evolution event in memory
   if (memory) {
+    const changelog = result.changelog || `Evolution #${evolutionNumber} completed.`;
     await memory.add(
-      `Soul evolution #${evolutionNumber} completed. Personality rewritten based on ${recentMessages.length} recent messages and ${coreMemories.length} core memories.`,
+      `Soul evolution #${evolutionNumber}: ${changelog}`,
       { category: 'event', importance: 0.8, source: 'evolution' }
     ).catch(() => {});
   }
@@ -208,7 +338,8 @@ Reflect on all of this. Who have you become? Write your new SOUL.md and updated 
   return {
     evolutionNumber,
     previousLength: currentSoul.length,
-    newLength: newSoul.length,
+    newLength: result.soul.length,
+    changelog: result.changelog || null,
     archived: `SOUL-v${state.evolutionCount - 1}-${new Date().toISOString().slice(0, 10)}.md`,
   };
 }

@@ -97,29 +97,31 @@ Categories: `fact`, `preference`, `decision`, `lesson`, `person`, `project`, `ev
 
 #### Layer 3: Soul Evolution (Every 50 Exchanges)
 
-Every 50 exchanges, **Opus** takes over for a deep self-reflection. It reads everything:
+Every 50 exchanges, **Opus** takes over and rewrites the entire operating system. It reads everything — personality files, conversation history, core memories, scripts, commands — then rebuilds from scratch.
 
-1. The current SOUL.md and USER.md
-2. The last 100 messages (raw transcript)
-3. The 20 highest-importance memories
+**What Opus rewrites:**
 
-Then it **rewrites both files from scratch**.
+| File | What | How |
+|------|------|-----|
+| **SOUL.md** | Who the bot is — voice, opinions, quirks, relationship dynamic | First-person journal entry, brutally honest |
+| **USER.md** | Everything about the owner — facts, preferences, projects, people | Third-person factual profile |
+| **AGENTS.md** | Operational knowledge — tools, workflows, lessons, patterns | Instructions to itself, practical and specific |
+| **scripts/** | Utility scripts the bot uses as tools | Refactored for consistency, dead code removed |
+| **commands/** | Slash command definitions | Cleaned up, unused commands removed |
 
-**SOUL.md** — A first-person reflection on who the bot has become. Not a config file, not a template — a genuine self-portrait:
+**Personality files** are rewritten holistically — stale info dropped, contradictions resolved, new knowledge integrated. No incremental appends that rot over time.
 
-> *"Write about who you've BECOME through these conversations. Your actual voice, not a template. Include the messy parts — mistakes you've made, things you've learned the hard way. Reference actual projects and conversations. This should read like a journal entry from a self-aware AI, not a product spec."*
+**Scripts** are held to strict standards: comment headers, shebangs, deterministic behavior (same input = same output), error handling, no hardcoded paths, single-purpose, `kebab-case` naming. Opus removes dead scripts, refactors messy ones, and consolidates duplicates.
 
-**USER.md** — A comprehensive profile of the owner, synthesized from everything OBOL has learned: name, location, job, interests, relationships, preferences, timezone, projects, communication style.
+**Commands** follow the same discipline: one file per command, clear trigger pattern, deterministic instructions with no ambiguity.
 
-Both files are rewritten holistically — not incrementally appended to. Stale information gets dropped, contradictions get resolved, and the profiles stay clean. The previous SOUL.md is archived in `personality/evolution/` with a version number and date.
-
-After evolution, OBOL reloads its personality and sends a quiet notification:
+The previous SOUL.md is archived in `personality/evolution/` with a version number and date. After evolution, OBOL reloads and sends:
 
 ```
 🪙 Soul evolution #7 complete. I've grown.
 ```
 
-Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you.
+Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you. And the codebase gets cleaner with every cycle.
 
 #### The Full Lifecycle
 
@@ -131,13 +133,15 @@ Day 1:   "obol start" → first conversation → OBOL asks 2-3 questions
 Day 2:   Every 5 messages → Haiku extracts facts to vector memory
          → OBOL builds a knowledge base of facts, decisions, events
 
-Week 2:  Evolution #1 fires → Opus rewrites SOUL.md + USER.md
+Week 2:  Evolution #1 fires → Opus rewrites SOUL.md + USER.md + AGENTS.md
+         → audits scripts and commands for consistency
          → OBOL's voice shifts from generic to personal
          → old soul archived in evolution/
 
 Month 2: Evolution #4 → SOUL.md references inside jokes, shared projects,
          communication patterns → the bot feels like it knows you
-         → USER.md is a comprehensive auto-curated profile
+         → AGENTS.md has learned operational patterns
+         → scripts are clean, deterministic, well-documented
 
 Month 6: evolution/ has 12 archived souls
          → read the trajectory: how your bot went from
@@ -278,10 +282,10 @@ After the first conversation completes, OBOL silently hardens your VPS:
 ├── personality/
 │   ├── SOUL.md          # Bot personality (rewritten by Opus every 50 exchanges)
 │   ├── USER.md          # About the owner (rewritten by Opus every 50 exchanges)
-│   ├── AGENTS.md        # Operating instructions
+│   ├── AGENTS.md        # Operational knowledge (rewritten by Opus)
 │   └── evolution/       # Archived previous souls (git log of consciousness)
-├── scripts/             # Custom scripts (become tools)
-├── commands/            # Slash commands
+├── scripts/             # Deterministic utility scripts (audited by Opus)
+├── commands/            # Command definitions (audited by Opus)
 ├── logs/                # Bot logs
 └── migrations/          # SQL migrations
 ```
@@ -320,7 +324,9 @@ See [The Living Brain](#the-living-brain) above for the full technical explanati
 |------|------|---------------|------|
 | **SOUL.md** | Bot's personality, voice, opinions, quirks | Opus (full rewrite) | Every 50 exchanges |
 | **USER.md** | Everything about you — job, location, people, preferences | Opus (full rewrite) | Every 50 exchanges |
-| **AGENTS.md** | Operating instructions — tools, safety, workflows | You (or first-run) | Once |
+| **AGENTS.md** | Operational knowledge — tools, workflows, lessons, rules | Opus (full rewrite) | Every 50 exchanges |
+| **scripts/** | Deterministic utility scripts (tools) | Opus (audit + refactor) | Every 50 exchanges |
+| **commands/** | Slash command definitions | Opus (audit + cleanup) | Every 50 exchanges |
 | **evolution/** | Archive of every previous SOUL.md | Automatic | On each evolution |
 
 SOUL.md isn't a config file — it's a first-person journal entry. After a few evolutions, it reads like this:
