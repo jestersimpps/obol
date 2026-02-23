@@ -234,6 +234,17 @@ function createBot(telegramConfig, claude, memory, messageLog) {
               }
             }
 
+            if (result.deployedApps && result.deployedApps.length > 0) {
+              msg += '\n\n🚀 **Deployed:**';
+              for (const app of result.deployedApps) {
+                if (app.url) {
+                  msg += `\n• ${app.name} → ${app.url}`;
+                } else if (app.error) {
+                  msg += `\n• ${app.name} — deploy failed: ${app.error.substring(0, 100)}`;
+                }
+              }
+            }
+
             if (result.changelog) {
               msg += `\n\n_${result.changelog}_`;
             }

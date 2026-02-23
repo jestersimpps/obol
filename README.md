@@ -135,17 +135,28 @@ If Opus breaks a script, it gets a chance to fix it — up to 3 attempts with th
 
 **Commands** follow the same discipline: one file per command, clear trigger pattern, deterministic instructions with no ambiguity.
 
-**Proactive tool building** — Opus analyzes conversation history for patterns: things you ask for repeatedly, friction points (like not being able to read markdown on your phone), and unmet needs. It builds new scripts + commands to solve these, installs any required npm packages, and introduces them to you after evolution:
+**Proactive tool building** — Opus analyzes conversation history for patterns: things you ask for repeatedly, friction points, and unmet needs. It doesn't just write scripts — it picks the right tier:
+
+| Need | Solution | Example |
+|------|----------|---------|
+| One-off action | **Script** + command | Convert markdown to PDF → `/pdf` |
+| Something you'd check regularly | **Web app** deployed to Vercel | Crypto dashboard → `portfolio.vercel.app` |
+| Background automation | **Cron script** | Morning weather briefing |
+
+OBOL has Vercel access, so it can build and deploy real web apps — dashboards, trackers, status pages, personal tools. It searches npm and GitHub for existing libraries instead of reinventing wheels, installs dependencies, writes tests, deploys, and hands you the URL.
 
 ```
 🪙 Evolution #4 complete.
 
 🆕 New capabilities:
-• md-to-pdf — Converts markdown files to PDF for mobile reading → /pdf
-• server-status — Quick health check of your VPS → /health
+• bookmarks — Save and search URLs you've shared → /bookmarks
+• weather-brief — Morning weather for your city → runs automatically
+
+🚀 Deployed:
+• portfolio-tracker → https://portfolio-tracker-xi.vercel.app
 ```
 
-It searches npm and GitHub for existing libraries instead of reinventing wheels. One or two new tools per evolution — conservative, evidence-based, only things there's clear signal for in the conversation.
+One or two new tools per evolution — conservative, evidence-based, only things there's clear signal for in the conversation.
 
 The previous SOUL.md is archived in `personality/evolution/` with a version number and date. After evolution, OBOL reloads and sends:
 
@@ -182,10 +193,10 @@ Week 2:  Evolution #1 fires → Opus rewrites SOUL.md + USER.md + AGENTS.md
          → OBOL's voice shifts from generic to personal
          → old soul archived in evolution/
 
-Month 2: Evolution #4 → SOUL.md references inside jokes, shared projects
-         → OBOL notices you keep asking for PDF conversions
-         → builds a md-to-pdf tool + /pdf command automatically
-         → "🆕 New capability: pdf — convert markdown to PDF"
+Month 2: Evolution #4 → OBOL notices you check crypto prices daily
+         → builds a portfolio dashboard, deploys to Vercel
+         → "🚀 Deployed: portfolio-tracker → https://..."
+         → also adds /pdf command because you kept asking for PDFs
 
 Month 6: evolution/ has 12 archived souls
          → read the trajectory: how your bot went from
@@ -234,6 +245,7 @@ Claude decides when a task is heavy enough to background. Progress check-ins eve
 - **Self-setup** — First conversation teaches OBOL who you are; it writes its own personality
 - **Self-evolving** — Opus rewrites personality, operational knowledge, and scripts every 50 exchanges
 - **Self-healing** — tests gate every refactor; regressions get 3 fix attempts before rollback
+- **Self-extending** — builds new scripts, commands, and deploys web apps based on your usage patterns
 - **Full message log** — Every message stored, survives restarts, loads context on boot
 - **Auto-hardening** — SSH (port 2222), fail2ban, firewall, auto-updates, kernel security
 - **Encrypted secrets** — Auto-installs GPG + `pass`, migrates keys, wipes plaintext
@@ -332,6 +344,7 @@ After the first conversation completes, OBOL silently hardens your VPS:
 ├── scripts/             # Deterministic utility scripts (audited by Opus)
 ├── tests/               # Test suite for scripts (gates refactors)
 ├── commands/            # Command definitions (audited by Opus)
+├── apps/                # Web apps built and deployed to Vercel
 ├── logs/                # Bot logs
 └── migrations/          # SQL migrations
 ```

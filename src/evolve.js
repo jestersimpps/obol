@@ -280,13 +280,31 @@ Analyze the recent conversation history carefully. Look for:
    - They mention deadlines but have no reminder system → build one
    - They share lots of URLs but can't find them later → build a bookmark tool
 
-**How to build new tools:**
-- Search npm/GitHub for existing libraries that solve the problem (don't reinvent wheels)
-- Add required packages to a \`dependencies\` field in your output (will be npm-installed)
-- Script goes in \`scripts/\` (follows all script standards from Part 4)
-- Test goes in \`tests/\` (follows all test standards from Part 5)
-- Command goes in \`commands/\` (so the owner can trigger it easily)
-- Update AGENTS.md with the new tool and when to use it
+**Three tiers of solutions — pick the right one:**
+
+**Tier 1: Script** — simple, single-purpose, runs locally
+- Converting formats, fetching data, text processing
+- Script in \`scripts/\`, test in \`tests/\`, command in \`commands/\`
+- Search npm for existing libraries (don't reinvent wheels)
+- Add packages to \`dependencies\` field
+
+**Tier 2: Web app** — needs a UI, shareable, always-on
+- Dashboards, trackers, personal wikis, bookmark managers, status pages
+- Build a complete project directory under \`apps/<app-name>/\`
+- Include: \`package.json\`, \`index.html\` or Next.js/static site, all source files
+- Add a deploy script in \`scripts/deploy-<app-name>.js\` that runs \`vercel deploy\`
+- Add a command in \`commands/\` so the owner can trigger updates
+- OBOL has Vercel access — apps get deployed to real URLs the owner can use
+- Keep apps minimal and self-contained — no complex backends, use Supabase if state is needed
+
+**Tier 3: Automation** — recurring, no user trigger needed
+- Morning briefings, periodic checks, scheduled reports
+- Script in \`scripts/\` + document in AGENTS.md as a heartbeat/cron task
+
+**Decision framework:**
+- Owner asks for data/status/overview they check regularly → **Tier 2 (web app)**
+- Owner asks for a one-off transformation or action → **Tier 1 (script)**
+- Owner would benefit from something running in the background → **Tier 3 (automation)**
 
 **Be conservative:** only build things there's clear evidence for in the conversation history. Don't build speculative tools. One or two new tools per evolution is plenty.
 
@@ -302,15 +320,21 @@ List every new tool you build in the \`upgrades\` field so the owner can be told
   "scripts": { "name.js": "content" },
   "tests": { "test-name.js": "content" },
   "commands": { "name.md": "content" },
+  "apps": {
+    "app-name": {
+      "files": { "package.json": "content", "index.html": "content", "src/app.js": "content" },
+      "deploy": true
+    }
+  },
   "dependencies": ["package-name@version"],
   "upgrades": [
-    { "name": "Tool name", "description": "What it does and why", "command": "/command-name or natural language trigger" }
+    { "name": "Tool name", "description": "What it does and why", "command": "/command or URL", "type": "script|app|automation" }
   ],
   "changelog": "what changed"
 }
 \`\`\`
 
-Include ALL files that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all). \`dependencies\` and \`upgrades\` can be empty arrays.`,
+Include ALL scripts/tests/commands that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all). \`apps\`, \`dependencies\`, and \`upgrades\` can be empty. Apps with \`"deploy": true\` will be auto-deployed to Vercel and the URL sent to the owner.`,
     messages: [{
       role: 'user',
       content: `## Current SOUL.md
@@ -504,7 +528,60 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
-  // ── Step 9: Install new dependencies ──
+  // ── Step 9: Build and deploy apps ──
+  const deployedApps = [];
+  if (result.apps && typeof result.apps === 'object') {
+    const appsDir = path.join(OBOL_DIR, 'apps');
+
+    for (const [appName, app] of Object.entries(result.apps)) {
+      if (!app.files || typeof app.files !== 'object') continue;
+
+      const appDir = path.join(appsDir, appName);
+      fs.mkdirSync(appDir, { recursive: true });
+
+      // Write all app files (supports nested paths like "src/app.js")
+      for (const [filePath, content] of Object.entries(app.files)) {
+        const fullPath = path.join(appDir, filePath);
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+        fs.writeFileSync(fullPath, content);
+      }
+
+      // Install app dependencies if package.json exists
+      if (app.files['package.json']) {
+        try {
+          execSync('npm install', {
+            cwd: appDir,
+            encoding: 'utf-8',
+            timeout: 60000,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+        } catch {}
+      }
+
+      // Deploy to Vercel if flagged
+      if (app.deploy) {
+        try {
+          const { loadConfig } = require('./config');
+          const cfg = loadConfig();
+          const token = cfg?.vercel?.token;
+          if (token) {
+            const deployOutput = execSync(
+              `npx vercel --prod --name ${appName} --token ${token} --yes 2>&1`,
+              { cwd: appDir, encoding: 'utf-8', timeout: 120000 }
+            );
+            // Extract URL from Vercel output
+            const urlMatch = deployOutput.match(/https:\/\/[^\s]+\.vercel\.app/);
+            const url = urlMatch ? urlMatch[0] : null;
+            deployedApps.push({ name: appName, url });
+          }
+        } catch (e) {
+          deployedApps.push({ name: appName, url: null, error: e.message.substring(0, 200) });
+        }
+      }
+    }
+  }
+
+  // ── Step 10: Install new dependencies ──
   if (result.dependencies && Array.isArray(result.dependencies) && result.dependencies.length > 0) {
     try {
       const deps = result.dependencies.join(' ');
@@ -549,6 +626,7 @@ Fix the scripts. Tests define correct behavior.`
     scriptsRolledBack,
     scriptsFixed,
     upgrades: result.upgrades || [],
+    deployedApps,
     archived: `SOUL-v${state.evolutionCount - 1}-${new Date().toISOString().slice(0, 10)}.md`,
   };
 }
