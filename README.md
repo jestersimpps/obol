@@ -466,7 +466,7 @@ OBOL automatically hardens your VPS on first run:
 
 **OpenClaw is better when you need** multi-channel, multi-provider, group chats, context compaction, skill systems, and deep customization.
 
-They're not competitors — OBOL is the on-ramp. When you outgrow it, graduate to [OpenClaw](https://openclaw.ai).
+Different tools, different philosophies. Pick what fits.
 
 ## Backup & Restore
 
