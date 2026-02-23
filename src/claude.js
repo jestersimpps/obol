@@ -386,16 +386,15 @@ ${workDir}/
 - If unsure where something belongs, ask — don't guess.
 - Run \`/clean\` to audit and fix misplaced files.
 
-## Secrets (pass)
+## Secrets
 
-When storing NEW user secrets with \`pass\`, use the prefix \`${passPrefix}/\`.
-Example: \`pass insert ${passPrefix}/gmail-key\`
+Use the \`store_secret\`, \`read_secret\`, and \`list_secrets\` tools for all user credential operations.
+These store secrets under the prefix \`${passPrefix}/\` in pass (or JSON fallback).
+
+Users can also manage secrets via Telegram: \`/secret set <key> <value>\` (message auto-deleted), \`/secret list\`, \`/secret remove <key>\`.
 
 Shared bot credentials live under \`obol/\` — do NOT touch or re-create these:
 \`obol/anthropic-key\`, \`obol/telegram-token\`, \`obol/supabase-url\`, \`obol/supabase-key\`, \`obol/github-token\`, \`obol/vercel-token\`
-
-To check if a secret exists: \`pass show obol/github-token\`
-To list all secrets: \`pass ls\`
 `);
 
   // Bridge (conditional)

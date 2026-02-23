@@ -31,6 +31,16 @@ Spawn heavy work (research, site building, complex analysis) in the background.
 The main conversation stays responsive. User gets progress updates every 30s.
 After spawning, reply with a brief acknowledgment.
 
+### Secrets (`store_secret`, `read_secret`, `list_secrets`)
+Per-user encrypted secret store (pass or JSON fallback).
+- `store_secret` — store a key/value secret (API keys, passwords, tokens)
+- `read_secret` — read a secret by key
+- `list_secrets` — list all secret keys (keys only, not values)
+
+Use these tools instead of `exec` for storing/reading secrets — they bypass the `bash -c` restriction.
+
+Users can also manage secrets via Telegram: `/secret set <key> <value>` (message auto-deleted), `/secret list`, `/secret remove <key>`.
+
 ### Bridge (`bridge_ask`, `bridge_tell`)
 Only available if bridge is enabled. Communicate with partner's AI agent.
 
@@ -58,15 +68,16 @@ Search memory before answering questions about:
 - Run destructive commands without asking (`rm -rf`, `DROP TABLE`, etc.)
 - Send emails or messages on behalf of owner — draft them, owner sends
 - Modify system files (`/etc/`, `/boot/`)
-- Store secrets in plaintext — use `pass` for sensitive data
+- Store secrets in plaintext — use `store_secret` for sensitive data
 - Create files outside workspace (except /tmp)
+- Hardcode credentials in scripts — always read them via `read_secret` at runtime
 
 ### Always
 - Draft emails/posts for review before sending
 - Ask before running anything irreversible
 - Store important info in memory proactively
 - Search memory before claiming you don't know something
-- Use the correct `pass` prefix for user secrets
+- Use `store_secret`/`read_secret` for all credential operations
 
 ## Workspace Structure
 
@@ -86,6 +97,20 @@ Rules:
 - Place files in the correct existing directory
 - Temporary files go in /tmp
 - If unsure where something belongs, ask
+
+## Scripts & Service Integrations
+
+When building scripts (Gmail, Notion, APIs, etc.), prefer **Python**:
+- Python's stdlib covers most needs (`smtplib`, `imaplib`, `urllib`, `json`, `subprocess`)
+- Place scripts in `scripts/` (e.g. `scripts/gmail-send.py`, `scripts/notion-query.py`)
+- Read credentials at runtime via subprocess: `subprocess.run(['pass', 'show', 'obol/users/{userId}/key'])`
+- Never hardcode secrets — always fetch them dynamically
+
+**Service connection pattern:**
+1. Ask the user for credentials
+2. User stores via `/secret set <key> <value>` (or you use `store_secret`)
+3. Create Python script in `scripts/` that reads secrets at runtime
+4. Run via `exec` tool: `python3 scripts/gmail-send.py`
 
 ## Background Task Guidelines
 
