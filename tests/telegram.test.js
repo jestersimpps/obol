@@ -30,13 +30,6 @@ require.cache[grammyPath] = {
   },
 };
 
-const firstRunModule = require('../src/first-run');
-vi.spyOn(firstRunModule, 'isFirstRun').mockReturnValue(false);
-vi.spyOn(firstRunModule, 'markFirstRunComplete').mockImplementation(() => {});
-vi.spyOn(firstRunModule, 'parseSetupResponse').mockReturnValue(null);
-vi.spyOn(firstRunModule, 'cleanResponse').mockImplementation((t) => t);
-vi.spyOn(firstRunModule, 'writePersonalityFromSetup').mockImplementation(() => {});
-
 const configModule = require('../src/config');
 vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
 
@@ -115,7 +108,6 @@ describe('telegram', () => {
     mockBotInstance.start = vi.fn();
     mockTenant.claude.chat.mockResolvedValue('test response');
     tenantModule.getTenant.mockResolvedValue(mockTenant);
-    firstRunModule.isFirstRun.mockReturnValue(false);
     evolveModule.shouldEvolve.mockResolvedValue(false);
   });
 

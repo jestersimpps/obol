@@ -116,7 +116,7 @@ describe('evolve', () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 99, evolutionCount: 0, lastEvolution: null }),
+        JSON.stringify({ exchangesSinceLastEvolution: 99, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
       );
 
       const result = await shouldEvolve(tmpDir);
@@ -149,7 +149,7 @@ describe('evolve', () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { exchanges: 10 } });
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 10, evolutionCount: 0, lastEvolution: null }),
+        JSON.stringify({ exchangesSinceLastEvolution: 10, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
       );
 
       const result = await shouldEvolve(tmpDir);
@@ -160,7 +160,7 @@ describe('evolve', () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { exchanges: 50 } });
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 49, evolutionCount: 0, lastEvolution: null }),
+        JSON.stringify({ exchangesSinceLastEvolution: 49, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
       );
 
       const result = await shouldEvolve(tmpDir);

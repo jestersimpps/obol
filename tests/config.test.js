@@ -105,12 +105,12 @@ describe('config', () => {
       expect(result.apiKey).toBe('pass:obol/api-key');
     });
 
-    it('keeps pass: placeholder when pass command not available', () => {
+    it('nulls pass: value when pass resolution fails', () => {
       const data = { apiKey: 'pass:nonexistent/key' };
       fs.mkdirSync(OBOL_DIR, { recursive: true });
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(data));
       const result = config.loadConfig();
-      expect(result.apiKey).toBe('pass:nonexistent/key');
+      expect(result.apiKey).toBeNull();
     });
 
     it('preserves non-pass values unchanged', () => {

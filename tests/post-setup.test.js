@@ -3,12 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-vi.mock('../src/config', () => ({
-  OBOL_DIR: '/tmp/obol-mock-dir',
-  loadConfig: vi.fn(() => ({})),
-  saveConfig: vi.fn(),
-}));
-
 const { isPostSetupDone, runPostSetup, SETUP_TASKS } = await import('../src/post-setup.js');
 
 let tmpDir;
