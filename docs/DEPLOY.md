@@ -66,6 +66,7 @@ Before running `obol init`, have these ready:
 5. Copy the token (looks like `7123456789:AAF...`)
 
 ### Your Telegram User ID
+OBOL auto-detects your Telegram ID during setup — just send any message to your bot before running `obol init`. Alternatively:
 1. Open Telegram, search for **@userinfobot**
 2. Send `/start`
 3. It replies with your numeric ID (e.g. `206639616`)
@@ -99,38 +100,52 @@ Before running `obol init`, have these ready:
 obol init
 ```
 
-The wizard walks you through everything:
+The wizard walks you through everything with inline credential validation:
 
 ```
 🪙 OBOL — Your AI, your rules.
 
-─── Anthropic ───
-  Paste your Anthropic API key: ****
-  ✅ Anthropic configured
+─── Step 1/7: Anthropic (AI brain) ───
+  Anthropic API key: ****
+  Validating Anthropic... ✅ Key valid
 
-─── Telegram ───
-  Paste BotFather token: ****
-  ✅ Telegram configured
+─── Step 2/7: Telegram (chat interface) ───
+  Telegram bot token: ****
+  Validating Telegram... ✅ Bot: @my_obol_bot
 
-─── Memory (Supabase) ───
+─── Step 3/7: Supabase (memory) ───
   Supabase setup: Use existing project
-  Supabase project URL or project ID: abcdefghijklmnopqrst
+  Project URL or ID: abcdefghijklmnopqrst
   Service role key: ****
-  ✅ Supabase configured
-  Running migrations... ✅
+  Validating Supabase... ✅ Connected
 
-─── GitHub (backup) ───
-  Set up GitHub backup? Yes
+─── Step 4/7: GitHub (backup) ───
   GitHub token: ****
   Creating private repo: yourname/obol-brain... ✅
 
-─── Identity ───
+─── Step 5/7: Vercel (deploy sites) ───
+  Vercel token: ****
+  Validating Vercel... ✅ Token valid
+
+─── Step 6/7: Identity ───
   Your name: Jo
   Bot name: Mr. Meeseeks
-  Your Telegram user ID: 206639616
 
-🪙 Done! Run: obol start
+─── Step 7/7: Access control ───
+  Found users who messaged this bot:
+    206639616 — Jo (@jo)
+  Use this user? Yes
+
+🪙 Done! Setup complete.
+
+  Next steps:
+    obol start      Start the bot
+    obol start -d   Start as background daemon
+    obol config     Edit configuration later
+    obol status     Check bot status
 ```
+
+If a credential fails validation, you can continue and fix it later with `obol config`.
 
 ## 7. Test It (Foreground)
 
@@ -155,9 +170,9 @@ obol status
 obol logs
 ```
 
-## 9. Keep It Running (pm2)
+## 9. Keep It Running (pm2, optional)
 
-pm2 keeps OBOL alive, auto-restarts on crash, and survives reboots:
+pm2 keeps OBOL alive, auto-restarts on crash, and survives reboots. pm2 is installed automatically when you run `obol start -d`. If pm2 isn't installed, `obol stop` and `obol logs` fall back to PID files and log files.
 
 ```bash
 # Install pm2 globally
@@ -227,6 +242,22 @@ obol init --restore
 # Paste GitHub token → it clones your brain
 # Re-enter Telegram token + Anthropic key
 obol start -d
+```
+
+## Editing Config
+
+Edit any credential or setting interactively:
+
+```bash
+obol config
+```
+
+Sections: Anthropic, Telegram, Supabase, GitHub, Vercel, Identity, Access Control, Heartbeat, Evolution.
+
+To start fresh:
+
+```bash
+obol init --reset
 ```
 
 ## Troubleshooting

@@ -42,7 +42,7 @@ obol init
 obol start
 ```
 
-The init wizard collects 6 credentials. OBOL handles the rest — it learns who you are through conversation, hardens your server, and sets up encrypted secret storage. All automatically.
+The init wizard walks you through everything — credentials are validated inline, and your Telegram ID is auto-detected. OBOL handles the rest.
 
 ## How It Works
 
@@ -194,34 +194,60 @@ OBOL: "11:42 PM CET"
 
 ## Setup
 
-### CLI (6 inputs, ~2 minutes)
+### CLI (~2 minutes)
 
 ```
 $ obol init
 
 🪙 OBOL — Your AI, your rules.
 
-─── Anthropic ───
-  API key: ****
-─── Telegram ───
-  Bot token: ****
-  Your user ID: 123456789
-─── Supabase ───
-  Access token: ****
-─── GitHub ───
-  Token: ****
-─── Vercel ───
-  Token: ****
-─── Identity ───
+─── Step 1/7: Anthropic (AI brain) ───
+  Anthropic API key: ****
+  Validating Anthropic... ✅ Key valid
+
+─── Step 2/7: Telegram (chat interface) ───
+  Telegram bot token: ****
+  Validating Telegram... ✅ Bot: @my_obol_bot
+
+─── Step 3/7: Supabase (memory) ───
+  Supabase setup: Use existing project
+  Project URL or ID: ****
+  Service role key: ****
+  Validating Supabase... ✅ Connected
+
+─── Step 4/7: GitHub (backup) ───
+  GitHub token: ****
+  ✅ Created yourname/obol-brain (private)
+
+─── Step 5/7: Vercel (deploy sites) ───
+  Vercel token: ****
+  Validating Vercel... ✅ Token valid
+
+─── Step 6/7: Identity ───
   Your name: Jo
   Bot name: OBOL
 
-🪙 Done! Run: obol start
+─── Step 7/7: Access control ───
+  Found users who messaged this bot:
+    206639616 — Jo (@jo)
+  Use this user? Yes
+
+🪙 Done! Setup complete.
+
+  Next steps:
+    obol start      Start the bot
+    obol start -d   Start as background daemon
+    obol config     Edit configuration later
+    obol status     Check bot status
 ```
+
+Every credential is validated inline — bad keys are caught before you start the bot. If validation fails, you can continue and fix later with `obol config`.
+
+For Telegram user IDs, OBOL auto-detects by checking who messaged the bot. Just send it a message before running init.
 
 ### First Conversation
 
-Send your first message. OBOL introduces itself, asks 2-3 questions, then writes its own SOUL.md and USER.md. After that, it silently hardens your VPS:
+Send your first message. OBOL introduces itself, asks 2-3 questions, then writes its own SOUL.md and USER.md. After that, it silently hardens your VPS (Linux only — skipped on macOS/Windows):
 
 | Task | What |
 |------|------|
@@ -247,19 +273,18 @@ OBOL is designed to stay alive without babysitting:
 
 ## Configuration
 
-After `obol init`, config lives in `~/.obol/config.json`:
+Edit config interactively:
 
-```json
-{
-  "evolution": {
-    "exchanges": 100
-  }
-}
+```bash
+obol config
 ```
+
+Or edit `~/.obol/config.json` directly:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `evolution.exchanges` | 100 | Messages between evolution cycles. Increase to reduce API costs. |
+| `evolution.exchanges` | 100 | Messages between evolution cycles |
+| `heartbeat` | false | Enable proactive check-ins |
 
 ## Telegram Commands
 
@@ -276,12 +301,14 @@ Everything else is natural conversation.
 ## CLI
 
 ```bash
-obol init              # Setup wizard
+obol init              # Setup wizard (validates credentials inline)
 obol init --restore    # Restore from GitHub backup
+obol init --reset      # Erase config and re-run setup
+obol config            # Edit configuration interactively
 obol start             # Foreground
 obol start -d          # Daemon (pm2)
-obol stop              # Stop
-obol logs              # Tail logs
+obol stop              # Stop (pm2 or PID fallback)
+obol logs              # Tail logs (pm2 or log file fallback)
 obol status            # Status
 obol backup            # Manual backup
 ```
