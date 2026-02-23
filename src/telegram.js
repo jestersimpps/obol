@@ -219,8 +219,10 @@ function createBot(telegramConfig, claude, memory, messageLog) {
             const result = await evolve(claude.client, messageLog, memory);
             claude.reloadPersonality?.();
             let msg = `🪙 Soul evolution #${result.evolutionNumber} complete. I've grown.`;
-            if (result.scriptsRolledBack) {
-              msg += '\n⚠️ Script refactor rolled back — tests regressed.';
+            if (result.scriptsFixed) {
+              msg += '\n🔧 Script tests regressed — fixed automatically.';
+            } else if (result.scriptsRolledBack) {
+              msg += '\n⚠️ Script refactor rolled back — couldn\'t fix test regression.';
             }
             if (result.changelog) {
               msg += `\n\n${result.changelog}`;

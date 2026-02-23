@@ -122,11 +122,12 @@ Every 50 exchanges, **Opus** takes over and rewrites the entire operating system
 3. Run new tests against OLD scripts → pre-refactor baseline
 4. Write new scripts
 5. Run new tests against NEW scripts → post-refactor verification
-6. If more tests fail after than before → ROLLBACK scripts
-   (keep new tests — they caught real bugs for next evolution)
+6. If regression → Opus gets up to 3 attempts to fix the scripts
+   (tests are ground truth — Opus fixes scripts, not tests)
+7. If still failing after 3 attempts → ROLLBACK to old scripts
 ```
 
-If Opus breaks a script, the old version is restored automatically. The failed refactor gets stored as a `lesson` in memory so the next evolution knows what went wrong. Scripts only get deployed when tests prove they work.
+If Opus breaks a script, it gets a chance to fix it — up to 3 attempts with the test output as feedback. Tests define correct behavior, so Opus fixes scripts to match. If it still can't pass after 3 tries, old scripts are restored and the failure is stored as a `lesson` in memory for the next evolution.
 
 **Commands** follow the same discipline: one file per command, clear trigger pattern, deterministic instructions with no ambiguity.
 
@@ -136,11 +137,18 @@ The previous SOUL.md is archived in `personality/evolution/` with a version numb
 🪙 Soul evolution #7 complete. I've grown.
 ```
 
-Or if scripts regressed:
+If scripts needed fixing:
 
 ```
 🪙 Soul evolution #7 complete. I've grown.
-⚠️ Script refactor rolled back — tests regressed.
+🔧 Script tests regressed — fixed automatically.
+```
+
+Or if it couldn't fix them:
+
+```
+🪙 Soul evolution #7 complete. I've grown.
+⚠️ Script refactor rolled back — couldn't fix test regression.
 ```
 
 Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you. And the codebase gets cleaner with every cycle — verified by tests.

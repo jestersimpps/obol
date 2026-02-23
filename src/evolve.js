@@ -359,23 +359,84 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   }
 
   // ── Step 5: Run tests against NEW scripts (post-refactor verification) ──
-  if (hasNewTests || hasNewScripts) {
-    const postRefactorResults = runTests(testsDir);
+  const MAX_FIX_ATTEMPTS = 3;
+  let scriptsFixed = false;
 
-    // ── Step 6: Rollback if regression ──
-    // Regression = tests that passed before now fail
+  if (hasNewTests || hasNewScripts) {
+    let postRefactorResults = runTests(testsDir);
+
+    // ── Step 6: If regression, give Opus a chance to fix ──
+    let fixAttempt = 0;
+    while (postRefactorResults.failed > preRefactorResults.failed && fixAttempt < MAX_FIX_ATTEMPTS) {
+      fixAttempt++;
+
+      try {
+        const fixResponse = await claudeClient.messages.create({
+          model: 'claude-opus-4-20250514',
+          max_tokens: 8192,
+          system: `You are fixing failing tests after a script refactor. This is fix attempt ${fixAttempt}/${MAX_FIX_ATTEMPTS}.
+
+The tests below are failing against the refactored scripts. Fix the scripts so the tests pass. Do NOT modify the tests — they define correct behavior.
+
+Return ONLY JSON with the fixed scripts:
+
+\`\`\`json
+{
+  "scripts": { "name.js": "full fixed content" }
+}
+\`\`\`
+
+Include ALL scripts (not just the broken ones). Missing scripts get deleted.`,
+          messages: [{
+            role: 'user',
+            content: `## Test failures
+\`\`\`
+${postRefactorResults.output}
+\`\`\`
+
+## Current scripts (after refactor)
+${Object.entries(readDir(scriptsDir)).map(([n, c]) => `### ${n}\n\`\`\`\n${c}\n\`\`\``).join('\n\n')}
+
+## Current tests
+${Object.entries(readDir(testsDir)).map(([n, c]) => `### ${n}\n\`\`\`\n${c}\n\`\`\``).join('\n\n')}
+
+Fix the scripts. Tests define correct behavior.`
+          }],
+        });
+
+        const fixText = fixResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        const fixMatch = fixText.match(/```json\n([\s\S]*?)\n```/) || fixText.match(/\{[\s\S]*\}/);
+
+        if (fixMatch) {
+          const fixResult = JSON.parse(fixMatch[1] || fixMatch[0]);
+          if (fixResult.scripts && typeof fixResult.scripts === 'object' && Object.keys(fixResult.scripts).length > 0) {
+            syncDir(scriptsDir, fixResult.scripts);
+            for (const f of Object.keys(fixResult.scripts)) {
+              try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
+            }
+            postRefactorResults = runTests(testsDir);
+
+            if (postRefactorResults.failed <= preRefactorResults.failed) {
+              scriptsFixed = true;
+            }
+          }
+        }
+      } catch {
+        break; // Fix attempt failed, move on
+      }
+    }
+
+    // If still regressed after all fix attempts, rollback
     if (postRefactorResults.failed > preRefactorResults.failed) {
-      // Rollback scripts to previous state
       syncDir(scriptsDir, currentScripts);
       for (const f of Object.keys(currentScripts)) {
         try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
       }
       scriptsRolledBack = true;
 
-      // Store the failure as a lesson
       if (memory) {
         await memory.add(
-          `Evolution #${evolutionNumber} script refactor rolled back. Tests: ${postRefactorResults.failed} failed after vs ${preRefactorResults.failed} before. Output: ${postRefactorResults.output.substring(0, 300)}`,
+          `Evolution #${evolutionNumber} script refactor rolled back after ${fixAttempt} fix attempts. Tests: ${postRefactorResults.failed} still failing. Output: ${postRefactorResults.output.substring(0, 300)}`,
           { category: 'lesson', importance: 0.9, source: 'evolution' }
         ).catch(() => {});
       }
@@ -419,7 +480,7 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   // Store evolution event in memory
   if (memory) {
     const changelog = result.changelog || `Evolution #${evolutionNumber} completed.`;
-    const rollbackNote = scriptsRolledBack ? ' Scripts rolled back due to test regression.' : '';
+    const rollbackNote = scriptsRolledBack ? ' Scripts rolled back due to test regression.' : scriptsFixed ? ' Scripts fixed after test regression.' : '';
     await memory.add(
       `Soul evolution #${evolutionNumber}: ${changelog}${rollbackNote}`,
       { category: 'event', importance: 0.8, source: 'evolution' }
@@ -432,10 +493,7 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
     newLength: result.soul.length,
     changelog: result.changelog || null,
     scriptsRolledBack,
-    testResults: {
-      baseline: baselineResults,
-      preRefactor: hasNewTests ? runTests(testsDir) : null,
-    },
+    scriptsFixed,
     archived: `SOUL-v${state.evolutionCount - 1}-${new Date().toISOString().slice(0, 10)}.md`,
   };
 }
