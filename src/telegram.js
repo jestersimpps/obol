@@ -5,11 +5,14 @@ const {
 } = require('./first-run');
 const { loadConfig } = require('./config');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
+const { BackgroundRunner } = require('./background');
+
 
 function createBot(telegramConfig, claude, memory) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const firstRunHistory = []; // Separate history for onboarding conversation
+  const bg = new BackgroundRunner();
 
   // Auth middleware
   bot.use(async (ctx, next) => {
@@ -45,6 +48,18 @@ function createBot(telegramConfig, claude, memory) {
     }
 
     return ctx.reply('Usage: /memory search <query> | /memory stats');
+  });
+
+  // Handle /tasks — show running background tasks
+  bot.command('tasks', async (ctx) => {
+    const running = bg.getStatus();
+    if (running.length === 0) {
+      return ctx.reply('No background tasks running.');
+    }
+    const text = running.map(t =>
+      `⏳ #${t.id}: ${t.task}... (${t.elapsed})`
+    ).join('\n');
+    return ctx.reply(`Running tasks:\n\n${text}`);
   });
 
   // Handle all text messages
@@ -98,6 +113,8 @@ function createBot(telegramConfig, claude, memory) {
           userId,
           userName,
           chatId: ctx.chat.id,
+          bg,
+          ctx,
         });
       }
 

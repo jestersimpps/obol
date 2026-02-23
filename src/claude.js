@@ -47,7 +47,7 @@ function createClaude(anthropicConfig, { personality, memory }) {
       const toolResults = [];
       for (const block of assistantContent) {
         if (block.type === 'tool_use') {
-          const result = await executeToolCall(block, memory);
+          const result = await executeToolCall(block, memory, context);
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -199,6 +199,19 @@ function buildTools(memory) {
     },
   });
 
+  // Background task
+  tools.push({
+    name: 'background_task',
+    description: 'Spawn a heavy task in the background. Use when a request will take multiple steps (research, building a site, complex analysis). The main conversation stays responsive. The user gets progress check-ins every 30s and the final result when done. Reply to the user with a brief acknowledgment like "On it 🪙" after spawning.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Detailed description of the task to complete' },
+      },
+      required: ['task'],
+    },
+  });
+
   // Read/write files
   tools.push({
     name: 'read_file',
@@ -228,7 +241,7 @@ function buildTools(memory) {
   return tools;
 }
 
-async function executeToolCall(toolUse, memory) {
+async function executeToolCall(toolUse, memory, context = {}) {
   const { name, input } = toolUse;
 
   try {
@@ -274,6 +287,14 @@ async function executeToolCall(toolUse, memory) {
           category: m.category,
           created: m.created_at,
         })));
+      }
+
+      case 'background_task': {
+        const { bg, ctx: telegramCtx } = context;
+        if (!bg || !telegramCtx) return 'Background tasks not available in this context.';
+        const claudeInstance = { chat, client, reloadPersonality };
+        const taskId = bg.spawn(claudeInstance, input.task, telegramCtx, memory);
+        return `Background task #${taskId} spawned. It will send progress updates and the final result to the chat.`;
       }
 
       case 'vercel_deploy': {
