@@ -27,7 +27,6 @@ function createBot(telegramConfig, claude, memory) {
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
-    { command: 'forget', description: 'Forget a specific memory by ID' },
     { command: 'recent', description: 'Show recent memories' },
     { command: 'today', description: 'What happened today' },
   ]).catch(() => {}); // Best effort
