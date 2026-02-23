@@ -103,8 +103,20 @@ function createBot(telegramConfig, config) {
 
     if (tenant.memory) {
       const stats = await tenant.memory.stats().catch(() => null);
-      if (stats) text += `🧠 Memories: ${stats.total}`;
+      if (stats) text += `🧠 Memories: ${stats.total}\n`;
     }
+
+    const evoState = loadEvolutionState(tenant.userDir);
+    const cfg = loadConfig();
+    const threshold = cfg?.evolution?.exchanges || 100;
+    const evoCount = evoState.exchangesSinceLastEvolution || 0;
+    const evoPct = Math.min(100, Math.round((evoCount / threshold) * 100));
+    const evoBar = '█'.repeat(Math.floor(evoPct / 5)) + '░'.repeat(20 - Math.floor(evoPct / 5));
+    text += `\n🧬 Evolution: ${evoBar} ${evoPct}% (${evoState.evolutionCount || 0} completed)\n`;
+
+    const personalityDir = path.join(tenant.userDir, 'personality');
+    const traits = loadTraits(personalityDir);
+    text += `\n🎛 Traits\n${formatTraits(traits)}`;
 
     await ctx.reply(text);
   });
