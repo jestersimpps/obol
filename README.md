@@ -61,7 +61,7 @@ Every message is logged to `obol_messages` (raw, no embeddings). Every 5 exchang
 |---|---|---|
 | **Vector memory** | Important facts, decisions, preferences | "Jo moved to Barcelona" → `obol_memory` |
 | **USER.md update** | Owner reveals personal info | "I just got a new job at X" → appends to USER.md |
-| **SOUL.md update** | Owner explicitly changes bot behavior | "be more sarcastic" → appends to SOUL.md |
+| **SOUL.md update** | Conversation patterns + explicit requests | Owner uses dark humor → SOUL.md adapts |
 
 The bot evolves its own personality files over time. On restart, it loads the last 20 messages so it never starts blank.
 
@@ -225,7 +225,7 @@ Memory is fully automatic:
 
 OBOL writes its own personality files during the first conversation, then keeps them updated automatically as it learns:
 
-- **SOUL.md** — Who is the bot? Its voice, humor, values. Updated when you explicitly change its behavior.
+- **SOUL.md** — Who is the bot? Its voice, humor, values. Evolves based on conversation patterns and explicit requests.
 - **USER.md** — Who are you? Context about the owner. Updated when you reveal personal facts.
 - **AGENTS.md** — How should it work? Tools, safety, workflows.
 

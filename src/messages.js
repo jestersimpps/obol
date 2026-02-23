@@ -108,7 +108,7 @@ MEMORIES — Skip: greetings, small talk. Keep: facts, decisions, preferences, p
 
 USER_UPDATES — The owner revealed something about themselves: job change, new location, new relationship, hobby, preference about how the bot should address them, timezone change, contact info. Only real personal facts, not conversation topics.
 
-SOUL_UPDATES — The owner explicitly asked the bot to change behavior, tone, or personality. "be more casual", "stop using emojis", "speak to me in French". NOT inferred — only explicit requests.
+SOUL_UPDATES — Ways the bot should evolve based on the conversation. Both explicit requests ("be more casual", "stop using emojis") AND inferred patterns: if the owner uses humor → the bot should match. If conversations are technical → note the technical depth expected. If the owner seems to prefer short replies → note that. Capture the emerging relationship dynamic and communication style.
 
 Return empty arrays if nothing applies.`,
         messages: [{ role: 'user', content: transcript }],
