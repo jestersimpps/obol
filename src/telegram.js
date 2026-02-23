@@ -23,6 +23,14 @@ function createBot(telegramConfig, config) {
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const rateLimits = new Map();
 
+  const _rateLimitCleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of rateLimits) {
+      if (now - val.lastMessage > 300000) rateLimits.delete(key);
+    }
+  }, 600000);
+  _rateLimitCleanup.unref();
+
   bot.use(async (ctx, next) => {
     if (allowedUsers.size > 0 && !allowedUsers.has(ctx.from?.id)) {
       return;
@@ -49,6 +57,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('memory', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     if (!tenant.memory) return ctx.reply('Memory not configured.');
     const args = ctx.message.text.split(' ').slice(1);
@@ -72,12 +81,14 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('new', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     tenant.claude.clearHistory(ctx.chat.id);
     await ctx.reply('🪙 Fresh start. What\'s up?');
   });
 
   bot.command('status', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const uptime = process.uptime();
     const mem = (process.memoryUsage().rss / 1024 / 1024).toFixed(0);
@@ -99,6 +110,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('backup', async (ctx) => {
+    if (!ctx.from) return;
     try {
       const cfg = loadConfig();
       if (!cfg?.github) return ctx.reply('GitHub backup not configured.');
@@ -113,6 +125,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('forget', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     if (!tenant.memory) return ctx.reply('Memory not configured.');
     const id = ctx.message.text.split(' ')[1];
@@ -126,6 +139,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('recent', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     if (!tenant.memory) return ctx.reply('Memory not configured.');
     const results = await tenant.memory.recent({ limit: 10 });
@@ -138,6 +152,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('today', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     if (!tenant.memory) return ctx.reply('Memory not configured.');
     const results = await tenant.memory.byDate('today', { limit: 20 });
@@ -150,6 +165,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('clean', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const { cleanWorkspace } = require('./clean');
     await ctx.replyWithChatAction('typing');
@@ -169,6 +185,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('traits', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const personalityDir = path.join(tenant.userDir, 'personality');
     const args = ctx.message.text.split(' ').slice(1);
@@ -205,6 +222,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('evolution', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const state = loadEvolutionState(tenant.userDir);
     const cfg = loadConfig();
@@ -224,6 +242,7 @@ function createBot(telegramConfig, config) {
   });
 
   bot.command('tasks', async (ctx) => {
+    if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const running = tenant.bg.getStatus();
     if (running.length === 0) {
@@ -253,16 +272,10 @@ function createBot(telegramConfig, config) {
 /help — This message`);
   });
 
-  bot.on('message:text', async (ctx) => {
-    const userMessage = ctx.message.text;
-    const userId = ctx.from.id;
-    const userName = ctx.from.first_name || 'User';
-
-    const tenant = await getTenant(userId, config);
-
+  function checkRateLimit(userId) {
     const now = Date.now();
     const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
-    if (now < userLimit.cooldownUntil) return;
+    if (now < userLimit.cooldownUntil) return 'cooldown';
     if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
       userLimit.spamCount++;
       userLimit.lastMessage = now;
@@ -270,17 +283,40 @@ function createBot(telegramConfig, config) {
       if (userLimit.spamCount >= SPAM_THRESHOLD) {
         userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
         rateLimits.set(userId, userLimit);
-        await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
-        return;
+        return 'spam';
       }
-      if (userLimit.spamCount === 1) {
-        await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
-      }
-      return;
+      return userLimit.spamCount === 1 ? 'slow' : 'skip';
     }
     userLimit.lastMessage = now;
     userLimit.spamCount = 0;
     rateLimits.set(userId, userLimit);
+    return null;
+  }
+
+  bot.on('message:text', async (ctx) => {
+    if (!ctx.from) return;
+    const userMessage = ctx.message.text;
+    if (!userMessage || !userMessage.trim()) return;
+    const userId = ctx.from.id;
+    const userName = ctx.from.first_name || 'User';
+
+    if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+      const me = await bot.api.getMe();
+      if (!userMessage.includes(`@${me.username}`)) return;
+    }
+
+    const rateResult = checkRateLimit(userId);
+    if (rateResult === 'cooldown' || rateResult === 'skip') return;
+    if (rateResult === 'spam') {
+      await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
+      return;
+    }
+    if (rateResult === 'slow') {
+      await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
+      return;
+    }
+
+    const tenant = await getTenant(userId, config);
 
     const stopTyping = startTyping(ctx);
 
@@ -295,7 +331,10 @@ function createBot(telegramConfig, config) {
         ctx,
         claude: tenant.claude,
         config,
-        _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+        _notifyFn: (targetUserId, message) => {
+          if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
+          return bot.api.sendMessage(targetUserId, message);
+        },
       });
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
@@ -379,7 +418,10 @@ function createBot(telegramConfig, config) {
   const MAX_MEDIA_SIZE = 50 * 1024 * 1024; // 50MB
 
   async function handleMedia(ctx) {
+    if (!ctx.from) return;
     const userId = ctx.from.id;
+    const rateResult = checkRateLimit(userId);
+    if (rateResult) return;
     const fileInfo = media.getFileInfo(ctx);
     if (!fileInfo) return;
 
@@ -423,7 +465,10 @@ function createBot(telegramConfig, config) {
           claude: tenant.claude,
           config,
           images: [imageBlock],
-          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+          _notifyFn: (targetUserId, message) => {
+            if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
+            return bot.api.sendMessage(targetUserId, message);
+          },
         });
 
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
@@ -447,7 +492,10 @@ function createBot(telegramConfig, config) {
           ctx,
           claude: tenant.claude,
           config,
-          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+          _notifyFn: (targetUserId, message) => {
+            if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
+            return bot.api.sendMessage(targetUserId, message);
+          },
         });
 
         tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);

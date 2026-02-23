@@ -14,9 +14,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 const { loadTraits, saveTraits } = require('./personality');
+const { isValidNpmPackage, isPathInsideDir } = require('./sanitize');
 
 const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
 
@@ -58,12 +59,24 @@ async function shouldEvolve(userDir) {
   return state.exchangesSinceLastEvolution >= threshold;
 }
 
+const _evolutionLocks = new Map();
+
+function withEvolutionLock(userDir, fn) {
+  const key = userDir || '__global__';
+  const prev = _evolutionLocks.get(key) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  _evolutionLocks.set(key, next);
+  return next;
+}
+
 async function tickExchange(userDir) {
-  const state = loadEvolutionState(userDir);
-  state.exchangesSinceLastEvolution++;
-  saveEvolutionState(state, userDir);
-  const threshold = getEvolutionThreshold(state);
-  return { count: state.exchangesSinceLastEvolution, ready: state.exchangesSinceLastEvolution >= threshold };
+  return withEvolutionLock(userDir, () => {
+    const state = loadEvolutionState(userDir);
+    state.exchangesSinceLastEvolution++;
+    saveEvolutionState(state, userDir);
+    const threshold = getEvolutionThreshold(state);
+    return { count: state.exchangesSinceLastEvolution, ready: state.exchangesSinceLastEvolution >= threshold };
+  });
 }
 
 /**
@@ -640,9 +653,9 @@ Fix the scripts. Tests define correct behavior.`
       const appDir = path.join(appsDir, appName);
       fs.mkdirSync(appDir, { recursive: true });
 
-      // Write all app files (supports nested paths like "src/app.js")
       for (const [filePath, content] of Object.entries(app.files)) {
-        const fullPath = path.join(appDir, filePath);
+        if (!isPathInsideDir(filePath, appDir)) continue;
+        const fullPath = path.resolve(appDir, filePath);
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
         fs.writeFileSync(fullPath, content);
       }
@@ -685,8 +698,9 @@ Fix the scripts. Tests define correct behavior.`
   // ── Step 10: Install new dependencies ──
   if (result.dependencies && Array.isArray(result.dependencies) && result.dependencies.length > 0) {
     try {
-      const deps = result.dependencies.join(' ');
-      execSync(`npm install --save ${deps}`, {
+      const validDeps = result.dependencies.filter(isValidNpmPackage);
+      if (validDeps.length === 0) throw new Error('No valid package names found');
+      execFileSync('npm', ['install', '--save', ...validDeps], {
         encoding: 'utf-8',
         timeout: 60000,
         cwd: path.dirname(require.resolve('obol/package.json')),

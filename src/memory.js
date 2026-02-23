@@ -1,13 +1,16 @@
 const { pipeline } = require('@xenova/transformers');
 
-let embedder;
+let embedderPromise;
 
 async function getEmbedding(text) {
-  if (!embedder) {
+  if (!embedderPromise) {
     console.log('  Loading embedding model (first run downloads ~30MB)...');
-    embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    console.log('  ✅ Embedding model ready');
+    embedderPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2').then(e => {
+      console.log('  ✅ Embedding model ready');
+      return e;
+    });
   }
+  const embedder = await embedderPromise;
   const result = await embedder(text, { pooling: 'mean', normalize: true });
   return Array.from(result.data);
 }
@@ -92,19 +95,20 @@ async function createMemory(supabaseConfig, userId = 0) {
     if (opts.category) fetchUrl += `&category=eq.${opts.category}`;
 
     const res = await fetch(fetchUrl, { headers });
+    if (!res.ok) throw new Error(`Recent failed: HTTP ${res.status}`);
     return await res.json();
   }
 
   async function update(id, opts = {}) {
     const patch = {};
-    if (opts.content) {
+    if (opts.content !== undefined) {
       patch.content = opts.content;
       patch.embedding = await getEmbedding(opts.content);
     }
-    if (opts.category) patch.category = opts.category;
-    if (opts.importance) patch.importance = opts.importance;
-    if (opts.tags) patch.tags = opts.tags;
-    if (opts.source) patch.source = opts.source;
+    if (opts.category !== undefined) patch.category = opts.category;
+    if (opts.importance !== undefined) patch.importance = opts.importance;
+    if (opts.tags !== undefined) patch.tags = opts.tags;
+    if (opts.source !== undefined) patch.source = opts.source;
 
     const res = await fetch(`${url}/rest/v1/obol_memory?id=eq.${id}`, {
       method: 'PATCH',
@@ -124,15 +128,19 @@ async function createMemory(supabaseConfig, userId = 0) {
   }
 
   async function stats() {
-    const res = await fetch(`${url}/rest/v1/obol_memory?select=category&user_id=eq.${userId}&limit=10000`, { headers });
+    const countHeaders = { ...headers, 'Prefer': 'count=exact' };
+    const res = await fetch(`${url}/rest/v1/obol_memory?select=category&user_id=eq.${userId}`, { headers: countHeaders });
+    if (!res.ok) throw new Error(`Stats failed: HTTP ${res.status}`);
+    const contentRange = res.headers?.get?.('content-range');
     const data = await res.json();
+    const total = contentRange ? parseInt(contentRange.split('/')[1], 10) || data.length : data.length;
     const counts = {};
     data.forEach(m => { counts[m.category] = (counts[m.category] || 0) + 1; });
     const breakdown = Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([cat, count]) => `  ${cat}: ${count}`)
       .join('\n');
-    return { total: data.length, counts, breakdown };
+    return { total, counts, breakdown };
   }
 
   return { add, search, byDate, recent, update, forget, stats };

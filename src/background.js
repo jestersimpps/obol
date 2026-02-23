@@ -5,7 +5,8 @@
  * Claude periodically reports progress back to the user.
  */
 
-const CHECK_IN_INTERVAL = 30000; // 30 seconds
+const CHECK_IN_INTERVAL = 30000;
+const MAX_CONCURRENT_TASKS = 3;
 
 class BackgroundRunner {
   constructor() {
@@ -21,6 +22,12 @@ class BackgroundRunner {
    * @param {object} memory - Memory instance
    */
   spawn(claude, task, ctx, memory) {
+    let running = 0;
+    for (const t of this.tasks.values()) {
+      if (t.status === 'running') running++;
+    }
+    if (running >= MAX_CONCURRENT_TASKS) return null;
+
     const taskId = ++this.taskCounter;
     const chatId = ctx.chat.id;
 

@@ -23,6 +23,15 @@ class MessageLog {
     this.userId = userId;
     this.userDir = userDir;
     this.exchangeCount = new Map();
+    this._cleanup = setInterval(() => {
+      const now = Date.now();
+      for (const [key] of this.exchangeCount) {
+        if (now - (this._lastActivity?.get(key) || 0) > 1800000) this.exchangeCount.delete(key);
+      }
+    }, 600000);
+    this._cleanup.unref();
+    this._lastActivity = new Map();
+    this._lastConsolidatedAt = new Map();
   }
 
   /**
@@ -51,6 +60,7 @@ class MessageLog {
     if (role === 'assistant') {
       const count = (this.exchangeCount.get(chatId) || 0) + 1;
       this.exchangeCount.set(chatId, count);
+      this._lastActivity.set(chatId, Date.now());
 
       // Consolidate every 5 exchanges
       if (count >= 5) {
@@ -88,8 +98,13 @@ class MessageLog {
     if (!this.memory || !this.client) return;
 
     try {
-      // Get last 10 messages
-      const messages = await this.getRecent(chatId, 10);
+      const since = this._lastConsolidatedAt.get(chatId);
+      this._lastConsolidatedAt.set(chatId, new Date().toISOString());
+
+      let fetchUrl = `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&user_id=eq.${this.userId}&order=created_at.desc&limit=10&select=role,content,created_at`;
+      if (since) fetchUrl += `&created_at=gt.${since}`;
+      const msgRes = await fetch(fetchUrl, { headers: this.headers });
+      const messages = msgRes.ok ? (await msgRes.json()).reverse() : await this.getRecent(chatId, 10).catch(() => []);
       if (messages.length < 4) return; // Not enough to consolidate
 
       const transcript = messages.map(m =>

@@ -3,9 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 const { refreshTokens, isExpired, isOAuthToken } = require('./oauth');
-const { saveConfig, loadConfig } = require('./config');
+const { saveConfig, loadConfig, OBOL_DIR } = require('./config');
+const { execAsync, isAllowedUrl } = require('./sanitize');
 
 const MAX_EXEC_TIMEOUT = 120;
+const MAX_TOOL_ITERATIONS = 15;
 
 const BLOCKED_EXEC_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
@@ -19,6 +21,13 @@ const BLOCKED_EXEC_PATTERNS = [
   /\$\([^)]*\)/,
   /\bpython[23]?\s+-c\b/, /\bperl\s+-e\b/, /\bruby\s+-e\b/, /\bnode\s+-e\b/,
   /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
+  /\benv\b.*\b(sh|bash|zsh)\b/,
+  /\bfind\b.*-exec\b/,
+  /\bprintf\b.*\|\s*(ba)?sh/,
+  /\\x[0-9a-fA-F]{2}/, /\\[0-7]{3}/,
+  /\bnc\s+-e\b/, /\bncat\b.*-e\b/,
+  /\bmkfifo\b/,
+  />\s*\/dev\/sd/,
 ];
 
 const SENSITIVE_READ_PATHS = [
@@ -115,9 +124,8 @@ async function ensureFreshToken(anthropicConfig) {
   }
 }
 
-function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEnabled }) {
+function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled }) {
   let client = createAnthropicClient(anthropicConfig);
-  const useOAuth = !!anthropicConfig.oauth?.accessToken;
 
   let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
@@ -130,7 +138,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEna
     context.userDir = userDir;
     const chatId = context.chatId || 'default';
 
-    if (useOAuth) {
+    if (anthropicConfig.oauth?.accessToken) {
       await ensureFreshToken(anthropicConfig);
       if (anthropicConfig._oauthFailed) {
         client = createAnthropicClient(anthropicConfig, { useOAuth: false });
@@ -203,8 +211,13 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       }
     }
 
-    // Trim history before adding to enforce hard limit
-    while (history.length >= MAX_HISTORY) history.shift();
+    while (history.length >= MAX_HISTORY) {
+      history.shift();
+      history.shift();
+    }
+    if (history.length > 0 && history[0].role !== 'user') {
+      history.shift();
+    }
 
     // Add user message with memory context
     const enrichedMessage = memoryContext
@@ -230,8 +243,21 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       tools: tools.length > 0 ? tools : undefined,
     });
 
-    // Handle tool use loop
+    let toolIterations = 0;
     while (response.stop_reason === 'tool_use') {
+      toolIterations++;
+      if (toolIterations > MAX_TOOL_ITERATIONS) {
+        history.push({ role: 'assistant', content: response.content });
+        history.push({ role: 'user', content: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' });
+        response = await client.messages.create({
+          model,
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: history,
+        });
+        break;
+      }
+
       const assistantContent = response.content;
       history.push({ role: 'assistant', content: assistantContent });
 
@@ -540,7 +566,7 @@ function buildTools(memory, opts = {}) {
 }
 
 function resolveUserPath(inputPath, userDir) {
-  if (!userDir) return inputPath;
+  if (!userDir) throw new Error('userDir is required for path resolution');
   const resolved = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
     : path.resolve(userDir, inputPath);
@@ -596,11 +622,10 @@ async function executeToolCall(toolUse, memory, context = {}) {
         }
         const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;
         const realHome = process.env.HOME || '/root';
-        const output = execSync(input.command, {
+        const output = await execAsync(input.command, {
           encoding: 'utf-8',
           timeout,
           maxBuffer: 1024 * 1024,
-          stdio: ['pipe', 'pipe', 'pipe'],
           cwd: userDir || undefined,
           env: userDir ? {
             ...process.env,
@@ -650,6 +675,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
         if (!bg || !telegramCtx) return 'Background tasks not available in this context.';
         if (!claudeInstance) return 'Background tasks not available.';
         const taskId = bg.spawn(claudeInstance, input.task, telegramCtx, memory);
+        if (taskId === null) return 'Too many background tasks running. Wait for one to finish.';
         return `Background task #${taskId} spawned. It will send progress updates and the final result to the chat.`;
       }
 
@@ -688,6 +714,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
       }
 
       case 'web_fetch': {
+        if (!isAllowedUrl(input.url)) return 'Blocked: URL points to a private/internal address.';
         const jinaUrl = `https://r.jina.ai/${input.url}`;
         const res = await fetch(jinaUrl, {
           headers: { 'Accept': 'text/markdown' },

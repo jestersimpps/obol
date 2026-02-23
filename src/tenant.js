@@ -9,7 +9,44 @@ const fs = require('fs');
 const path = require('path');
 
 const tenants = new Map();
+const pendingTenants = new Map();
 const PERSONALITY_CACHE_TTL = 60000;
+const TENANT_INACTIVE_TTL = 3600000;
+
+const _tenantCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [userId, tenant] of tenants) {
+    if (now - (tenant._personalityLoadedAt || 0) > TENANT_INACTIVE_TTL) {
+      for (const task of tenant.bg.tasks?.values() || []) {
+        if (task.checkInTimer) { clearInterval(task.checkInTimer); task.checkInTimer = null; }
+      }
+      tenants.delete(userId);
+    }
+  }
+}, 600000);
+_tenantCleanup.unref();
+
+async function createTenant(userId, config) {
+  const userDir = ensureUserDir(userId);
+  const personalityDir = path.join(userDir, 'personality');
+  const personality = loadPersonality(personalityDir);
+  const memory = config.supabase ? await createMemory(config.supabase, userId) : null;
+  const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
+  const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled });
+  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client, userId, userDir) : null;
+  const bg = new BackgroundRunner();
+
+  let personalityMtime = 0;
+  try {
+    personalityMtime = fs.statSync(path.join(personalityDir, 'SOUL.md')).mtimeMs;
+  } catch {}
+
+  return {
+    claude, memory, messageLog, personality, bg, userDir, userId,
+    _personalityLoadedAt: Date.now(),
+    _personalityMtime: personalityMtime,
+  };
+}
 
 async function getTenant(userId, config) {
   if (tenants.has(userId)) {
@@ -29,30 +66,29 @@ async function getTenant(userId, config) {
     return tenant;
   }
 
-  const userDir = ensureUserDir(userId);
-  const personalityDir = path.join(userDir, 'personality');
-  const personality = loadPersonality(personalityDir);
-  const memory = config.supabase ? await createMemory(config.supabase, userId) : null;
-  const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
-  const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled });
-  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client, userId, userDir) : null;
-  const bg = new BackgroundRunner();
+  if (pendingTenants.has(userId)) {
+    return pendingTenants.get(userId);
+  }
 
-  let personalityMtime = 0;
-  try {
-    personalityMtime = fs.statSync(path.join(personalityDir, 'SOUL.md')).mtimeMs;
-  } catch {}
-
-  const tenant = {
-    claude, memory, messageLog, personality, bg, userDir, userId,
-    _personalityLoadedAt: Date.now(),
-    _personalityMtime: personalityMtime,
-  };
-  tenants.set(userId, tenant);
-  return tenant;
+  const promise = createTenant(userId, config).then(tenant => {
+    tenants.set(userId, tenant);
+    pendingTenants.delete(userId);
+    return tenant;
+  }).catch(err => {
+    pendingTenants.delete(userId);
+    throw err;
+  });
+  pendingTenants.set(userId, promise);
+  return promise;
 }
 
 function clearTenant(userId) {
+  const tenant = tenants.get(userId);
+  if (tenant?.bg?.tasks) {
+    for (const task of tenant.bg.tasks.values()) {
+      if (task.checkInTimer) { clearInterval(task.checkInTimer); task.checkInTimer = null; }
+    }
+  }
   tenants.delete(userId);
 }
 

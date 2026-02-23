@@ -51,9 +51,9 @@ async function main() {
     setupBackup(config.github);
   }
 
-  const shutdown = (signal) => {
+  const shutdown = async (signal) => {
     console.log(`\n🪙 ${signal} received. Shutting down gracefully...`);
-    bot.stop();
+    await bot.stop();
     process.exit(0);
   };
   process.on('SIGINT', () => shutdown('SIGINT'));

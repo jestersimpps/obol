@@ -1,7 +1,18 @@
-const { createAnthropicClient } = require('./claude');
+
+
 
 const BRIDGE_MAX_PER_HOUR = 20;
 const bridgeUsage = new Map();
+
+const _bridgeCleanup = setInterval(() => {
+  const hourAgo = Date.now() - 3600000;
+  for (const [key, timestamps] of bridgeUsage) {
+    const recent = timestamps.filter(ts => ts > hourAgo);
+    if (recent.length === 0) bridgeUsage.delete(key);
+    else bridgeUsage.set(key, recent);
+  }
+}, 600000);
+_bridgeCleanup.unref();
 
 function checkBridgeRateLimit(userId) {
   const now = Date.now();
@@ -84,9 +95,7 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   if (partner.personality?.user) systemParts.push(`\n## About Your Owner\n${partner.personality.user}`);
   if (memoryContext) systemParts.push(memoryContext);
 
-  const client = createAnthropicClient(config.anthropic);
-
-  const response = await client.messages.create({
+  const response = await partner.claude.client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system: systemParts.join('\n'),
