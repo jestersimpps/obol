@@ -97,7 +97,15 @@ function createClaude(anthropicConfig, { personality, memory }) {
     Object.assign(personality, newPersonality);
   }
 
-  return { chat, client, reloadPersonality };
+  function clearHistory(chatId) {
+    if (chatId) {
+      histories.delete(chatId);
+    } else {
+      histories.clear();
+    }
+  }
+
+  return { chat, client, reloadPersonality, clearHistory };
 }
 
 function buildSystemPrompt(personality) {

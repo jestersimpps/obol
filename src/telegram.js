@@ -24,6 +24,7 @@ function createBot(telegramConfig, claude, memory) {
 
   // Set bot commands menu
   bot.api.setMyCommands([
+    { command: 'new', description: 'Start a fresh conversation' },
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
@@ -55,6 +56,12 @@ function createBot(telegramConfig, claude, memory) {
     }
 
     return ctx.reply('Usage: /memory search <query> | /memory stats');
+  });
+
+  // Handle /new — fresh conversation
+  bot.command('new', async (ctx) => {
+    claude.clearHistory(ctx.chat.id);
+    await ctx.reply('🪙 Fresh start. What\'s up?');
   });
 
   // Handle /status
