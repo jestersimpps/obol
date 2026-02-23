@@ -30,7 +30,7 @@ OBOL is an AI agent that evolves its own personality, rewrites its own code, tes
 
 It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 100 exchanges it reflects on who it's becoming, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
 
-One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, workspace, and first-run experience. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
+One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, and workspace. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
 
 Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
@@ -156,7 +156,7 @@ Refined voice, updated your project list, cleaned up 2 unused scripts.
 
 ```
 Day 1:   obol init → obol start → first conversation
-         → OBOL asks 2-3 questions, writes SOUL.md + USER.md
+         → OBOL responds naturally from message one
          → post-setup hardens your VPS automatically
 
 Day 2:   Every 5 messages → Haiku extracts facts to vector memory
@@ -224,8 +224,7 @@ Router: ctx.from.id → tenant context
 | GitHub token | Evolution cycle + state |
 | Vercel token | Scripts, tests, commands, apps |
 | VPS hardening | Workspace directory (`~/.obol/users/{id}/`) |
-| Process manager (pm2) | First-run onboarding experience |
-| | GitHub backup (per-user repo dir) |
+| Process manager (pm2) | GitHub backup (per-user repo dir) |
 
 ### Tenant routing
 
@@ -244,11 +243,13 @@ When users store secrets via the `pass` encrypted store, each user gets their ow
 | Shared bot credentials | `obol/` | `obol/anthropic-key` |
 | User secrets | `obol/users/{id}/` | `obol/users/206639616/gmail-key` |
 
+Users manage their own secrets via Telegram: `/secret set <key> <value>` (message auto-deleted for safety), `/secret list`, `/secret remove <key>`. The agent can also read/write secrets via tools for scripts that need API keys at runtime.
+
 ### Adding users
 
 1. Add their Telegram user ID to `allowedUsers` in `~/.obol/config.json` (or run `obol config`)
 2. Restart the bot
-3. They message the bot → OBOL creates their workspace, runs first-run onboarding, and writes their own SOUL.md + USER.md
+3. They message the bot → OBOL creates their workspace and starts responding immediately. Personality files are created during their first evolution cycle.
 
 Each new user starts fresh. Their bot evolves independently from every other user's.
 
@@ -339,7 +340,7 @@ For Telegram user IDs, OBOL auto-detects by checking who messaged the bot. Just 
 
 ### First Conversation
 
-Send your first message. OBOL introduces itself, asks 2-3 questions, then writes its own SOUL.md and USER.md. After that, it hardens your VPS and reports progress directly in the Telegram chat (Linux only — skipped on macOS/Windows):
+Send your first message. OBOL responds naturally — no onboarding flow, it works from message one. Personality files (SOUL.md, USER.md) are created during the first evolution cycle. After first boot, it hardens your VPS and reports progress directly in the Telegram chat (Linux only — skipped on macOS/Windows):
 
 | Task | What |
 |------|------|
@@ -445,11 +446,18 @@ Or edit `~/.obol/config.json` directly:
 ## Telegram Commands
 
 ```
-/new     — Fresh conversation
-/tasks   — Running background tasks
-/status  — Uptime and memory stats
-/backup  — Trigger GitHub backup
-/clean   — Audit workspace, remove rogue files, fix misplaced items
+/new        — Fresh conversation
+/memory     — Search or view memory stats
+/recent     — Last 10 memories
+/today      — Today's memories
+/tasks      — Running background tasks
+/status     — Bot status, uptime, evolution progress, traits
+/backup     — Trigger GitHub backup
+/clean      — Audit workspace, remove rogue files, fix misplaced items
+/traits     — View or adjust personality traits (0-100)
+/secret     — Manage per-user encrypted secrets
+/evolution  — Evolution progress
+/help       — Show available commands
 ```
 
 Everything else is natural conversation.
@@ -468,6 +476,7 @@ obol logs              # Tail logs (pm2 or log file fallback)
 obol status            # Status
 obol backup            # Manual backup
 obol upgrade           # Update to latest version
+obol delete            # Full VPS cleanup (removes all OBOL data)
 ```
 
 ## Directory Structure
