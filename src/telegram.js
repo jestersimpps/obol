@@ -1,17 +1,10 @@
 const path = require('path');
 const { Bot, GrammyError, HttpError } = require('grammy');
-const {
-  isFirstRun, markFirstRunComplete, FIRST_RUN_SYSTEM,
-  parseSetupResponse, cleanResponse, writePersonalityFromSetup,
-} = require('./first-run');
 const { loadConfig } = require('./config');
-const { isPostSetupDone, runPostSetup } = require('./post-setup');
 const { evolve, loadEvolutionState } = require('./evolve');
 const { getTenant } = require('./tenant');
 const media = require('./media');
 
-
-const MAX_FIRST_RUN_EXCHANGES = 10;
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
 const SPAM_COOLDOWN_MS = 30000;
@@ -27,7 +20,6 @@ function startTyping(ctx) {
 function createBot(telegramConfig, config) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
-  const firstRunHistories = new Map();
   const rateLimits = new Map();
 
   bot.use(async (ctx, next) => {
@@ -228,103 +220,44 @@ function createBot(telegramConfig, config) {
     const userName = ctx.from.first_name || 'User';
 
     const tenant = await getTenant(userId, config);
-    const inFirstRun = isFirstRun(tenant.userDir);
 
-    if (!inFirstRun) {
-      const now = Date.now();
-      const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
-      if (now < userLimit.cooldownUntil) return;
-      if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
-        userLimit.spamCount++;
-        userLimit.lastMessage = now;
+    const now = Date.now();
+    const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
+    if (now < userLimit.cooldownUntil) return;
+    if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
+      userLimit.spamCount++;
+      userLimit.lastMessage = now;
+      rateLimits.set(userId, userLimit);
+      if (userLimit.spamCount >= SPAM_THRESHOLD) {
+        userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
         rateLimits.set(userId, userLimit);
-        if (userLimit.spamCount >= SPAM_THRESHOLD) {
-          userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
-          rateLimits.set(userId, userLimit);
-          await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
-          return;
-        }
-        if (userLimit.spamCount === 1) {
-          await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
-        }
+        await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
         return;
       }
-      userLimit.lastMessage = now;
-      userLimit.spamCount = 0;
-      rateLimits.set(userId, userLimit);
+      if (userLimit.spamCount === 1) {
+        await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
+      }
+      return;
     }
+    userLimit.lastMessage = now;
+    userLimit.spamCount = 0;
+    rateLimits.set(userId, userLimit);
 
     const stopTyping = startTyping(ctx);
 
     try {
-
       tenant.messageLog?.log(ctx.chat.id, 'user', userMessage);
 
-      let response;
-
-      if (inFirstRun) {
-        if (!firstRunHistories.has(userId)) firstRunHistories.set(userId, []);
-        const history = firstRunHistories.get(userId);
-
-        if (history.length >= (MAX_FIRST_RUN_EXCHANGES - 1) * 2) {
-          history.push({ role: 'user', content: userMessage + '\n\nWe have chatted enough. Please generate the personality files now based on everything you know. Include the obol-setup JSON block.' });
-        } else {
-          history.push({ role: 'user', content: userMessage });
-        }
-
-        const msg = await tenant.claude.client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system: FIRST_RUN_SYSTEM,
-          messages: history,
-        });
-
-        const fullText = msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-        history.push({ role: 'assistant', content: fullText });
-
-        const setup = parseSetupResponse(fullText);
-        if (setup?.ready) {
-          const cfg = loadConfig();
-          writePersonalityFromSetup(setup, cfg?.bot?.name, tenant.userDir);
-          markFirstRunComplete(tenant.userDir);
-          tenant.claude.reloadPersonality?.();
-
-          firstRunHistories.delete(userId);
-
-          setImmediate(async () => {
-            try {
-              if (!isPostSetupDone()) {
-                const rawCfg = loadConfig({ resolve: false });
-                await runPostSetup(rawCfg, async (m) => {
-                  await ctx.reply(m).catch(() => {});
-                });
-              }
-            } catch (e) {
-              console.error('Post-setup error:', e.message);
-            }
-          });
-
-          stopTyping();
-          await ctx.reply(cleanResponse(fullText), { parse_mode: 'Markdown' }).catch(() =>
-            ctx.reply(cleanResponse(fullText))
-          );
-          await ctx.reply('Personality set! Here\'s what I can do:\n\n\u2022 Chat naturally \u2014 I remember context\n\u2022 /memory search \u2014 Search my memory\n\u2022 Run shell commands and scripts\n\u2022 Deploy sites to Vercel\n\u2022 Background tasks for heavy work\n\u2022 Daily GitHub backup of my brain\n\nJust talk to me. I\'ll figure out the rest.').catch(() => {});
-          return;
-        }
-
-        response = cleanResponse(fullText);
-      } else {
-        response = await tenant.claude.chat(userMessage, {
-          userId,
-          userName,
-          chatId: ctx.chat.id,
-          bg: tenant.bg,
-          ctx,
-          claude: tenant.claude,
-          config,
-          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
-        });
-      }
+      const response = await tenant.claude.chat(userMessage, {
+        userId,
+        userName,
+        chatId: ctx.chat.id,
+        bg: tenant.bg,
+        ctx,
+        claude: tenant.claude,
+        config,
+        _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+      });
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 

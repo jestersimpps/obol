@@ -86,6 +86,11 @@ function ensureUserDir(userId) {
   for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']) {
     fs.mkdirSync(path.join(dir, sub), { recursive: true });
   }
+  const defaultAgents = path.join(__dirname, 'defaults', 'AGENTS.md');
+  const targetAgents = path.join(dir, 'personality', 'AGENTS.md');
+  if (fs.existsSync(defaultAgents) && !fs.existsSync(targetAgents)) {
+    fs.copyFileSync(defaultAgents, targetAgents);
+  }
   return dir;
 }
 

@@ -42,11 +42,18 @@ function saveEvolutionState(state, userDir) {
   fs.writeFileSync(evolutionStatePath(userDir), JSON.stringify(state, null, 2));
 }
 
-async function shouldEvolve(userDir) {
-  const state = loadEvolutionState(userDir);
+const FIRST_EVOLUTION_THRESHOLD = 25;
+
+function getEvolutionThreshold(state) {
   const { loadConfig } = require('./config');
   const config = loadConfig();
-  const threshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
+  const defaultThreshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
+  return state.evolutionCount === 0 ? FIRST_EVOLUTION_THRESHOLD : defaultThreshold;
+}
+
+async function shouldEvolve(userDir) {
+  const state = loadEvolutionState(userDir);
+  const threshold = getEvolutionThreshold(state);
   return state.exchangesSinceLastEvolution >= threshold;
 }
 
@@ -54,9 +61,7 @@ async function tickExchange(userDir) {
   const state = loadEvolutionState(userDir);
   state.exchangesSinceLastEvolution++;
   saveEvolutionState(state, userDir);
-  const { loadConfig } = require('./config');
-  const config = loadConfig();
-  const threshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
+  const threshold = getEvolutionThreshold(state);
   return { count: state.exchangesSinceLastEvolution, ready: state.exchangesSinceLastEvolution >= threshold };
 }
 
@@ -203,9 +208,20 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
     `${m.role === 'user' ? 'Human' : 'Bot'}: ${m.content.substring(0, 300)}`
   ).join('\n');
 
-  const memorySummary = coreMemories.map(m =>
-    `[${m.category}] ${m.content}`
-  ).join('\n');
+  const memoryGroups = {};
+  const categoryLabels = {
+    person: 'People', decision: 'Decisions', preference: 'Preferences',
+    lesson: 'Lessons', project: 'Projects', fact: 'Facts',
+    event: 'Events', pattern: 'Patterns', context: 'Context',
+  };
+  for (const m of coreMemories) {
+    const group = categoryLabels[m.category] || 'Other';
+    if (!memoryGroups[group]) memoryGroups[group] = [];
+    memoryGroups[group].push(m.content);
+  }
+  const memorySummary = Object.entries(memoryGroups)
+    .map(([group, items]) => `### ${group}\n${items.map(i => `- ${i}`).join('\n')}`)
+    .join('\n\n');
 
   const scriptsManifest = Object.entries(currentScripts)
     .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
@@ -227,10 +243,19 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
   // ── Step 1: Run existing tests as baseline ──
   const baselineResults = runTests(testsDir);
 
+  const isFirstEvolution = !currentSoul;
+  const firstEvolutionPreamble = isFirstEvolution ? `
+## FIRST EVOLUTION — IMPORTANT
+
+This is your FIRST evolution. You have no existing personality files. Synthesize everything from the conversations and memories below into initial SOUL.md and USER.md. Don't fabricate — only use what you actually learned from real interactions. If you don't know something about the owner, don't make it up. It's okay for these files to be short and honest about what you know so far.
+
+` : '';
+
   const response = await claudeClient.messages.create({
     model: MODELS.personality,
     max_tokens: 16384,
     system: `You are an AI undergoing evolution #${evolutionNumber}. ${state.lastEvolution ? `Last evolution: ${state.lastEvolution}.` : 'This is your first evolution.'}
+${firstEvolutionPreamble}
 
 You will rewrite your entire operating system: personality files, operational knowledge, scripts, tests, and commands.
 
@@ -244,7 +269,7 @@ Third person factual profile: name, location, timezone, nationality, job, skills
 
 ## Part 3: AGENTS.md (how to operate)
 
-Operational manual written as instructions to yourself: available tools, workflows, safety rules, lessons learned, patterns, memory strategy, background task guidelines, owner-specific rules.
+Operational manual written as instructions to yourself. **Preserve ALL existing tool documentation** — tools don't change between evolutions. Add owner-specific rules discovered from conversations. Add workflow patterns that work well. Keep what works, remove what doesn't. Sections to maintain: Tools, Memory Strategy, Safety Rules, Workspace Structure, Background Task Guidelines, Communication Style, Evolution.
 
 ## Part 4: Scripts
 

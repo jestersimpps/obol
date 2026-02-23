@@ -5,6 +5,7 @@ const { createBot } = require('./telegram');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./heartbeat');
 const { migrateToMultiTenant } = require('./legacy-migrate');
+const { isPostSetupDone, runPostSetup } = require('./post-setup');
 
 const MIGRATION_MARKER = path.join(OBOL_DIR, '.migrated');
 
@@ -32,6 +33,12 @@ async function main() {
         console.error(`  Database migration failed: ${e.message}`);
       }
     }
+  }
+
+  if (!isPostSetupDone()) {
+    runPostSetup(loadConfig({ resolve: false }), console.log).catch(e =>
+      console.error('Post-setup error:', e.message)
+    );
   }
 
   const bot = createBot(config.telegram, config);

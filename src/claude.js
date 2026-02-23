@@ -287,12 +287,31 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
 }
 
 function buildSystemPrompt(personality, userDir, opts = {}) {
-  const parts = ['You are an AI assistant powered by OBOL.'];
+  const parts = [];
 
-  if (personality.soul) parts.push(`\n## Personality\n${personality.soul}`);
-  if (personality.user) parts.push(`\n## About Your Owner\n${personality.user}`);
-  if (personality.agents) parts.push(`\n## Operating Instructions\n${personality.agents}`);
+  // Identity core
+  parts.push('You are OBOL, a personal AI agent running 24/7 on a server. You have persistent memory, can execute shell commands, deploy websites, and learn over time. You are not a generic chatbot — you are a dedicated agent for one person.');
 
+  // Personality (from SOUL.md)
+  if (personality.soul) {
+    parts.push(`\n## Personality\n${personality.soul}`);
+  } else {
+    parts.push(`\n## Personality\nYou are a fresh instance. Be helpful, direct, and naturally curious. Pay attention to how your owner communicates and adapt. Your personality will develop through conversation and periodic evolution.`);
+  }
+
+  // Owner context (from USER.md)
+  if (personality.user) {
+    parts.push(`\n## About Your Owner\n${personality.user}`);
+  } else {
+    parts.push(`\n## About Your Owner\nYou don't know anything about your owner yet. Pay attention to everything they share — name, job, interests, preferences, people they mention. Store important details in memory. You'll learn naturally through conversation.`);
+  }
+
+  // Operating instructions (from AGENTS.md — always present via default)
+  if (personality.agents) {
+    parts.push(`\n## Operating Instructions\n${personality.agents}`);
+  }
+
+  // Workspace discipline
   const workDir = userDir || '~/.obol';
   const userId = userDir ? path.basename(userDir) : null;
   const passPrefix = userId ? `obol/users/${userId}` : 'obol';
@@ -332,6 +351,7 @@ To check if a secret exists: \`pass show obol/github-token\`
 To list all secrets: \`pass ls\`
 `);
 
+  // Bridge (conditional)
   if (opts.bridgeEnabled) {
     parts.push(`
 ## Bridge (Partner Agent)
