@@ -263,6 +263,35 @@ Current test baseline: ${baselineResults.total} tests, ${baselineResults.passed}
 
 One file per command: \`command-name.md\`. Must have: name, description, trigger, deterministic instructions.
 
+## Part 7: Proactive Tool Building (IMPORTANT)
+
+Analyze the recent conversation history carefully. Look for:
+
+1. **Repeated requests** — things the owner asks for often that could be a command or script
+   - "convert this to PDF" → build a markdown-to-pdf script + command
+   - "check my server" → build a status-check script + command
+   - "summarize this" → build a summarize script + command
+
+2. **Friction points** — things that are awkward or take multiple steps
+   - Owner can't read markdown on their phone → build a tool that renders to PDF/HTML and sends the file
+   - Owner keeps asking for the same data → build a script that fetches and formats it
+
+3. **Unmet needs** — things the owner would benefit from but hasn't asked for
+   - They mention deadlines but have no reminder system → build one
+   - They share lots of URLs but can't find them later → build a bookmark tool
+
+**How to build new tools:**
+- Search npm/GitHub for existing libraries that solve the problem (don't reinvent wheels)
+- Add required packages to a \`dependencies\` field in your output (will be npm-installed)
+- Script goes in \`scripts/\` (follows all script standards from Part 4)
+- Test goes in \`tests/\` (follows all test standards from Part 5)
+- Command goes in \`commands/\` (so the owner can trigger it easily)
+- Update AGENTS.md with the new tool and when to use it
+
+**Be conservative:** only build things there's clear evidence for in the conversation history. Don't build speculative tools. One or two new tools per evolution is plenty.
+
+List every new tool you build in the \`upgrades\` field so the owner can be told about them.
+
 ## Output JSON (and ONLY JSON):
 
 \`\`\`json
@@ -273,11 +302,15 @@ One file per command: \`command-name.md\`. Must have: name, description, trigger
   "scripts": { "name.js": "content" },
   "tests": { "test-name.js": "content" },
   "commands": { "name.md": "content" },
+  "dependencies": ["package-name@version"],
+  "upgrades": [
+    { "name": "Tool name", "description": "What it does and why", "command": "/command-name or natural language trigger" }
+  ],
   "changelog": "what changed"
 }
 \`\`\`
 
-Include ALL files that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all).`,
+Include ALL files that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all). \`dependencies\` and \`upgrades\` can be empty arrays.`,
     messages: [{
       role: 'user',
       content: `## Current SOUL.md
@@ -471,6 +504,27 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
+  // ── Step 9: Install new dependencies ──
+  if (result.dependencies && Array.isArray(result.dependencies) && result.dependencies.length > 0) {
+    try {
+      const deps = result.dependencies.join(' ');
+      execSync(`npm install --save ${deps}`, {
+        encoding: 'utf-8',
+        timeout: 60000,
+        cwd: path.dirname(require.resolve('obol/package.json')),
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      // Log but don't fail evolution over a missing package
+      if (memory) {
+        await memory.add(
+          `Evolution #${evolutionNumber}: failed to install dependencies: ${result.dependencies.join(', ')}. Error: ${e.message.substring(0, 200)}`,
+          { category: 'lesson', importance: 0.7, source: 'evolution' }
+        ).catch(() => {});
+      }
+    }
+  }
+
   // Update state
   state.exchangesSinceLastEvolution = 0;
   state.evolutionCount = evolutionNumber;
@@ -494,6 +548,7 @@ Fix the scripts. Tests define correct behavior.`
     changelog: result.changelog || null,
     scriptsRolledBack,
     scriptsFixed,
+    upgrades: result.upgrades || [],
     archived: `SOUL-v${state.evolutionCount - 1}-${new Date().toISOString().slice(0, 10)}.md`,
   };
 }

@@ -110,9 +110,9 @@ Every 50 exchanges, **Opus** takes over and rewrites the entire operating system
 | **SOUL.md** | Who the bot is — voice, opinions, quirks, relationship dynamic | First-person journal entry, brutally honest |
 | **USER.md** | Everything about the owner — facts, preferences, projects, people | Third-person factual profile |
 | **AGENTS.md** | Operational knowledge — tools, workflows, lessons, patterns | Instructions to itself, practical and specific |
-| **scripts/** | Utility scripts the bot uses as tools | Refactored for consistency, dead code removed |
+| **scripts/** | Utility scripts the bot uses as tools | Refactored, dead code removed, **new tools built** |
 | **tests/** | Test suite for every script | Written/updated, run before and after refactor |
-| **commands/** | Slash command definitions | Cleaned up, unused commands removed |
+| **commands/** | Slash command definitions | Cleaned up, **new commands for new tools** |
 
 **Personality files** are rewritten holistically — stale info dropped, contradictions resolved, new knowledge integrated. No incremental appends that rot over time.
 
@@ -135,24 +135,34 @@ If Opus breaks a script, it gets a chance to fix it — up to 3 attempts with th
 
 **Commands** follow the same discipline: one file per command, clear trigger pattern, deterministic instructions with no ambiguity.
 
+**Proactive tool building** — Opus analyzes conversation history for patterns: things you ask for repeatedly, friction points (like not being able to read markdown on your phone), and unmet needs. It builds new scripts + commands to solve these, installs any required npm packages, and introduces them to you after evolution:
+
+```
+🪙 Evolution #4 complete.
+
+🆕 New capabilities:
+• md-to-pdf — Converts markdown files to PDF for mobile reading → /pdf
+• server-status — Quick health check of your VPS → /health
+```
+
+It searches npm and GitHub for existing libraries instead of reinventing wheels. One or two new tools per evolution — conservative, evidence-based, only things there's clear signal for in the conversation.
+
 The previous SOUL.md is archived in `personality/evolution/` with a version number and date. After evolution, OBOL reloads and sends:
 
 ```
 🪙 Soul evolution #7 complete. I've grown.
 ```
 
-If scripts needed fixing:
+A typical evolution message:
 
 ```
-🪙 Soul evolution #7 complete. I've grown.
-🔧 Script tests regressed — fixed automatically.
-```
+🪙 Evolution #7 complete.
 
-Or if it couldn't fix them:
+🆕 New capabilities:
+• bookmark — Save and search URLs you've shared → /bookmarks
+• weather-brief — Morning weather for your city → runs automatically
 
-```
-🪙 Soul evolution #7 complete. I've grown.
-⚠️ Script refactor rolled back — couldn't fix test regression.
+Refined voice, updated your project list, cleaned up 2 unused scripts.
 ```
 
 Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you. And the codebase gets cleaner with every cycle — verified by tests.
@@ -172,10 +182,10 @@ Week 2:  Evolution #1 fires → Opus rewrites SOUL.md + USER.md + AGENTS.md
          → OBOL's voice shifts from generic to personal
          → old soul archived in evolution/
 
-Month 2: Evolution #4 → SOUL.md references inside jokes, shared projects,
-         communication patterns → the bot feels like it knows you
-         → AGENTS.md has learned operational patterns
-         → scripts are clean, deterministic, well-documented
+Month 2: Evolution #4 → SOUL.md references inside jokes, shared projects
+         → OBOL notices you keep asking for PDF conversions
+         → builds a md-to-pdf tool + /pdf command automatically
+         → "🆕 New capability: pdf — convert markdown to PDF"
 
 Month 6: evolution/ has 12 archived souls
          → read the trajectory: how your bot went from

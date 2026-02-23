@@ -218,16 +218,29 @@ function createBot(telegramConfig, claude, memory, messageLog) {
           try {
             const result = await evolve(claude.client, messageLog, memory);
             claude.reloadPersonality?.();
-            let msg = `🪙 Soul evolution #${result.evolutionNumber} complete. I've grown.`;
+            let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
+
             if (result.scriptsFixed) {
-              msg += '\n🔧 Script tests regressed — fixed automatically.';
+              msg += '\n🔧 Fixed a test regression automatically.';
             } else if (result.scriptsRolledBack) {
-              msg += '\n⚠️ Script refactor rolled back — couldn\'t fix test regression.';
+              msg += '\n⚠️ Rolled back a script refactor — tests couldn\'t be fixed.';
             }
+
+            if (result.upgrades && result.upgrades.length > 0) {
+              msg += '\n\n🆕 **New capabilities:**';
+              for (const u of result.upgrades) {
+                msg += `\n• **${u.name}** — ${u.description}`;
+                if (u.command) msg += ` → \`${u.command}\``;
+              }
+            }
+
             if (result.changelog) {
-              msg += `\n\n${result.changelog}`;
+              msg += `\n\n_${result.changelog}_`;
             }
-            await ctx.reply(msg).catch(() => {});
+
+            await ctx.reply(msg, { parse_mode: 'Markdown' }).catch(() =>
+              ctx.reply(msg).catch(() => {})
+            );
           } catch (e) {
             console.error('Evolution failed:', e.message);
           }
