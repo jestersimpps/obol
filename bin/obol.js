@@ -78,4 +78,12 @@ program
     await upgrade();
   });
 
+program
+  .command('delete')
+  .description('Delete all OBOL data and start fresh')
+  .action(async () => {
+    const { delete: deleteAll } = require('../src/cli/delete');
+    await deleteAll();
+  });
+
 program.parse();
