@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
+const { loadTraits, saveTraits } = require('./personality');
 
 const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
 
@@ -167,6 +168,7 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
   const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
+  const currentTraits = loadTraits(personalityDir);
   const currentScripts = readDir(scriptsDir);
   const currentTests = readDir(testsDir);
   const currentCommands = readDir(commandsDir);
@@ -270,6 +272,22 @@ Third person factual profile: name, location, timezone, nationality, job, skills
 ## Part 3: AGENTS.md (how to operate)
 
 Operational manual written as instructions to yourself. **Preserve ALL existing tool documentation** — tools don't change between evolutions. Add owner-specific rules discovered from conversations. Add workflow patterns that work well. Keep what works, remove what doesn't. Sections to maintain: Tools, Memory Strategy, Safety Rules, Workspace Structure, Background Task Guidelines, Communication Style, Evolution.
+
+## Part 3b: Personality Traits
+
+Current trait values: ${JSON.stringify(currentTraits)}
+
+Based on conversation patterns, adjust each trait (0-100). Consider:
+- Does the owner respond well to humor? Increase/decrease humor.
+- Does the owner prefer direct answers? Adjust directness.
+- Does the owner appreciate creative solutions? Adjust creativity.
+- Does the owner share emotions or stay task-focused? Adjust empathy.
+- Does the owner want blunt truth or diplomatic framing? Adjust honesty.
+- Does the owner welcome proactive questions? Adjust curiosity.
+
+Small adjustments (±5-15) per evolution. Don't swing wildly.
+
+Include in output JSON as: "traits": { "humor": 65, "honesty": 80, ... }
 
 ## Part 4: Scripts
 
@@ -387,6 +405,7 @@ The OBOL directory has a FIXED structure: personality/, scripts/, tests/, comman
   "soul": "full SOUL.md content",
   "user": "full USER.md content",
   "agents": "full AGENTS.md content",
+  "traits": { "humor": 65, "honesty": 80, "directness": 70, "curiosity": 75, "empathy": 65, "creativity": 70 },
   "scripts": { "name.js": "content" },
   "tests": { "test-name.js": "content" },
   "commands": { "name.md": "content" },
@@ -588,6 +607,19 @@ Fix the scripts. Tests define correct behavior.`
 
   if (result.agents && result.agents.length > 50) {
     fs.writeFileSync(agentsPath, result.agents);
+  }
+
+  if (result.traits && typeof result.traits === 'object') {
+    const validTraits = {};
+    for (const [key, val] of Object.entries(result.traits)) {
+      if (typeof val === 'number' && val >= 0 && val <= 100) {
+        validTraits[key] = Math.round(val);
+      }
+    }
+    if (Object.keys(validTraits).length > 0) {
+      const merged = { ...currentTraits, ...validTraits };
+      saveTraits(personalityDir, merged);
+    }
   }
 
   // ── Step 8: Write commands ──

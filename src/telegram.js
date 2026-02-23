@@ -3,6 +3,7 @@ const { Bot, GrammyError, HttpError } = require('grammy');
 const { loadConfig } = require('./config');
 const { evolve, loadEvolutionState } = require('./evolve');
 const { getTenant } = require('./tenant');
+const { loadTraits, saveTraits, DEFAULT_TRAITS } = require('./personality');
 const media = require('./media');
 
 const RATE_LIMIT_MS = 3000;
@@ -38,6 +39,7 @@ function createBot(telegramConfig, config) {
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
     { command: 'clean', description: 'Audit and fix workspace' },
+    { command: 'traits', description: 'View or adjust personality traits' },
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
@@ -166,6 +168,42 @@ function createBot(telegramConfig, config) {
     }
   });
 
+  bot.command('traits', async (ctx) => {
+    const tenant = await getTenant(ctx.from.id, config);
+    const personalityDir = path.join(tenant.userDir, 'personality');
+    const args = ctx.message.text.split(' ').slice(1);
+
+    if (args[0] === 'reset') {
+      saveTraits(personalityDir, { ...DEFAULT_TRAITS });
+      tenant.claude.reloadPersonality();
+      const traits = { ...DEFAULT_TRAITS };
+      await ctx.reply(`🎛 Traits reset to defaults\n\n${formatTraits(traits)}`);
+      return;
+    }
+
+    if (args[0] && args[1]) {
+      const traitName = args[0].toLowerCase();
+      const value = parseInt(args[1], 10);
+      if (!(traitName in DEFAULT_TRAITS)) {
+        await ctx.reply(`Unknown trait: ${traitName}\nValid: ${Object.keys(DEFAULT_TRAITS).join(', ')}`);
+        return;
+      }
+      if (isNaN(value) || value < 0 || value > 100) {
+        await ctx.reply('Value must be 0-100');
+        return;
+      }
+      const traits = loadTraits(personalityDir);
+      traits[traitName] = value;
+      saveTraits(personalityDir, traits);
+      tenant.claude.reloadPersonality();
+      await ctx.reply(`🎛 Updated ${traitName} → ${value}\n\n${formatTraits(traits)}`);
+      return;
+    }
+
+    const traits = loadTraits(personalityDir);
+    await ctx.reply(`🎛 Personality Traits\n\n${formatTraits(traits)}\n\nAdjust: /traits <name> <0-100>\nReset: /traits reset`);
+  });
+
   bot.command('evolution', async (ctx) => {
     const tenant = await getTenant(ctx.from.id, config);
     const state = loadEvolutionState(tenant.userDir);
@@ -207,6 +245,7 @@ function createBot(telegramConfig, config) {
 /today — Today's memories
 /forget <id> — Delete a memory
 /tasks — Running background tasks
+/traits — View/adjust personality traits
 /evolution — Evolution progress
 /status — Bot status and uptime
 /backup — Trigger GitHub backup
@@ -492,6 +531,15 @@ function createBot(telegramConfig, config) {
   };
 
   return bot;
+}
+
+function formatTraits(traits) {
+  const maxLen = Math.max(...Object.keys(traits).map(k => k.length));
+  return Object.entries(traits).map(([name, val]) => {
+    const filled = Math.round(val / 5);
+    const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
+    return `${name.charAt(0).toUpperCase() + name.slice(1).padEnd(maxLen)} ${bar} ${val}`;
+  }).join('\n');
 }
 
 function splitMessage(text, maxLength) {

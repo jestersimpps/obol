@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
+const DEFAULT_TRAITS = require('./defaults/traits.json');
+
 function loadPersonality(dir) {
   dir = dir || path.join(OBOL_DIR, 'personality');
   const personality = {};
@@ -21,7 +23,25 @@ function loadPersonality(dir) {
     }
   }
 
+  personality.traits = loadTraits(dir);
+
   return personality;
 }
 
-module.exports = { loadPersonality };
+function loadTraits(dir) {
+  dir = dir || path.join(OBOL_DIR, 'personality');
+  const traitsPath = path.join(dir, 'traits.json');
+  try {
+    return JSON.parse(fs.readFileSync(traitsPath, 'utf-8'));
+  } catch {
+    return { ...DEFAULT_TRAITS };
+  }
+}
+
+function saveTraits(dir, traits) {
+  dir = dir || path.join(OBOL_DIR, 'personality');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'traits.json'), JSON.stringify(traits, null, 2));
+}
+
+module.exports = { loadPersonality, loadTraits, saveTraits, DEFAULT_TRAITS };
