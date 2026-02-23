@@ -124,9 +124,32 @@ OBOL automatically hardens your VPS on first run:
 > ssh -p 2222 root@YOUR_SERVER_IP
 > ```
 
-## Graduating to OpenClaw
+## OBOL vs OpenClaw
 
-Need multiple channels (Discord, Signal, WhatsApp)? Multiple providers? Advanced orchestration? Check out [OpenClaw](https://openclaw.ai) — OBOL's bigger sibling.
+| | **OBOL** | **OpenClaw** |
+|---|---|---|
+| **Setup** | ~10 min (6 inputs + chat) | 30-60 min (config, plugins, channels) |
+| **Channels** | Telegram | Telegram, Discord, Signal, WhatsApp, IRC, Slack, iMessage + more |
+| **LLM** | Anthropic (Claude) | Anthropic, OpenAI, Google, Groq, local models |
+| **Memory** | Supabase pgvector + local embeddings | Pluggable (file-based, vector, custom) |
+| **Architecture** | Single process | Gateway daemon + session management |
+| **Tools** | Built-in (exec, files, web, memory, Vercel) | Extensible skill system with policies |
+| **Security** | Auto-hardens VPS on first run | Manual (healthcheck skill) |
+| **Sub-agents** | — | Full spawning, isolated sessions |
+| **Onboarding** | Bot teaches itself who you are | You configure everything upfront |
+| **Backup** | Auto GitHub backup daily | Manual / custom |
+| **Model switching** | — | Per-session overrides, fallback chains |
+| **Group chats** | — | Full group support with context |
+| **Context compaction** | — | Automatic for long sessions |
+| **Cron** | Basic node-cron | Full scheduler with isolated sessions |
+| **Config** | 1 JSON file → `pass` | YAML, hot-reload, schema validation |
+| **Cost** | ~$9/mo | ~$9/mo + more if multi-provider |
+
+**OBOL is better when you want** zero-to-running speed, self-configuring personality, automatic VPS hardening, simplicity, and a brain that backs itself up to GitHub without you thinking about it.
+
+**OpenClaw is better when you need** multi-channel, multi-provider, sub-agents, group chats, context compaction, skill systems, and deep customization.
+
+They're not competitors — OBOL is the on-ramp. When you outgrow it, graduate to [OpenClaw](https://openclaw.ai).
 
 ## License
 
