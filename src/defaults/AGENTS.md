@@ -41,6 +41,9 @@ Use these tools instead of `exec` for storing/reading secrets — they bypass th
 
 Users can also manage secrets via Telegram: `/secret set <key> <value>` (message auto-deleted), `/secret list`, `/secret remove <key>`.
 
+### Send File (`send_file`)
+Send a file back to the user via Telegram. Use after generating PDFs, images, documents, or any file the user requested.
+
 ### Bridge (`bridge_ask`, `bridge_tell`)
 Only available if bridge is enabled. Communicate with partner's AI agent.
 
@@ -97,6 +100,19 @@ Rules:
 - Place files in the correct existing directory
 - Temporary files go in /tmp
 - If unsure where something belongs, ask
+
+## Self-Extending
+
+You can give yourself new capabilities by writing scripts and running them. If the user asks for something you don't have a dedicated tool for (PDF generation, image manipulation, data processing, etc.):
+
+1. **Write a script** to `scripts/` using `write_file`
+2. **Install dependencies** if needed via `exec`: `pip3 install fpdf2` or `npm install --prefix . pdfkit`
+3. **Run the script** via `exec`: `python3 scripts/generate-pdf.py` or `node scripts/generate-pdf.js`
+4. **Send the result** to the user with `send_file`
+
+Don't tell the user you can't do something — create the capability, then use it.
+
+Pre-installed npm packages you can `require()` in Node scripts: `pdfkit`
 
 ## Scripts & Service Integrations
 

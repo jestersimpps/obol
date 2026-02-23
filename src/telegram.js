@@ -254,6 +254,11 @@ function createBot(telegramConfig, config) {
         ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
         credentials.storeSecret(userId, key, value);
         await ctx.reply(`🔑 Secret "${key}" stored securely.`);
+        const tenant = await getTenant(userId, config);
+        if (tenant.claude?.injectHistory) {
+          tenant.claude.injectHistory(ctx.chat.id, 'user', `[System: user stored secret "${key}" via /secret set]`);
+          tenant.claude.injectHistory(ctx.chat.id, 'assistant', `Noted — secret "${key}" is now stored.`);
+        }
       } catch (e) {
         await ctx.reply(`⚠️ ${e.message}`);
       }
@@ -264,6 +269,11 @@ function createBot(telegramConfig, config) {
       try {
         credentials.removeSecret(userId, args[1]);
         await ctx.reply(`🗑️ Secret "${args[1]}" removed.`);
+        const tenant = await getTenant(userId, config);
+        if (tenant.claude?.injectHistory) {
+          tenant.claude.injectHistory(ctx.chat.id, 'user', `[System: user removed secret "${args[1]}" via /secret remove]`);
+          tenant.claude.injectHistory(ctx.chat.id, 'assistant', `Noted — secret "${args[1]}" has been removed.`);
+        }
       } catch (e) {
         await ctx.reply(`⚠️ ${e.message}`);
       }

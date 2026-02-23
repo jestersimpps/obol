@@ -310,7 +310,13 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     }
   }
 
-  return { chat, client, reloadPersonality, clearHistory };
+  function injectHistory(chatId, role, content) {
+    if (!histories.has(chatId)) histories.set(chatId, []);
+    const history = histories.get(chatId);
+    history.push({ role, content });
+  }
+
+  return { chat, client, reloadPersonality, clearHistory, injectHistory };
 }
 
 function buildSystemPrompt(personality, userDir, opts = {}) {
@@ -392,6 +398,7 @@ Use the \`store_secret\`, \`read_secret\`, and \`list_secrets\` tools for all us
 These store secrets under the prefix \`${passPrefix}/\` in pass (or JSON fallback).
 
 Users can also manage secrets via Telegram: \`/secret set <key> <value>\` (message auto-deleted), \`/secret list\`, \`/secret remove <key>\`.
+Since users can store secrets via /secret outside your conversation, ALWAYS call \`list_secrets\` to check what's available before telling the user their credentials aren't stored.
 
 Shared bot credentials live under \`obol/\` — do NOT touch or re-create these:
 \`obol/anthropic-key\`, \`obol/telegram-token\`, \`obol/supabase-url\`, \`obol/supabase-key\`, \`obol/github-token\`, \`obol/vercel-token\`
@@ -586,6 +593,19 @@ function buildTools(memory, opts = {}) {
     input_schema: {
       type: 'object',
       properties: {},
+    },
+  });
+
+  tools.push({
+    name: 'send_file',
+    description: 'Send a file to the user via Telegram (PDF, image, document, etc). Use after generating files the user requested.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Path to the file to send' },
+        caption: { type: 'string', description: 'Optional caption for the file' },
+      },
+      required: ['path'],
     },
   });
 
@@ -789,6 +809,18 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const keys = credentials.listSecrets(context.userId);
         if (keys.length === 0) return 'No secrets stored.';
         return keys.join('\n');
+      }
+
+      case 'send_file': {
+        const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+        if (!fs.existsSync(filePath)) return `File not found: ${filePath}`;
+        const telegramCtx = context.ctx;
+        if (!telegramCtx) return 'Cannot send files in this context.';
+        const { InputFile } = require('grammy');
+        await telegramCtx.replyWithDocument(new InputFile(filePath), {
+          caption: input.caption || undefined,
+        });
+        return `Sent: ${path.basename(filePath)}`;
       }
 
       case 'bridge_ask': {
