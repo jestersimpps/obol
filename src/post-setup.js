@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const { OBOL_DIR, loadConfig, saveConfig } = require('./config');
 
 function isPostSetupDone(userDir) {
@@ -102,7 +102,11 @@ Expire-Date: 0
         let migrated = 0;
         for (const [passPath, value] of Object.entries(secrets)) {
           if (!value) continue;
-          execSync(`echo "${value}" | pass insert -m ${passPath}`, { stdio: 'pipe' });
+          const result = spawnSync('pass', ['insert', '-m', passPath], {
+            input: value,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          if (result.status !== 0) throw new Error(result.stderr?.toString() || 'pass insert failed');
           migrated++;
         }
 

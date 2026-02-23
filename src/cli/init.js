@@ -45,6 +45,9 @@ async function validateAnthropic(apiKey) {
     const body = await res.json();
     if (body.error?.message?.includes('billing')) throw new Error('No credits — add funds at console.anthropic.com');
   }
+  if (res.status === 429) throw new Error('Rate limited — key is valid but try again later');
+  if (res.status >= 500) throw new Error(`Anthropic server error (${res.status}) — key may be valid, try again`);
+  if (!res.ok && res.status !== 200) throw new Error(`Unexpected status: ${res.status}`);
   return 'Key valid';
 }
 
@@ -104,6 +107,26 @@ async function init(opts = {}) {
 
   if (opts.restore) {
     return await restore();
+  }
+
+  if (fs.existsSync(CONFIG_FILE) && !opts.reset) {
+    const { action } = await inquirer.prompt([{
+      type: 'list',
+      name: 'action',
+      message: 'Config already exists. What do you want to do?',
+      choices: [
+        { name: 'Edit configuration (obol config)', value: 'edit' },
+        { name: 'Start fresh (reset everything)', value: 'reset' },
+        { name: 'Cancel', value: 'cancel' },
+      ],
+    }]);
+    if (action === 'cancel') return;
+    if (action === 'edit') {
+      const { config: configCmd } = require('./config');
+      return configCmd();
+    }
+    fs.unlinkSync(CONFIG_FILE);
+    console.log('  Config removed. Starting fresh...\n');
   }
 
   if (opts.reset) {
@@ -203,38 +226,60 @@ async function init(opts = {}) {
 
   // Step 4: GitHub
   console.log('─── Step 4/7: GitHub (backup) ───\n');
-  console.log('  OBOL backs up its personality, scripts, and commands to a');
-  console.log('  private GitHub repo daily. This lets you restore on any server.\n');
-  console.log('  How to get a token:');
-  console.log('    1. Go to https://github.com/settings/tokens');
-  console.log('    2. Click "Generate new token (classic)"');
-  console.log('    3. Name it "obol"');
-  console.log('    4. Check the "repo" scope (full control of private repos)');
-  console.log('    5. Click "Generate token" and copy it\n');
-  const { githubToken } = await inquirer.prompt([{
-    type: 'password',
-    name: 'githubToken',
-    message: 'GitHub personal access token:',
-    mask: '*',
+  const { skipGithub } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'skipGithub',
+    message: 'Set up GitHub backup?',
+    default: true,
   }]);
-  config.github = await setupGitHub(githubToken);
+  if (skipGithub) {
+    console.log('  OBOL backs up its personality, scripts, and commands to a');
+    console.log('  private GitHub repo daily. This lets you restore on any server.\n');
+    console.log('  How to get a token:');
+    console.log('    1. Go to https://github.com/settings/tokens');
+    console.log('    2. Click "Generate new token (classic)"');
+    console.log('    3. Name it "obol"');
+    console.log('    4. Check the "repo" scope (full control of private repos)');
+    console.log('    5. Click "Generate token" and copy it\n');
+    const { githubToken } = await inquirer.prompt([{
+      type: 'password',
+      name: 'githubToken',
+      message: 'GitHub personal access token:',
+      mask: '*',
+    }]);
+    config.github = await setupGitHub(githubToken);
+  } else {
+    config.github = null;
+    console.log('  Skipped — no backup configured\n');
+  }
 
   // Step 5: Vercel
   console.log('─── Step 5/7: Vercel (deploy sites) ───\n');
-  console.log('  OBOL can deploy websites and apps to Vercel for you.\n');
-  console.log('  How to get a token:');
-  console.log('    1. Go to https://vercel.com (sign up free if needed)');
-  console.log('    2. Go to https://vercel.com/account/tokens');
-  console.log('    3. Click "Create" and name it "obol"');
-  console.log('    4. Copy the token\n');
-  const { vercelToken } = await inquirer.prompt([{
-    type: 'password',
-    name: 'vercelToken',
-    message: 'Vercel token:',
-    mask: '*',
+  const { skipVercel } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'skipVercel',
+    message: 'Set up Vercel deployments?',
+    default: true,
   }]);
-  config.vercel = { token: vercelToken };
-  await validateCredential('Vercel', () => validateVercel(vercelToken));
+  if (skipVercel) {
+    console.log('  OBOL can deploy websites and apps to Vercel for you.\n');
+    console.log('  How to get a token:');
+    console.log('    1. Go to https://vercel.com (sign up free if needed)');
+    console.log('    2. Go to https://vercel.com/account/tokens');
+    console.log('    3. Click "Create" and name it "obol"');
+    console.log('    4. Copy the token\n');
+    const { vercelToken } = await inquirer.prompt([{
+      type: 'password',
+      name: 'vercelToken',
+      message: 'Vercel token:',
+      mask: '*',
+    }]);
+    config.vercel = { token: vercelToken };
+    await validateCredential('Vercel', () => validateVercel(vercelToken));
+  } else {
+    config.vercel = null;
+    console.log('  Skipped — no deploy target configured\n');
+  }
   console.log('');
 
   // Step 6: Identity
@@ -284,7 +329,7 @@ async function init(opts = {}) {
       console.log('  ✅ Database ready');
     } catch (e) {
       console.error(`  ❌ Migration failed: ${e.message}`);
-      console.log('  Run "obol migrate" to retry later.');
+      console.log('  Run the SQL manually in Supabase dashboard.');
     }
   }
 
@@ -317,7 +362,7 @@ async function collectAllowedUsers(token) {
       name: 'picked',
       message: 'Select users to allow:',
       choices,
-      validate: (v) => v.length > 0 ? true : 'Select at least one user',
+      validate: () => true,
     }]);
     selected.push(...picked);
   } else {
@@ -460,7 +505,7 @@ async function setupSupabaseExisting() {
     type: 'input',
     name: 'projectRef',
     message: 'Supabase project URL or project ID:',
-    validate: (v) => (v.includes('supabase.co') || /^[a-z]{20}$/.test(v.trim())) ? true : 'Enter https://xxx.supabase.co or a project ID',
+    validate: (v) => (v.includes('supabase.co') || /^[a-z0-9]{20}$/.test(v.trim())) ? true : 'Enter https://xxx.supabase.co or a project ID',
   }]);
 
   const ref = projectRef.trim();
@@ -487,6 +532,12 @@ async function setupGitHub(githubToken) {
   if (!user.login) {
     console.log('  ❌ Invalid token');
     return null;
+  }
+
+  const scopes = userRes.headers.get('x-oauth-scopes') || '';
+  if (!scopes.includes('repo')) {
+    console.log('  ⚠️ Token lacks "repo" scope — backup will fail.');
+    console.log('  Generate a new token with the "repo" scope checked.');
   }
 
   const repoName = 'obol-brain';

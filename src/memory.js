@@ -124,7 +124,7 @@ async function createMemory(supabaseConfig, userId = 0) {
   }
 
   async function stats() {
-    const res = await fetch(`${url}/rest/v1/obol_memory?select=category&user_id=eq.${userId}`, { headers });
+    const res = await fetch(`${url}/rest/v1/obol_memory?select=category&user_id=eq.${userId}&limit=10000`, { headers });
     const data = await res.json();
     const counts = {};
     data.forEach(m => { counts[m.category] = (counts[m.category] || 0) + 1; });

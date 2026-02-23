@@ -4,30 +4,34 @@ function isBridgeEnabled(config) {
   return config.bridge?.enabled === true;
 }
 
-function getPartnerUserId(userId, config) {
+function getPartnerUserId(userId, config, targetId) {
   const users = config.telegram?.allowedUsers || [];
-  const partner = users.find(id => id !== userId);
-  return partner || null;
+  if (targetId) {
+    return users.includes(targetId) && targetId !== userId ? targetId : null;
+  }
+  const others = users.filter(id => id !== userId);
+  return others.length === 1 ? others[0] : null;
 }
 
 function buildBridgeTool() {
   return {
     name: 'bridge_ask',
-    description: 'Ask your partner\'s AI agent a question. Use this when the user asks about the other person — their preferences, schedule, opinions, or anything their agent would know. The partner agent will answer from its own memory and personality context. The partner gets notified that you asked.',
+    description: 'Ask your partner\'s AI agent a question. Use this when the user asks about the other person — their preferences, schedule, opinions, or anything their agent would know. The partner agent will answer from its own memory and personality context. The partner gets notified that you asked. If there are 3+ users, you must specify partner_id.',
     input_schema: {
       type: 'object',
       properties: {
         question: { type: 'string', description: 'The question to ask the partner\'s agent' },
+        partner_id: { type: 'number', description: 'Target partner user ID (required if 3+ users)' },
       },
       required: ['question'],
     },
   };
 }
 
-async function bridgeAsk(question, fromUserId, config, notifyFn) {
+async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   if (!isBridgeEnabled(config)) return 'Bridge is not enabled.';
 
-  const partnerUserId = getPartnerUserId(fromUserId, config);
+  const partnerUserId = getPartnerUserId(fromUserId, config, targetId);
   if (!partnerUserId) return 'No partner user found.';
 
   const { getTenant } = require('./tenant');
@@ -87,21 +91,22 @@ async function bridgeAsk(question, fromUserId, config, notifyFn) {
 function buildBridgeTellTool() {
   return {
     name: 'bridge_tell',
-    description: 'Send a message to your partner\'s AI agent. Use this when the user wants to tell, remind, or send something to the other person. The message gets stored in the partner\'s memory and delivered as a Telegram notification. The partner\'s agent will see it as context in future conversations.',
+    description: 'Send a message to your partner\'s AI agent. Use this when the user wants to tell, remind, or send something to the other person. The message gets stored in the partner\'s memory and delivered as a Telegram notification. The partner\'s agent will see it as context in future conversations. If there are 3+ users, you must specify partner_id.',
     input_schema: {
       type: 'object',
       properties: {
         message: { type: 'string', description: 'The message to send to the partner\'s agent' },
+        partner_id: { type: 'number', description: 'Target partner user ID (required if 3+ users)' },
       },
       required: ['message'],
     },
   };
 }
 
-async function bridgeTell(message, fromUserId, config, notifyFn) {
+async function bridgeTell(message, fromUserId, config, notifyFn, targetId) {
   if (!isBridgeEnabled(config)) return 'Bridge is not enabled.';
 
-  const partnerUserId = getPartnerUserId(fromUserId, config);
+  const partnerUserId = getPartnerUserId(fromUserId, config, targetId);
   if (!partnerUserId) return 'No partner user found.';
 
   const { getTenant } = require('./tenant');

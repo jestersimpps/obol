@@ -9,10 +9,24 @@ const { shouldEvolve, evolve } = require('./evolve');
 const { getTenant } = require('./tenant');
 
 
+const MAX_FIRST_RUN_EXCHANGES = 10;
+const RATE_LIMIT_MS = 3000;
+const SPAM_THRESHOLD = 5;
+const SPAM_COOLDOWN_MS = 30000;
+
+function startTyping(ctx) {
+  ctx.replyWithChatAction('typing').catch(() => {});
+  const interval = setInterval(() => {
+    ctx.replyWithChatAction('typing').catch(() => {});
+  }, 4000);
+  return () => clearInterval(interval);
+}
+
 function createBot(telegramConfig, config) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const firstRunHistories = new Map();
+  const rateLimits = new Map();
 
   bot.use(async (ctx, next) => {
     if (allowedUsers.size > 0 && !allowedUsers.has(ctx.from?.id)) {
@@ -23,10 +37,14 @@ function createBot(telegramConfig, config) {
 
   bot.api.setMyCommands([
     { command: 'new', description: 'Start a fresh conversation' },
+    { command: 'memory', description: 'Search or view memory stats' },
+    { command: 'recent', description: 'Last 10 memories' },
+    { command: 'today', description: "Today's memories" },
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
     { command: 'clean', description: 'Audit and fix workspace' },
+    { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
 
   bot.command('start', async (ctx) => {
@@ -165,14 +183,49 @@ function createBot(telegramConfig, config) {
     return ctx.reply(`Running tasks:\n\n${text}`);
   });
 
+  bot.command('help', async (ctx) => {
+    await ctx.reply(`Commands:
+
+/new — Start fresh conversation
+/memory search <query> — Search memories
+/memory stats — Memory statistics
+/recent — Last 10 memories
+/today — Today's memories
+/forget <id> — Delete a memory
+/tasks — Running background tasks
+/status — Bot status and uptime
+/backup — Trigger GitHub backup
+/clean — Audit workspace
+/help — This message`);
+  });
+
   bot.on('message:text', async (ctx) => {
     const userMessage = ctx.message.text;
     const userId = ctx.from.id;
     const userName = ctx.from.first_name || 'User';
 
-    try {
-      await ctx.replyWithChatAction('typing');
+    const now = Date.now();
+    const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
+    if (now < userLimit.cooldownUntil) return;
+    if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
+      userLimit.spamCount++;
+      userLimit.lastMessage = now;
+      rateLimits.set(userId, userLimit);
+      if (userLimit.spamCount >= SPAM_THRESHOLD) {
+        userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
+        rateLimits.set(userId, userLimit);
+        await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
+        return;
+      }
+      return;
+    }
+    userLimit.lastMessage = now;
+    userLimit.spamCount = 0;
+    rateLimits.set(userId, userLimit);
 
+    const stopTyping = startTyping(ctx);
+
+    try {
       const tenant = await getTenant(userId, config);
 
       tenant.messageLog?.log(ctx.chat.id, 'user', userMessage);
@@ -183,6 +236,10 @@ function createBot(telegramConfig, config) {
         if (!firstRunHistories.has(userId)) firstRunHistories.set(userId, []);
         const history = firstRunHistories.get(userId);
         history.push({ role: 'user', content: userMessage });
+
+        if (history.length >= MAX_FIRST_RUN_EXCHANGES * 2) {
+          history.push({ role: 'user', content: 'We have chatted enough. Please generate the personality files now based on everything you know. Include the obol-setup JSON block.' });
+        }
 
         const msg = await tenant.claude.client.messages.create({
           model: 'claude-sonnet-4-20250514',
@@ -201,14 +258,27 @@ function createBot(telegramConfig, config) {
           markFirstRunComplete(tenant.userDir);
           tenant.claude.reloadPersonality?.();
 
-          if (!isPostSetupDone(tenant.userDir)) {
-            const rawCfg = loadConfig({ resolve: false });
-            await runPostSetup(rawCfg, async (msg) => {
-              await ctx.reply(msg).catch(() => {});
-            }, tenant.userDir);
-          }
-
           firstRunHistories.delete(userId);
+
+          setImmediate(async () => {
+            try {
+              if (!isPostSetupDone(tenant.userDir)) {
+                const rawCfg = loadConfig({ resolve: false });
+                await runPostSetup(rawCfg, async (m) => {
+                  await ctx.reply(m).catch(() => {});
+                }, tenant.userDir);
+              }
+            } catch (e) {
+              console.error('Post-setup error:', e.message);
+            }
+          });
+
+          stopTyping();
+          await ctx.reply(cleanResponse(fullText), { parse_mode: 'Markdown' }).catch(() =>
+            ctx.reply(cleanResponse(fullText))
+          );
+          await ctx.reply('Personality set! Here\'s what I can do:\n\n\u2022 Chat naturally \u2014 I remember context\n\u2022 /memory search \u2014 Search my memory\n\u2022 Run shell commands and scripts\n\u2022 Deploy sites to Vercel\n\u2022 Background tasks for heavy work\n\u2022 Daily GitHub backup of my brain\n\nJust talk to me. I\'ll figure out the rest.').catch(() => {});
+          return;
         }
 
         response = cleanResponse(fullText);
@@ -219,6 +289,7 @@ function createBot(telegramConfig, config) {
           chatId: ctx.chat.id,
           bg: tenant.bg,
           ctx,
+          claude: tenant.claude,
           _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
         });
       }
@@ -270,6 +341,8 @@ function createBot(telegramConfig, config) {
         });
       }
 
+      stopTyping();
+
       if (response.length > 4096) {
         const chunks = splitMessage(response, 4096);
         for (const chunk of chunks) {
@@ -283,8 +356,15 @@ function createBot(telegramConfig, config) {
         );
       }
     } catch (e) {
+      stopTyping();
       console.error('Message handling error:', e.message);
-      await ctx.reply('⚠️ Something went wrong. Check logs with `obol logs`.');
+      if (e.status === 401 || e.message?.includes('401')) {
+        await ctx.reply('API key invalid or expired. Run `obol config` to update.').catch(() => {});
+      } else if (e.status === 429 || e.message?.includes('rate')) {
+        await ctx.reply('Rate limited. Wait a moment and try again.').catch(() => {});
+      } else {
+        await ctx.reply('Something went wrong. Check logs with `obol logs`.').catch(() => {});
+      }
     }
   });
 

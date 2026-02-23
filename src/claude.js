@@ -4,10 +4,18 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
+const BLOCKED_EXEC_PATTERNS = [
+  /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
+  /\bshutdown\b/, /\breboot\b/, /\bpoweroff\b/,
+  /\bmkfs\b/, /\bdd\s+if=/, /\b:()\{\s*:|:&\s*\};:/,
+  /\bchmod\s+(-R\s+)?[0-7]*\s+\/[^t]/,
+  />\s*\/etc\//, />\s*\/boot\//,
+];
+
 function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEnabled }) {
   const client = new Anthropic({ apiKey: anthropicConfig.apiKey });
 
-  const systemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
+  const baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
   const histories = new Map();
   const MAX_HISTORY = 50;
@@ -87,6 +95,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
 
     // Call Claude — Haiku picks the model
     const model = context._model || 'claude-sonnet-4-20250514';
+    const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
     let response = await client.messages.create({
       model,
       max_tokens: 4096,
@@ -136,6 +145,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
   function reloadPersonality() {
     const pDir = userDir ? path.join(userDir, 'personality') : undefined;
     const newPersonality = require('./personality').loadPersonality(pDir);
+    for (const key of Object.keys(personality)) delete personality[key];
     Object.assign(personality, newPersonality);
   }
 
@@ -203,8 +213,6 @@ Both tools notify the partner that their agent was contacted. Keep messages spec
 `);
   }
 
-  parts.push(`\nCurrent time: ${new Date().toISOString()}`);
-
   return parts.join('\n');
 }
 
@@ -248,7 +256,7 @@ function buildTools(memory, opts = {}) {
         type: 'object',
         properties: {
           content: { type: 'string', description: 'What to remember' },
-          category: { type: 'string', enum: ['fact', 'preference', 'decision', 'lesson', 'person', 'project', 'event', 'conversation', 'resource', 'pattern', 'context'], description: 'Memory category' },
+          category: { type: 'string', enum: ['fact', 'preference', 'decision', 'lesson', 'person', 'project', 'event', 'conversation', 'resource', 'pattern', 'context', 'email'], description: 'Memory category' },
           importance: { type: 'number', description: 'Importance 0-1 (default 0.5)' },
           source: { type: 'string', description: 'Where this came from' },
         },
@@ -378,6 +386,11 @@ async function executeToolCall(toolUse, memory, context = {}) {
   try {
     switch (name) {
       case 'exec': {
+        for (const pattern of BLOCKED_EXEC_PATTERNS) {
+          if (pattern.test(input.command)) {
+            return `Blocked: "${input.command}" matches a dangerous pattern. Ask the user for confirmation first.`;
+          }
+        }
         const timeout = (input.timeout || 30) * 1000;
         const output = execSync(input.command, {
           encoding: 'utf-8',
@@ -422,9 +435,9 @@ async function executeToolCall(toolUse, memory, context = {}) {
       }
 
       case 'background_task': {
-        const { bg, ctx: telegramCtx } = context;
+        const { bg, ctx: telegramCtx, claude: claudeInstance } = context;
         if (!bg || !telegramCtx) return 'Background tasks not available in this context.';
-        const claudeInstance = { chat, client, reloadPersonality };
+        if (!claudeInstance) return 'Background tasks not available.';
         const taskId = bg.spawn(claudeInstance, input.task, telegramCtx, memory);
         return `Background task #${taskId} spawned. It will send progress updates and the final result to the chat.`;
       }
@@ -438,8 +451,8 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const prod = input.production ? '--prod' : '';
         const projName = input.name ? `--name ${input.name}` : '';
         const output = execSync(
-          `cd "${dir}" && npx vercel ${prod} ${projName} --token ${token} --yes 2>&1`,
-          { encoding: 'utf-8', timeout: 120000 }
+          `cd "${dir}" && npx vercel ${prod} ${projName} --yes 2>&1`,
+          { encoding: 'utf-8', timeout: 120000, env: { ...process.env, VERCEL_TOKEN: token } }
         );
         return output.substring(0, 5000);
       }
@@ -450,17 +463,20 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const token = cfg?.vercel?.token;
         if (!token) return 'Vercel not configured.';
         const output = execSync(
-          `npx vercel ls ${input.project} --token ${token} 2>&1`,
-          { encoding: 'utf-8', timeout: 30000 }
+          `npx vercel ls ${input.project} 2>&1`,
+          { encoding: 'utf-8', timeout: 30000, env: { ...process.env, VERCEL_TOKEN: token } }
         );
         return output.substring(0, 5000);
       }
 
       case 'web_fetch': {
-        const res = await fetch(input.url);
+        const jinaUrl = `https://r.jina.ai/${input.url}`;
+        const res = await fetch(jinaUrl, {
+          headers: { 'Accept': 'text/markdown' },
+        });
+        if (!res.ok) return `Failed to fetch: HTTP ${res.status}`;
         const text = await res.text();
-        const clean = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 10000);
-        return clean;
+        return text.substring(0, 15000);
       }
 
       case 'read_file': {
@@ -478,13 +494,13 @@ async function executeToolCall(toolUse, memory, context = {}) {
       case 'bridge_ask': {
         const { bridgeAsk } = require('./bridge');
         const { loadConfig: loadCfg } = require('./config');
-        return await bridgeAsk(input.question, context.userId, loadCfg(), context._notifyFn);
+        return await bridgeAsk(input.question, context.userId, loadCfg(), context._notifyFn, input.partner_id);
       }
 
       case 'bridge_tell': {
         const { bridgeTell } = require('./bridge');
         const { loadConfig: loadCfg2 } = require('./config');
-        return await bridgeTell(input.message, context.userId, loadCfg2(), context._notifyFn);
+        return await bridgeTell(input.message, context.userId, loadCfg2(), context._notifyFn, input.partner_id);
       }
 
       default:

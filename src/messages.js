@@ -97,6 +97,7 @@ class MessageLog {
         model: 'claude-haiku-4-20250514',
         max_tokens: 500,
         system: `Analyze this conversation and extract important facts worth remembering long-term.
+Before storing, check if each fact is genuinely new. Skip if it's essentially a repeat of something already known.
 
 Return JSON:
 {
@@ -117,10 +118,13 @@ Return empty array if nothing worth storing.`,
 
       const extracted = JSON.parse(jsonMatch[0]);
 
-      // Store memories to vector store
-      if (extracted.memories?.length) {
+      if (extracted.memories?.length && this.memory) {
         for (const mem of extracted.memories) {
           if (mem.content && mem.content.length > 10) {
+            try {
+              const existing = await this.memory.search(mem.content, { limit: 1, threshold: 0.85 });
+              if (existing.length > 0) continue;
+            } catch {}
             await this.memory.add(mem.content, {
               category: mem.category || 'conversation',
               importance: 0.5,

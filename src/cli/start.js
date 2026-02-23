@@ -46,7 +46,12 @@ async function start(opts = {}) {
   } else {
     // Foreground mode
     console.log('🪙 Starting in foreground (Ctrl+C to stop)...\n');
-    require('../index');
+    try {
+      require('../index');
+    } catch (e) {
+      console.error(`Startup failed: ${e.message}`);
+      process.exit(1);
+    }
   }
 }
 
