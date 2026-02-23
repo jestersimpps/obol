@@ -71,7 +71,7 @@ Today's top 3   Sonnet (default)
 Every 5 msgs     Every 50 msgs
    ↓                ↓
 Haiku              Opus
-consolidation      soul evolution
+consolidation      evolution cycle
    ↓                ↓
 Extract facts →    Rewrite SOUL.md
  obol_memory       + USER.md from
@@ -115,7 +115,7 @@ This is the knowledge layer — raw facts, decisions, events, preferences. Haiku
 
 Categories: `fact`, `preference`, `decision`, `lesson`, `person`, `project`, `event`, `conversation`, `resource`, `pattern`, `context`
 
-#### Layer 3: Soul Evolution (Every 50 Exchanges)
+#### Layer 3: The Evolution Cycle (Every 50 Exchanges)
 
 Every 50 exchanges, **Opus** takes over and rewrites the entire operating system. It reads everything — personality files, conversation history, core memories, scripts, commands — then rebuilds from scratch.
 
