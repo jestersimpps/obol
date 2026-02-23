@@ -31,12 +31,27 @@ function createClaude(anthropicConfig, { personality, memory }) {
         const memoryDecision = await client.messages.create({
           model: 'claude-haiku-4-20250514',
           max_tokens: 100,
-          system: 'You are a router. Decide if this user message needs memory context (past conversations, facts, preferences, people, events). Reply with ONLY a JSON object: {"need_memory": true/false, "search_query": "optimized search query"} — If the message is casual (greetings, jokes, simple questions), return false. If it references the past, people, projects, preferences, or anything personal, return true with a search query optimized for semantic similarity.',
+          system: `You are a router. Analyze this user message and decide two things:
+
+1. Does it need memory context? (past conversations, facts, preferences, people, events)
+2. What model complexity does it need?
+
+Reply with ONLY a JSON object:
+{"need_memory": true/false, "search_query": "optimized search query", "model": "sonnet|opus"}
+
+Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true with optimized search query.
+
+Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single-step work). Use "opus" ONLY for: complex multi-step research, architecture/design decisions, long-form writing, deep analysis, debugging complex code, tasks requiring exceptional reasoning.`,
           messages: [{ role: 'user', content: userMessage }],
         });
 
         const decisionText = memoryDecision.content[0]?.text || '';
         const decision = JSON.parse(decisionText.match(/\{[\s\S]*\}/)?.[0] || '{}');
+
+        // Set model based on Haiku's decision
+        if (decision.model === 'opus') {
+          context._model = 'claude-opus-4-20250514';
+        }
 
         if (decision.need_memory) {
           const query = decision.search_query || userMessage;
@@ -72,9 +87,10 @@ function createClaude(anthropicConfig, { personality, memory }) {
     // Trim history if too long
     while (history.length > MAX_HISTORY) history.shift();
 
-    // Call Claude
+    // Call Claude — Haiku picks the model
+    const model = context._model || 'claude-sonnet-4-20250514';
     let response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: 4096,
       system: systemPrompt,
       messages: history,
@@ -101,7 +117,7 @@ function createClaude(anthropicConfig, { personality, memory }) {
       history.push({ role: 'user', content: toolResults });
 
       response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model,
         max_tokens: 4096,
         system: systemPrompt,
         messages: history,
