@@ -24,29 +24,41 @@ function createClaude(anthropicConfig, { personality, memory }) {
     if (!histories.has(chatId)) histories.set(chatId, []);
     const history = histories.get(chatId);
 
-    // Auto-search memory for context before every message
+    // Ask Haiku if we need memory for this message
     let memoryContext = '';
-    if (memory && userMessage.length >= 15) {
+    if (memory) {
       try {
-        // Always include today's memories for recency
-        const todayMemories = await memory.byDate('today', { limit: 3 });
+        const memoryDecision = await client.messages.create({
+          model: 'claude-haiku-4-20250514',
+          max_tokens: 100,
+          system: 'You are a router. Decide if this user message needs memory context (past conversations, facts, preferences, people, events). Reply with ONLY a JSON object: {"need_memory": true/false, "search_query": "optimized search query"} — If the message is casual (greetings, jokes, simple questions), return false. If it references the past, people, projects, preferences, or anything personal, return true with a search query optimized for semantic similarity.',
+          messages: [{ role: 'user', content: userMessage }],
+        });
 
-        // Semantic search with strict threshold
-        const semanticMemories = await memory.search(userMessage, { limit: 3, threshold: 0.5 });
+        const decisionText = memoryDecision.content[0]?.text || '';
+        const decision = JSON.parse(decisionText.match(/\{[\s\S]*\}/)?.[0] || '{}');
 
-        // Dedupe by ID and merge
-        const seen = new Set();
-        const combined = [];
-        for (const m of [...todayMemories, ...semanticMemories]) {
-          if (!seen.has(m.id)) {
-            seen.add(m.id);
-            combined.push(m);
+        if (decision.need_memory) {
+          const query = decision.search_query || userMessage;
+
+          // Today's context + semantic search
+          const todayMemories = await memory.byDate('today', { limit: 3 });
+          const semanticMemories = await memory.search(query, { limit: 3, threshold: 0.5 });
+
+          // Dedupe by ID
+          const seen = new Set();
+          const combined = [];
+          for (const m of [...todayMemories, ...semanticMemories]) {
+            if (!seen.has(m.id)) {
+              seen.add(m.id);
+              combined.push(m);
+            }
           }
-        }
 
-        if (combined.length > 0) {
-          memoryContext = '\n\n[Relevant memories]\n' +
-            combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
+          if (combined.length > 0) {
+            memoryContext = '\n\n[Relevant memories]\n' +
+              combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
+          }
         }
       } catch {}
     }
