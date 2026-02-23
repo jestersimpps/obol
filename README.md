@@ -56,7 +56,7 @@ consolidation      soul evolution
 Extract →          Rewrite SOUL.md
  obol_memory       from scratch
  USER.md           Archive old soul
- SOUL.md           in evolution/
+                   in evolution/
 ```
 
 ### The Living Brain
@@ -93,11 +93,9 @@ Memory recall combines two strategies:
 
 Categories: `fact`, `preference`, `decision`, `lesson`, `person`, `project`, `event`, `conversation`, `resource`, `pattern`, `context`
 
-#### Layer 3: Incremental Personality Updates (Every 5 Exchanges)
+#### Layer 3: Incremental User Learning (Every 5 Exchanges)
 
-The same Haiku consolidation that extracts memories also updates OBOL's core personality files:
-
-**USER.md** — When you reveal something about yourself, Haiku catches it and appends to USER.md:
+The same Haiku consolidation that extracts memories also updates USER.md — when you reveal something about yourself, Haiku catches it:
 
 ```
 Human: "I'm a freelance developer, mostly React and Node"
@@ -109,17 +107,7 @@ Human: "Just started dating someone, she's from Shanghai"
 
 New facts get date-stamped headers (`## Learned 2026-03-15`) and only append if the information isn't already there. Over weeks, USER.md becomes a rich profile of who you are — without you ever filling out a form.
 
-**SOUL.md** — When the conversation reveals how OBOL should behave, Haiku adapts:
-
-```
-Human: "lol stop being so formal"
-→ SOUL.md gets: "- Owner prefers casual tone, avoid formal language"
-
-Human uses lots of dark humor → SOUL.md gets: "- Match owner's dark humor style"
-Owner sends short messages → SOUL.md gets: "- Keep replies concise, owner prefers brevity"
-```
-
-This isn't just logging preferences — OBOL reads SOUL.md as part of its system prompt on every message. Changes to SOUL.md immediately change how it talks. The bot doesn't just remember that you like dark humor — it *becomes* funnier.
+SOUL.md is **not** touched by Haiku. Personality changes are too nuanced for quick extraction — that's what soul evolution is for.
 
 #### Layer 4: Soul Evolution (Every 50 Exchanges)
 
@@ -150,7 +138,7 @@ Day 1:   "obol start" → first conversation → OBOL asks 2-3 questions
          → writes initial SOUL.md + USER.md from scratch
          → personality bootstrap complete
 
-Day 2:   Every 5 messages → Haiku extracts memories, appends to USER.md/SOUL.md
+Day 2:   Every 5 messages → Haiku extracts memories, appends facts to USER.md
          → OBOL gradually learns your schedule, preferences, projects, people
 
 Week 2:  Evolution #1 fires → Opus rewrites SOUL.md entirely
@@ -342,7 +330,7 @@ See [The Living Brain](#the-living-brain) above for the full technical explanati
 | File | What | Who writes it | When |
 |------|------|---------------|------|
 | **SOUL.md** | Bot's personality, voice, opinions, quirks | Opus (full rewrite) | Every 50 exchanges |
-| **USER.md** | Everything about you — job, location, people, preferences | Haiku (append) | Every 5 exchanges |
+| **USER.md** | Everything about you — job, location, people, preferences | Haiku (incremental append) | Every 5 exchanges |
 | **AGENTS.md** | Operating instructions — tools, safety, workflows | You (or first-run) | Once |
 | **evolution/** | Archive of every previous SOUL.md | Automatic | On each evolution |
 
