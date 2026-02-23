@@ -1,3 +1,4 @@
+const path = require('path');
 const { Bot, GrammyError, HttpError } = require('grammy');
 const {
   isFirstRun, markFirstRunComplete, FIRST_RUN_SYSTEM,
@@ -7,6 +8,7 @@ const { loadConfig } = require('./config');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
 const { shouldEvolve, evolve } = require('./evolve');
 const { getTenant } = require('./tenant');
+const media = require('./media');
 
 
 const MAX_FIRST_RUN_EXCHANGES = 10;
@@ -247,7 +249,7 @@ function createBot(telegramConfig, config) {
         }
 
         const msg = await tenant.claude.client.messages.create({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 4096,
           system: FIRST_RUN_SYSTEM,
           messages: history,
@@ -374,9 +376,103 @@ function createBot(telegramConfig, config) {
     }
   });
 
-  bot.on('message:photo', async (ctx) => {
-    await ctx.reply('📷 Image support coming soon.');
-  });
+  async function handleMedia(ctx) {
+    const userId = ctx.from.id;
+    const fileInfo = media.getFileInfo(ctx);
+    if (!fileInfo) return;
+
+    const stopTyping = startTyping(ctx);
+
+    try {
+      const tenant = await getTenant(userId, config);
+      const file = await ctx.getFile();
+      const buffer = await media.downloadFile(telegramConfig.token, file.file_path);
+
+      const filename = media.generateFilename(fileInfo, file.file_path);
+      const assetsDir = path.join(tenant.userDir, 'assets');
+      const savedPath = media.saveFile(buffer, assetsDir, filename);
+
+      const caption = ctx.message.caption || '';
+
+      if (tenant.memory) {
+        const memContent = media.buildMemoryContent(fileInfo, filename, savedPath, caption);
+        await tenant.memory.add(memContent, {
+          category: 'resource',
+          importance: 0.6,
+          source: 'telegram-media',
+          tags: [fileInfo.mediaType],
+        }).catch(() => {});
+      }
+
+      if (media.isImage(fileInfo)) {
+        const imageBlock = media.bufferToImageBlock(buffer, fileInfo.mimeType);
+        const prompt = caption || 'The user sent this image. Describe what you see and respond naturally.';
+        const response = await tenant.claude.chat(prompt, {
+          userId,
+          userName: ctx.from.first_name || 'User',
+          chatId: ctx.chat.id,
+          bg: tenant.bg,
+          ctx,
+          claude: tenant.claude,
+          config,
+          images: [imageBlock],
+          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+        });
+
+        tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
+        tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+
+        stopTyping();
+        if (response.length > 4096) {
+          for (const chunk of splitMessage(response, 4096)) {
+            await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));
+          }
+        } else {
+          await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
+        }
+      } else if (caption) {
+        const contextMsg = `[User sent a ${fileInfo.mediaType}: ${filename}] ${caption}`;
+        const response = await tenant.claude.chat(contextMsg, {
+          userId,
+          userName: ctx.from.first_name || 'User',
+          chatId: ctx.chat.id,
+          bg: tenant.bg,
+          ctx,
+          claude: tenant.claude,
+          config,
+          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
+        });
+
+        tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
+        tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+
+        stopTyping();
+        if (response.length > 4096) {
+          for (const chunk of splitMessage(response, 4096)) {
+            await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));
+          }
+        } else {
+          await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
+        }
+      } else {
+        stopTyping();
+        await ctx.reply(`Got it — saved ${filename}`);
+      }
+    } catch (e) {
+      stopTyping();
+      console.error('Media handling error:', e.message);
+      await ctx.reply('Failed to process that file. Check logs.').catch(() => {});
+    }
+  }
+
+  bot.on('message:photo', handleMedia);
+  bot.on('message:document', handleMedia);
+  bot.on('message:voice', handleMedia);
+  bot.on('message:video', handleMedia);
+  bot.on('message:audio', handleMedia);
+  bot.on('message:sticker', handleMedia);
+  bot.on('message:animation', handleMedia);
+  bot.on('message:video_note', handleMedia);
 
   bot.catch((err) => {
     const ctx = err.ctx;

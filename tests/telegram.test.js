@@ -73,6 +73,15 @@ const mockTenant = {
 const tenantModule = require('../src/tenant');
 vi.spyOn(tenantModule, 'getTenant').mockResolvedValue(mockTenant);
 
+const mediaModule = require('../src/media');
+vi.spyOn(mediaModule, 'getFileInfo');
+vi.spyOn(mediaModule, 'generateFilename');
+vi.spyOn(mediaModule, 'downloadFile');
+vi.spyOn(mediaModule, 'saveFile');
+vi.spyOn(mediaModule, 'buildMemoryContent');
+vi.spyOn(mediaModule, 'isImage');
+vi.spyOn(mediaModule, 'bufferToImageBlock');
+
 const { createBot } = require('../src/telegram');
 
 afterAll(() => {
@@ -376,12 +385,108 @@ describe('telegram', () => {
     });
   });
 
-  describe('message:photo handler', () => {
-    it('replies with coming soon message', async () => {
+  describe('media handler', () => {
+    beforeEach(() => {
+      mediaModule.getFileInfo.mockReturnValue({
+        fileId: 'file-123',
+        mediaType: 'photo',
+        mimeType: 'image/jpeg',
+        originalName: null,
+        fileSize: 24500,
+      });
+      mediaModule.downloadFile.mockResolvedValue(Buffer.from('fake-image'));
+      mediaModule.generateFilename.mockReturnValue('photo-2026-02-23T14-30-00.jpg');
+      mediaModule.saveFile.mockReturnValue('/tmp/test-user/assets/photo-2026-02-23T14-30-00.jpg');
+      mediaModule.isImage.mockReturnValue(true);
+      mediaModule.bufferToImageBlock.mockReturnValue({ type: 'image', source: {} });
+      mediaModule.buildMemoryContent.mockReturnValue('File received: photo');
+      mockTenant.memory.add.mockResolvedValue({ id: 'mem-1' });
+    });
+
+    it('downloads and saves photo to assets', async () => {
       createBot(telegramConfig, config);
-      const ctx = { reply: vi.fn().mockResolvedValue(undefined) };
+      const ctx = {
+        from: { id: 123, first_name: 'Test' },
+        chat: { id: 456 },
+        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: '' },
+        reply: vi.fn().mockResolvedValue(undefined),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
+      };
       await handlers['message:photo'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Image support coming soon'));
+      expect(mediaModule.downloadFile).toHaveBeenCalledWith('test-token-123', 'photos/file_0.jpg');
+      expect(mediaModule.saveFile).toHaveBeenCalled();
+      expect(ctx.reply).toHaveBeenCalled();
+    });
+
+    it('stores memory entry for media', async () => {
+      createBot(telegramConfig, config);
+      const ctx = {
+        from: { id: 123, first_name: 'Test' },
+        chat: { id: 456 },
+        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: '' },
+        reply: vi.fn().mockResolvedValue(undefined),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
+      };
+      await handlers['message:photo'](ctx);
+      expect(mockTenant.memory.add).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ category: 'resource', source: 'telegram-media' }),
+      );
+    });
+
+    it('sends image to Claude for vision when photo', async () => {
+      createBot(telegramConfig, config);
+      const ctx = {
+        from: { id: 123, first_name: 'Test' },
+        chat: { id: 456 },
+        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: 'look at this' },
+        reply: vi.fn().mockResolvedValue(undefined),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
+      };
+      await handlers['message:photo'](ctx);
+      expect(mockTenant.claude.chat).toHaveBeenCalledWith(
+        'look at this',
+        expect.objectContaining({ images: expect.any(Array) }),
+      );
+    });
+
+    it('returns null for unknown media and does nothing', async () => {
+      mediaModule.getFileInfo.mockReturnValue(null);
+      createBot(telegramConfig, config);
+      const ctx = {
+        from: { id: 123 },
+        message: {},
+        reply: vi.fn(),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+      };
+      await handlers['message:photo'](ctx);
+      expect(ctx.reply).not.toHaveBeenCalled();
+    });
+
+    it('acknowledges non-image without caption', async () => {
+      mediaModule.isImage.mockReturnValue(false);
+      mediaModule.getFileInfo.mockReturnValue({
+        fileId: 'file-123',
+        mediaType: 'voice',
+        mimeType: 'audio/ogg',
+        originalName: null,
+        fileSize: 10000,
+      });
+      createBot(telegramConfig, config);
+      const ctx = {
+        from: { id: 123, first_name: 'Test' },
+        chat: { id: 456 },
+        message: { voice: { file_id: 'f1', file_size: 10000 }, caption: undefined },
+        reply: vi.fn().mockResolvedValue(undefined),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        getFile: vi.fn().mockResolvedValue({ file_path: 'voice/file_0.ogg' }),
+      };
+      await handlers['message:voice'](ctx);
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('saved'));
+      expect(mockTenant.claude.chat).not.toHaveBeenCalled();
     });
   });
 

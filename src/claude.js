@@ -21,8 +21,8 @@ const BLOCKED_EXEC_PATTERNS = [
   /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
 ];
 
-function createAnthropicClient(anthropicConfig) {
-  if (anthropicConfig.oauth) {
+function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
+  if (useOAuth && anthropicConfig.oauth) {
     return new Anthropic({
       apiKey: null,
       authToken: anthropicConfig.oauth.accessToken,
@@ -32,22 +32,34 @@ function createAnthropicClient(anthropicConfig) {
       },
     });
   }
-  return new Anthropic({ apiKey: anthropicConfig.apiKey });
+  if (anthropicConfig.apiKey) {
+    return new Anthropic({ apiKey: anthropicConfig.apiKey });
+  }
+  throw new Error('No Anthropic credentials configured. Run: obol config');
 }
 
 async function ensureFreshToken(anthropicConfig) {
   if (!anthropicConfig.oauth) return;
   if (!isExpired(anthropicConfig.oauth)) return;
 
-  const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
-  anthropicConfig.oauth.accessToken = tokens.accessToken;
-  anthropicConfig.oauth.refreshToken = tokens.refreshToken;
-  anthropicConfig.oauth.expires = tokens.expires;
+  try {
+    const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
+    anthropicConfig.oauth.accessToken = tokens.accessToken;
+    anthropicConfig.oauth.refreshToken = tokens.refreshToken;
+    anthropicConfig.oauth.expires = tokens.expires;
 
-  const config = loadConfig({ resolve: false });
-  if (config) {
-    config.anthropic.oauth = anthropicConfig.oauth;
-    saveConfig(config);
+    const config = loadConfig({ resolve: false });
+    if (config) {
+      config.anthropic.oauth = anthropicConfig.oauth;
+      saveConfig(config);
+    }
+  } catch (e) {
+    if (anthropicConfig.apiKey) {
+      console.warn('[oauth] Token refresh failed, falling back to API key:', e.message);
+      anthropicConfig._oauthFailed = true;
+    } else {
+      throw e;
+    }
   }
 }
 
@@ -66,10 +78,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEna
     context.userDir = userDir;
     const chatId = context.chatId || 'default';
 
-    // Refresh OAuth token if needed
     if (useOAuth) {
       await ensureFreshToken(anthropicConfig);
-      client = createAnthropicClient(anthropicConfig);
+      client = createAnthropicClient(anthropicConfig, { useOAuth: !anthropicConfig._oauthFailed });
     }
 
     // Get or create history
@@ -81,7 +92,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEna
     if (memory) {
       try {
         const memoryDecision = await client.messages.create({
-          model: 'claude-haiku-4-20250514',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 100,
           system: `You are a router. Analyze this user message and decide two things:
 
@@ -102,7 +113,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
 
         // Set model based on Haiku's decision
         if (decision.model === 'opus') {
-          context._model = 'claude-opus-4-20250514';
+          context._model = 'claude-opus-4-6';
         }
 
         if (decision.need_memory) {
@@ -136,13 +147,20 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     const enrichedMessage = memoryContext
       ? userMessage + memoryContext
       : userMessage;
-    history.push({ role: 'user', content: enrichedMessage });
+    if (context.images?.length) {
+      history.push({
+        role: 'user',
+        content: [...context.images, { type: 'text', text: enrichedMessage }],
+      });
+    } else {
+      history.push({ role: 'user', content: enrichedMessage });
+    }
 
     // Trim history if too long
     while (history.length > MAX_HISTORY) history.shift();
 
     // Call Claude — Haiku picks the model
-    const model = context._model || 'claude-sonnet-4-20250514';
+    const model = context._model || 'claude-sonnet-4-6';
     const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
     let response = await client.messages.create({
       model,
@@ -231,6 +249,7 @@ ${workDir}/
 ├── tests/          (test suite)
 ├── commands/       (command definitions)
 ├── apps/           (web apps for Vercel)
+├── assets/         (uploaded files, images, media)
 └── logs/
 \`\`\`
 

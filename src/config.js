@@ -53,7 +53,7 @@ function getUserDir(userId) {
 
 function ensureUserDir(userId) {
   const dir = getUserDir(userId);
-  for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs']) {
+  for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']) {
     fs.mkdirSync(path.join(dir, sub), { recursive: true });
   }
   return dir;

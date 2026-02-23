@@ -14,7 +14,7 @@ const path = require('path');
 const { OBOL_DIR } = require('./config');
 
 // Allowed top-level entries
-const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs']);
+const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']);
 const ALLOWED_FILES = new Set([
   'config.json',
   '.evolution-state.json',
