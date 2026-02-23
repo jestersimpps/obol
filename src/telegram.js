@@ -293,11 +293,11 @@ function createBot(telegramConfig, config) {
 
           setImmediate(async () => {
             try {
-              if (!isPostSetupDone(tenant.userDir)) {
+              if (!isPostSetupDone()) {
                 const rawCfg = loadConfig({ resolve: false });
                 await runPostSetup(rawCfg, async (m) => {
                   await ctx.reply(m).catch(() => {});
-                }, tenant.userDir);
+                });
               }
             } catch (e) {
               console.error('Post-setup error:', e.message);
