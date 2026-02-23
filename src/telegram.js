@@ -24,8 +24,6 @@ function createBot(telegramConfig, claude, memory) {
 
   // Set bot commands menu
   bot.api.setMyCommands([
-    { command: 'start', description: 'Start OBOL' },
-    { command: 'memory', description: 'Search or view memory stats' },
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },

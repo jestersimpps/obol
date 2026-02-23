@@ -24,8 +24,23 @@ function createClaude(anthropicConfig, { personality, memory }) {
     if (!histories.has(chatId)) histories.set(chatId, []);
     const history = histories.get(chatId);
 
-    // Add user message
-    history.push({ role: 'user', content: userMessage });
+    // Auto-search memory for context before every message
+    let memoryContext = '';
+    if (memory) {
+      try {
+        const results = await memory.search(userMessage, { limit: 5, threshold: 0.4 });
+        if (results.length > 0) {
+          memoryContext = '\n\n[Relevant memories]\n' +
+            results.map(m => `- [${m.category}] ${m.content}`).join('\n');
+        }
+      } catch {}
+    }
+
+    // Add user message with memory context
+    const enrichedMessage = memoryContext
+      ? userMessage + memoryContext
+      : userMessage;
+    history.push({ role: 'user', content: enrichedMessage });
 
     // Trim history if too long
     while (history.length > MAX_HISTORY) history.shift();
