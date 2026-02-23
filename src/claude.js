@@ -7,7 +7,7 @@ const { saveConfig, loadConfig, OBOL_DIR } = require('./config');
 const { execAsync, isAllowedUrl } = require('./sanitize');
 
 const MAX_EXEC_TIMEOUT = 120;
-const MAX_TOOL_ITERATIONS = 15;
+let MAX_TOOL_ITERATIONS = 100;
 
 const BLOCKED_EXEC_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
@@ -124,6 +124,24 @@ async function ensureFreshToken(anthropicConfig) {
   }
 }
 
+function repairHistory(history) {
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+    const toolUseIds = msg.content.filter(b => b.type === 'tool_use').map(b => b.id);
+    if (toolUseIds.length === 0) continue;
+    const next = history[i + 1];
+    const hasResults = next?.role === 'user' && Array.isArray(next.content) &&
+      toolUseIds.every(id => next.content.some(b => b.type === 'tool_result' && b.tool_use_id === id));
+    if (!hasResults) {
+      const fakeResults = toolUseIds.map(id => ({
+        type: 'tool_result', tool_use_id: id, content: '[interrupted]',
+      }));
+      history.splice(i + 1, 0, { role: 'user', content: fakeResults });
+    }
+  }
+}
+
 function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled }) {
   let client = createAnthropicClient(anthropicConfig);
 
@@ -232,6 +250,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
       }
       break;
     }
+    repairHistory(history);
 
     // Add user message with memory context
     const enrichedMessage = memoryContext
@@ -261,8 +280,15 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     while (response.stop_reason === 'tool_use') {
       toolIterations++;
       if (toolIterations > MAX_TOOL_ITERATIONS) {
-        history.push({ role: 'assistant', content: response.content });
-        history.push({ role: 'user', content: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' });
+        const bailoutContent = response.content;
+        history.push({ role: 'assistant', content: bailoutContent });
+        const bailoutResults = bailoutContent
+          .filter(b => b.type === 'tool_use')
+          .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '[max tool iterations reached]' }));
+        history.push({ role: 'user', content: [
+          ...bailoutResults,
+          { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
+        ] });
         response = await client.messages.create({
           model,
           max_tokens: 4096,
@@ -866,4 +892,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
   }
 }
 
-module.exports = { createClaude, createAnthropicClient };
+function getMaxToolIterations() { return MAX_TOOL_ITERATIONS; }
+function setMaxToolIterations(n) { MAX_TOOL_ITERATIONS = n; }
+
+module.exports = { createClaude, createAnthropicClient, getMaxToolIterations, setMaxToolIterations };

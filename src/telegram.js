@@ -6,6 +6,7 @@ const { getTenant } = require('./tenant');
 const { loadTraits, saveTraits, DEFAULT_TRAITS } = require('./personality');
 const media = require('./media');
 const credentials = require('./credentials');
+const { getMaxToolIterations, setMaxToolIterations } = require('./claude');
 
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
@@ -52,6 +53,7 @@ function createBot(telegramConfig, config) {
     { command: 'secret', description: 'Manage per-user secrets' },
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
+    { command: 'toolimit', description: 'View or set max tool iterations per message' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
 
@@ -340,6 +342,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /backup — Trigger GitHub backup
 /clean — Audit workspace
 /verbose — Toggle verbose mode on/off
+/toolimit — View or set max tool iterations
 /help — This message`);
   });
 
@@ -348,6 +351,26 @@ Your message is deleted immediately when using /secret set to keep credentials o
     const tenant = await getTenant(ctx.from.id, config);
     tenant.verbose = !tenant.verbose;
     await ctx.reply(tenant.verbose ? '🔍 Verbose mode ON' : '🔇 Verbose mode OFF');
+  });
+
+  bot.command('toolimit', async (ctx) => {
+    if (!ctx.from) return;
+    const args = ctx.message.text.split(' ').slice(1);
+    const current = getMaxToolIterations();
+
+    if (!args[0]) {
+      await ctx.reply(`🔧 Max tool iterations: ${current}\n\nThis limits how many tool calls OBOL can make per message. Higher = more complex tasks, but slower responses.\n\nSet: /toolimit <number>\nExample: /toolimit 50`);
+      return;
+    }
+
+    const value = parseInt(args[0], 10);
+    if (isNaN(value) || value < 1 || value > 500) {
+      await ctx.reply(`Invalid value: "${args[0]}"\n\nMust be a number between 1 and 500.\nCurrent: ${current}\n\nExample: /toolimit 50`);
+      return;
+    }
+
+    setMaxToolIterations(value);
+    await ctx.reply(`🔧 Max tool iterations set to ${value}`);
   });
 
   function checkRateLimit(userId) {
