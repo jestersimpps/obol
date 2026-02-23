@@ -1,5 +1,5 @@
 async function migrate(supabaseConfig) {
-  const { url, serviceKey } = supabaseConfig;
+  const { url, serviceKey, accessToken } = supabaseConfig;
 
   const headers = {
     'apikey': serviceKey,
@@ -8,12 +8,11 @@ async function migrate(supabaseConfig) {
     'Prefer': 'return=minimal',
   };
 
-  // Enable pgvector extension
   const sqlStatements = [
     // Enable vector extension
     `CREATE EXTENSION IF NOT EXISTS vector;`,
 
-    // Memory table
+    // Memory table (vector, high-signal)
     `CREATE TABLE IF NOT EXISTS obol_memory (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       content TEXT NOT NULL,
@@ -26,6 +25,18 @@ async function migrate(supabaseConfig) {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       accessed_at TIMESTAMPTZ DEFAULT NOW(),
       access_count INT DEFAULT 0
+    );`,
+
+    // Messages table (raw log, every message)
+    `CREATE TABLE IF NOT EXISTS obol_messages (
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      chat_id BIGINT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      model TEXT,
+      tokens_in INT,
+      tokens_out INT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     );`,
 
     // Vector similarity search function
@@ -60,50 +71,28 @@ async function migrate(supabaseConfig) {
     END;
     $$;`,
 
-    // Index for faster vector search
+    // Indexes
     `CREATE INDEX IF NOT EXISTS obol_memory_embedding_idx ON obol_memory
       USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
-
-    // Index for date queries
     `CREATE INDEX IF NOT EXISTS obol_memory_created_at_idx ON obol_memory (created_at);`,
-
-    // Index for category filtering
     `CREATE INDEX IF NOT EXISTS obol_memory_category_idx ON obol_memory (category);`,
+    `CREATE INDEX IF NOT EXISTS obol_messages_chat_id_idx ON obol_messages (chat_id, created_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS obol_messages_created_at_idx ON obol_messages (created_at DESC);`,
 
-    // Enable RLS
+    // RLS
     `ALTER TABLE obol_memory ENABLE ROW LEVEL SECURITY;`,
-
-    // RLS policy — service role has full access
+    `ALTER TABLE obol_messages ENABLE ROW LEVEL SECURITY;`,
     `DO $$ BEGIN
       CREATE POLICY "service_role_all" ON obol_memory FOR ALL TO service_role USING (true) WITH CHECK (true);
     EXCEPTION WHEN duplicate_object THEN NULL;
     END $$;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_messages FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
   ];
 
-  // Execute via Supabase SQL endpoint
-  for (const sql of sqlStatements) {
-    const res = await fetch(`${url}/rest/v1/rpc/`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: sql }),
-    });
-
-    // If rpc endpoint doesn't work, try the SQL editor API
-    if (!res.ok) {
-      // Fall back to executing via pg direct if available
-      // For now, print the SQL for manual execution
-    }
-  }
-
-  // Alternative: use supabase-js to run SQL
-  // Most reliable way is to use the management API
-  const mgmtRes = await fetch(`${url}/rest/v1/`, { headers: { apikey: serviceKey } });
-  if (mgmtRes.ok) {
-    // Try to create table via PostgREST (won't work for DDL)
-    // We need the SQL editor endpoint or supabase CLI
-  }
-
-  // Best approach: output SQL file for user to run
+  // Save SQL file for manual fallback
   const fs = require('fs');
   const path = require('path');
   const { OBOL_DIR } = require('../config');
@@ -112,9 +101,7 @@ async function migrate(supabaseConfig) {
   fs.writeFileSync(sqlFile, sqlStatements.join('\n\n'));
 
   // Try executing via Supabase Management API
-  const accessToken = supabaseConfig.accessToken;
   if (accessToken) {
-    // Extract project ref from URL
     const projectRef = url.replace('https://', '').replace('.supabase.co', '');
 
     for (const sql of sqlStatements) {
@@ -129,7 +116,6 @@ async function migrate(supabaseConfig) {
         });
         if (!res.ok) {
           const err = await res.text();
-          // IVFFlat index may fail if table is empty — that's fine
           if (sql.includes('ivfflat') && err.includes('not enough')) continue;
           console.log(`  ⚠️  SQL warning: ${err.substring(0, 100)}`);
         }

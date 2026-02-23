@@ -2,6 +2,7 @@ const { loadConfig, OBOL_DIR } = require('./config');
 const { createBot } = require('./telegram');
 const { createClaude } = require('./claude');
 const { createMemory } = require('./memory');
+const { createMessageLog } = require('./messages');
 const { loadPersonality } = require('./personality');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./heartbeat');
@@ -19,7 +20,8 @@ async function main() {
   const personality = loadPersonality();
   const memory = config.supabase ? await createMemory(config.supabase) : null;
   const claude = createClaude(config.anthropic, { personality, memory });
-  const bot = createBot(config.telegram, claude, memory);
+  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client) : null;
+  const bot = createBot(config.telegram, claude, memory, messageLog);
 
   // Setup heartbeat
   if (config.heartbeat !== false) {

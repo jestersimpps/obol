@@ -8,7 +8,7 @@ const { isPostSetupDone, runPostSetup } = require('./post-setup');
 const { BackgroundRunner } = require('./background');
 
 
-function createBot(telegramConfig, claude, memory) {
+function createBot(telegramConfig, claude, memory, messageLog) {
   const bot = new Bot(telegramConfig.token);
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const firstRunHistory = []; // Separate history for onboarding conversation
@@ -158,6 +158,9 @@ function createBot(telegramConfig, claude, memory) {
       // Show typing indicator
       await ctx.replyWithChatAction('typing');
 
+      // Log user message
+      messageLog?.log(ctx.chat.id, 'user', userMessage);
+
       let response;
 
       // First-run onboarding — OBOL learns about the user through conversation
@@ -203,6 +206,9 @@ function createBot(telegramConfig, claude, memory) {
           ctx,
         });
       }
+
+      // Log assistant response
+      messageLog?.log(ctx.chat.id, 'assistant', response);
 
       // Send response (split if too long)
       if (response.length > 4096) {
