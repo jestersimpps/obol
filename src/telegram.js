@@ -5,6 +5,7 @@ const { evolve, loadEvolutionState } = require('./evolve');
 const { getTenant } = require('./tenant');
 const { loadTraits, saveTraits, DEFAULT_TRAITS } = require('./personality');
 const media = require('./media');
+const credentials = require('./credentials');
 
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
@@ -48,6 +49,7 @@ function createBot(telegramConfig, config) {
     { command: 'backup', description: 'Trigger GitHub backup now' },
     { command: 'clean', description: 'Audit and fix workspace' },
     { command: 'traits', description: 'View or adjust personality traits' },
+    { command: 'secret', description: 'Manage per-user secrets' },
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
@@ -233,6 +235,50 @@ function createBot(telegramConfig, config) {
     await ctx.reply(`🎛 Personality Traits\n\n${formatTraits(traits)}\n\nAdjust: /traits <name> <0-100>\nReset: /traits reset`);
   });
 
+  bot.command('secret', async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const args = ctx.message.text.split(' ').slice(1);
+    const sub = args[0];
+
+    if (sub === 'list') {
+      const keys = credentials.listSecrets(userId);
+      if (keys.length === 0) return ctx.reply('No secrets stored.');
+      return ctx.reply(`🔑 Stored secrets:\n\n${keys.map(k => `• ${k}`).join('\n')}`);
+    }
+
+    if (sub === 'set' && args[1] && args[2]) {
+      const key = args[1];
+      const value = args.slice(2).join(' ');
+      try {
+        ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
+        credentials.storeSecret(userId, key, value);
+        await ctx.reply(`🔑 Secret "${key}" stored securely.`);
+      } catch (e) {
+        await ctx.reply(`⚠️ ${e.message}`);
+      }
+      return;
+    }
+
+    if (sub === 'remove' && args[1]) {
+      try {
+        credentials.removeSecret(userId, args[1]);
+        await ctx.reply(`🗑️ Secret "${args[1]}" removed.`);
+      } catch (e) {
+        await ctx.reply(`⚠️ ${e.message}`);
+      }
+      return;
+    }
+
+    await ctx.reply(`🔑 Secret Management
+
+/secret list — List stored secret keys
+/secret set <key> <value> — Store a secret (message auto-deleted)
+/secret remove <key> — Remove a secret
+
+Your message is deleted immediately when using /secret set to keep credentials out of chat history.`);
+  });
+
   bot.command('evolution', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
@@ -277,6 +323,7 @@ function createBot(telegramConfig, config) {
 /forget <id> — Delete a memory
 /tasks — Running background tasks
 /traits — View/adjust personality traits
+/secret — Manage per-user secrets
 /evolution — Evolution progress
 /status — Bot status and uptime
 /backup — Trigger GitHub backup

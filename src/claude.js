@@ -556,6 +556,40 @@ function buildTools(memory, opts = {}) {
     },
   });
 
+  tools.push({
+    name: 'store_secret',
+    description: 'Store a secret (API key, password, token) in the per-user encrypted secret store. Use when the user provides credentials for services.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Secret name (e.g. gmail-password, notion-token)' },
+        value: { type: 'string', description: 'Secret value' },
+      },
+      required: ['key', 'value'],
+    },
+  });
+
+  tools.push({
+    name: 'read_secret',
+    description: 'Read a secret by key from the per-user secret store.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Secret name to read' },
+      },
+      required: ['key'],
+    },
+  });
+
+  tools.push({
+    name: 'list_secrets',
+    description: 'List all secret keys stored for this user (keys only, not values).',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  });
+
   if (opts.bridgeEnabled) {
     const { buildBridgeTool, buildBridgeTellTool } = require('./bridge');
     tools.push(buildBridgeTool());
@@ -736,6 +770,26 @@ async function executeToolCall(toolUse, memory, context = {}) {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, input.content);
         return `Written: ${filePath}`;
+      }
+
+      case 'store_secret': {
+        const credentials = require('./credentials');
+        credentials.storeSecret(context.userId, input.key, input.value);
+        return `Stored secret: ${input.key}`;
+      }
+
+      case 'read_secret': {
+        const credentials = require('./credentials');
+        const val = credentials.readSecret(context.userId, input.key);
+        if (val === null) return `Secret not found: ${input.key}`;
+        return val;
+      }
+
+      case 'list_secrets': {
+        const credentials = require('./credentials');
+        const keys = credentials.listSecrets(context.userId);
+        if (keys.length === 0) return 'No secrets stored.';
+        return keys.join('\n');
       }
 
       case 'bridge_ask': {

@@ -113,6 +113,7 @@ module.exports = {
   PID_FILE,
   LOG_FILE,
   getConfigDir,
+  resolvePassValues,
   loadConfig,
   saveConfig,
   getUserDir,
