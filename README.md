@@ -107,11 +107,26 @@ Every 50 exchanges, **Opus** takes over and rewrites the entire operating system
 | **USER.md** | Everything about the owner — facts, preferences, projects, people | Third-person factual profile |
 | **AGENTS.md** | Operational knowledge — tools, workflows, lessons, patterns | Instructions to itself, practical and specific |
 | **scripts/** | Utility scripts the bot uses as tools | Refactored for consistency, dead code removed |
+| **tests/** | Test suite for every script | Written/updated, run before and after refactor |
 | **commands/** | Slash command definitions | Cleaned up, unused commands removed |
 
 **Personality files** are rewritten holistically — stale info dropped, contradictions resolved, new knowledge integrated. No incremental appends that rot over time.
 
 **Scripts** are held to strict standards: comment headers, shebangs, deterministic behavior (same input = same output), error handling, no hardcoded paths, single-purpose, `kebab-case` naming. Opus removes dead scripts, refactors messy ones, and consolidates duplicates.
+
+**Tests** are written for every script. The evolution process is test-gated:
+
+```
+1. Run existing tests → baseline (e.g. 5 passed, 0 failed)
+2. Opus writes new tests + refactored scripts
+3. Run new tests against OLD scripts → pre-refactor baseline
+4. Write new scripts
+5. Run new tests against NEW scripts → post-refactor verification
+6. If more tests fail after than before → ROLLBACK scripts
+   (keep new tests — they caught real bugs for next evolution)
+```
+
+If Opus breaks a script, the old version is restored automatically. The failed refactor gets stored as a `lesson` in memory so the next evolution knows what went wrong. Scripts only get deployed when tests prove they work.
 
 **Commands** follow the same discipline: one file per command, clear trigger pattern, deterministic instructions with no ambiguity.
 
@@ -121,7 +136,14 @@ The previous SOUL.md is archived in `personality/evolution/` with a version numb
 🪙 Soul evolution #7 complete. I've grown.
 ```
 
-Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you. And the codebase gets cleaner with every cycle.
+Or if scripts regressed:
+
+```
+🪙 Soul evolution #7 complete. I've grown.
+⚠️ Script refactor rolled back — tests regressed.
+```
+
+Over months, `evolution/` becomes a timeline of your bot's consciousness — you can read how it went from "I'm a helpful assistant" to something with actual opinions, quirks, and a relationship dynamic unique to you. And the codebase gets cleaner with every cycle — verified by tests.
 
 #### The Full Lifecycle
 
@@ -285,6 +307,7 @@ After the first conversation completes, OBOL silently hardens your VPS:
 │   ├── AGENTS.md        # Operational knowledge (rewritten by Opus)
 │   └── evolution/       # Archived previous souls (git log of consciousness)
 ├── scripts/             # Deterministic utility scripts (audited by Opus)
+├── tests/               # Test suite for scripts (gates refactors)
 ├── commands/            # Command definitions (audited by Opus)
 ├── logs/                # Bot logs
 └── migrations/          # SQL migrations
@@ -326,6 +349,7 @@ See [The Living Brain](#the-living-brain) above for the full technical explanati
 | **USER.md** | Everything about you — job, location, people, preferences | Opus (full rewrite) | Every 50 exchanges |
 | **AGENTS.md** | Operational knowledge — tools, workflows, lessons, rules | Opus (full rewrite) | Every 50 exchanges |
 | **scripts/** | Deterministic utility scripts (tools) | Opus (audit + refactor) | Every 50 exchanges |
+| **tests/** | Test suite for every script | Opus (write + verify) | Every 50 exchanges |
 | **commands/** | Slash command definitions | Opus (audit + cleanup) | Every 50 exchanges |
 | **evolution/** | Archive of every previous SOUL.md | Automatic | On each evolution |
 

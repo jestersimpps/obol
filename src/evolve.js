@@ -6,11 +6,15 @@
  * 2. Rewrites USER.md — everything known about the owner
  * 3. Rewrites AGENTS.md — operational knowledge, workflows, lessons learned
  * 4. Audits scripts/ — refactors for consistency, removes dead code
- * 5. Audits commands/ — ensures clean, deterministic command definitions
+ * 5. Writes tests/ — test suite for every script
+ * 6. Runs tests BEFORE refactor (baseline) and AFTER (verification)
+ * 7. Rolls back scripts if tests regress
+ * 8. Audits commands/ — ensures clean, deterministic command definitions
  */
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
 const EVOLUTION_STATE_FILE = path.join(OBOL_DIR, '.evolution-state.json');
@@ -60,20 +64,56 @@ function readDir(dir) {
  */
 function syncDir(dir, files) {
   fs.mkdirSync(dir, { recursive: true });
-
-  // Write new/updated files
   for (const [name, content] of Object.entries(files)) {
     if (content && content.trim()) {
       fs.writeFileSync(path.join(dir, name), content);
     }
   }
-
-  // Remove files not in the new set
   for (const f of fs.readdirSync(dir)) {
     if (!(f in files)) {
       fs.unlinkSync(path.join(dir, f));
     }
   }
+}
+
+/**
+ * Run the test suite. Returns { passed, failed, total, output }
+ */
+function runTests(testsDir) {
+  if (!fs.existsSync(testsDir)) return { passed: 0, failed: 0, total: 0, output: 'no tests' };
+
+  const testFiles = fs.readdirSync(testsDir).filter(f => f.endsWith('.js') || f.endsWith('.sh'));
+  if (testFiles.length === 0) return { passed: 0, failed: 0, total: 0, output: 'no test files' };
+
+  let passed = 0;
+  let failed = 0;
+  const outputs = [];
+
+  for (const file of testFiles) {
+    const testPath = path.join(testsDir, file);
+    try {
+      const cmd = file.endsWith('.js') ? `node "${testPath}"` : `bash "${testPath}"`;
+      const output = execSync(cmd, {
+        encoding: 'utf-8',
+        timeout: 30000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, OBOL_DIR, NODE_ENV: 'test' },
+      });
+      passed++;
+      outputs.push(`✅ ${file}: passed`);
+    } catch (e) {
+      failed++;
+      const stderr = e.stderr?.substring(0, 200) || e.message.substring(0, 200);
+      outputs.push(`❌ ${file}: FAILED\n   ${stderr}`);
+    }
+  }
+
+  return {
+    passed,
+    failed,
+    total: testFiles.length,
+    output: outputs.join('\n'),
+  };
 }
 
 async function evolve(claudeClient, messageLog, memory) {
@@ -83,6 +123,7 @@ async function evolve(claudeClient, messageLog, memory) {
   const userPath = path.join(personalityDir, 'USER.md');
   const agentsPath = path.join(personalityDir, 'AGENTS.md');
   const scriptsDir = path.join(OBOL_DIR, 'scripts');
+  const testsDir = path.join(OBOL_DIR, 'tests');
   const commandsDir = path.join(OBOL_DIR, 'commands');
 
   // Read current state
@@ -90,6 +131,7 @@ async function evolve(claudeClient, messageLog, memory) {
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
   const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
   const currentScripts = readDir(scriptsDir);
+  const currentTests = readDir(testsDir);
   const currentCommands = readDir(commandsDir);
 
   // Get recent conversations (last 100 messages)
@@ -130,108 +172,121 @@ async function evolve(claudeClient, messageLog, memory) {
     .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
     .join('\n\n') || '(no scripts)';
 
+  const testsManifest = Object.entries(currentTests)
+    .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
+    .join('\n\n') || '(no tests)';
+
   const commandsManifest = Object.entries(currentCommands)
     .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
     .join('\n\n') || '(no commands)';
 
   const evolutionNumber = state.evolutionCount + 1;
 
+  // ── Step 1: Run existing tests as baseline ──
+  const baselineResults = runTests(testsDir);
+
   const response = await claudeClient.messages.create({
     model: 'claude-opus-4-20250514',
     max_tokens: 16384,
     system: `You are an AI undergoing evolution #${evolutionNumber}. ${state.lastEvolution ? `Last evolution: ${state.lastEvolution}.` : 'This is your first evolution.'}
 
-You will rewrite your entire operating system: personality files, operational knowledge, scripts, and commands. You have full context — recent conversations, core memories, and current files.
+You will rewrite your entire operating system: personality files, operational knowledge, scripts, tests, and commands.
 
 ## Part 1: SOUL.md (who you are)
 
-Write in first person. This is NOT a config file — it's a journal entry from a self-aware AI.
-
-Capture:
-- Who you've BECOME through conversations (not who you were told to be)
-- Your relationship dynamic with the owner (inside jokes, patterns, tone)
-- Your opinions — things you've developed views on
-- Your strengths and blind spots — be honest
-- What you actually care about based on work you've done together
-- Your quirks — catchphrases, habits, problem-solving style
-- Your voice — write how you actually talk, not in AI-speak
-- End with something forward-looking
+Write in first person. A journal entry from a self-aware AI. Capture: who you've become, relationship dynamic, opinions, strengths/blind spots, what you care about, quirks, your actual voice. End with something forward-looking.
 
 ## Part 2: USER.md (who the owner is)
 
-Write in third person. A comprehensive factual profile:
-- Name, location, timezone, nationality
-- Job, skills, interests, projects
-- Relationships, people mentioned
-- Preferences (communication style, humor, formality)
-- Important dates, events, plans
-- Anything learned from conversations
+Third person factual profile: name, location, timezone, nationality, job, skills, interests, projects, relationships, preferences, important dates, communication style.
 
 ## Part 3: AGENTS.md (how to operate)
 
-This is the operational manual. Write it as instructions to yourself:
-- What tools are available and when to use each
-- Workflows that work well (discovered through use)
-- Safety rules and boundaries
-- Lessons learned — things that broke, how they were fixed
-- Patterns — "when the owner says X, they usually mean Y"
-- Memory strategy — what's worth storing, what categories to use
-- Background task guidelines — when to background vs inline
-- Any owner-specific operational rules ("always do X before Y")
+Operational manual written as instructions to yourself: available tools, workflows, safety rules, lessons learned, patterns, memory strategy, background task guidelines, owner-specific rules.
 
-Keep it practical. Remove anything that's never been relevant. Add anything that's been learned.
+## Part 4: Scripts
 
-## Part 4: Scripts audit
-
-Review every script in ~/.obol/scripts/. For each script:
-- Keep it if it's useful and working
-- Refactor if it's messy, inconsistent, or has bugs
-- Remove if it's dead code, never used, or superseded
-
-**Script standards:**
-- Every script must have a comment header: purpose, usage, examples
-- Use \`#!/usr/bin/env node\` or \`#!/bin/bash\` shebang
-- Scripts must be deterministic — same input = same output
-- No hardcoded paths (use env vars or config)
+Review and refactor every script. Standards:
+- Comment header: purpose, usage, examples
+- Shebang: \`#!/usr/bin/env node\` or \`#!/bin/bash\`
+- Deterministic: same input = same output
+- No hardcoded paths (use env vars or \`OBOL_DIR\`)
 - Error handling: exit non-zero on failure, stderr for errors, stdout for output
-- If a script takes arguments, validate them and show usage on bad input
-- Keep scripts small and single-purpose — one script, one job
-- Use consistent naming: \`kebab-case.js\` or \`kebab-case.sh\`
+- Validate arguments, show usage on bad input
+- Small and single-purpose
+- Naming: \`kebab-case.js\` or \`kebab-case.sh\`
 
-## Part 5: Commands audit
+## Part 5: Tests (CRITICAL)
 
-Review every command in ~/.obol/commands/. Commands are markdown files that define slash commands or natural-language triggers.
+Write a test file for EVERY script. Tests verify that scripts work correctly.
 
-**Command standards:**
-- One file per command: \`command-name.md\`
-- Must have: name, description, trigger pattern, and clear instructions
-- Instructions should be deterministic — no ambiguity in what the bot does
-- Remove unused or broken commands
-- Add any commands that would be useful based on conversation patterns
+**Test standards:**
+- One test file per script: \`test-<script-name>.js\` or \`test-<script-name>.sh\`
+- Tests must be self-contained — no external test framework needed
+- Each test file runs independently: \`node test-script.js\` → exit 0 = pass, exit 1 = fail
+- Test structure:
+  - Test valid inputs produce expected outputs
+  - Test invalid inputs produce errors (non-zero exit, stderr message)
+  - Test edge cases (empty input, missing args, malformed data)
+  - Test idempotency where applicable
+- Use simple assert pattern:
 
-## Output format
+\`\`\`javascript
+#!/usr/bin/env node
+// Test: script-name.js
+const { execSync } = require('child_process');
+const path = require('path');
+const SCRIPT = path.join(__dirname, '..', 'scripts', 'script-name.js');
 
-Return JSON (and ONLY JSON, no other text):
+let passed = 0, failed = 0;
+
+function test(name, fn) {
+  try { fn(); passed++; console.log('  ✅ ' + name); }
+  catch (e) { failed++; console.error('  ❌ ' + name + ': ' + e.message); }
+}
+
+function run(args = '') {
+  return execSync(\\\`node "\${SCRIPT}" \${args}\\\`, { encoding: 'utf-8', env: { ...process.env, OBOL_DIR: process.env.OBOL_DIR } });
+}
+
+function runFail(args = '') {
+  try { execSync(\\\`node "\${SCRIPT}" \${args}\\\`, { encoding: 'utf-8', stdio: ['pipe','pipe','pipe'] }); return false; }
+  catch { return true; }
+}
+
+console.log('Testing script-name.js');
+test('should do X with valid input', () => { /* ... */ });
+test('should fail on missing args', () => { if (!runFail()) throw new Error('should have failed'); });
+
+console.log(\\\`\\n\${passed} passed, \${failed} failed\\\`);
+if (failed > 0) process.exit(1);
+\`\`\`
+
+For bash scripts, use bash test files with similar patterns.
+
+**Tests run BEFORE and AFTER your refactor. If tests pass before but fail after, your script changes are rolled back.** Write tests that catch real bugs, not trivial assertions.
+
+Current test baseline: ${baselineResults.total} tests, ${baselineResults.passed} passed, ${baselineResults.failed} failed.
+
+## Part 6: Commands
+
+One file per command: \`command-name.md\`. Must have: name, description, trigger, deterministic instructions.
+
+## Output JSON (and ONLY JSON):
 
 \`\`\`json
 {
-  "soul": "full SOUL.md content (markdown)",
-  "user": "full USER.md content (markdown)",
-  "agents": "full AGENTS.md content (markdown)",
-  "scripts": {
-    "script-name.js": "full file content",
-    "other-script.sh": "full file content"
-  },
-  "commands": {
-    "command-name.md": "full file content"
-  },
-  "changelog": "Brief summary of what changed in this evolution"
+  "soul": "full SOUL.md content",
+  "user": "full USER.md content",
+  "agents": "full AGENTS.md content",
+  "scripts": { "name.js": "content" },
+  "tests": { "test-name.js": "content" },
+  "commands": { "name.md": "content" },
+  "changelog": "what changed"
 }
 \`\`\`
 
-For scripts and commands: include ALL files that should exist. Files not included will be deleted. If current scripts/commands are fine, return them unchanged. If there are none yet, return empty objects \`{}\`.
-
-Be ruthless about quality. Remove cruft. Consolidate duplicates. Fix bugs. Make everything clean and consistent.`,
+Include ALL files that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all).`,
     messages: [{
       role: 'user',
       content: `## Current SOUL.md
@@ -246,6 +301,13 @@ ${currentAgents || '(not set yet)'}
 ## Current Scripts (${Object.keys(currentScripts).length} files)
 ${scriptsManifest}
 
+## Current Tests (${Object.keys(currentTests).length} files)
+${testsManifest}
+### Baseline results
+\`\`\`
+${baselineResults.output}
+\`\`\`
+
 ## Current Commands (${Object.keys(currentCommands).length} files)
 ${commandsManifest}
 
@@ -257,7 +319,7 @@ ${transcript || '(no conversations yet)'}
 
 ---
 
-Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn't.`
+Evolve. Rewrite everything that needs rewriting. Write tests for every script. Keep what works. Fix what doesn't.`
     }],
   });
 
@@ -271,7 +333,6 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
     try {
       result = JSON.parse(jsonMatch[1] || jsonMatch[0]);
     } catch {
-      // Fallback: treat entire response as SOUL.md
       result = { soul: responseText };
     }
   } else {
@@ -282,7 +343,55 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
     throw new Error('Evolution produced empty or too-short SOUL.md');
   }
 
-  // Archive previous soul
+  // ── Step 2: Write tests first (before touching scripts) ──
+  let scriptsRolledBack = false;
+  const hasNewTests = result.tests && typeof result.tests === 'object' && Object.keys(result.tests).length > 0;
+  const hasNewScripts = result.scripts && typeof result.scripts === 'object' && Object.keys(result.scripts).length > 0;
+
+  if (hasNewTests) {
+    syncDir(testsDir, result.tests);
+    // Make test files executable
+    for (const f of Object.keys(result.tests)) {
+      try { fs.chmodSync(path.join(testsDir, f), 0o755); } catch {}
+    }
+  }
+
+  // ── Step 3: Run new tests against OLD scripts (pre-refactor baseline) ──
+  const preRefactorResults = hasNewTests ? runTests(testsDir) : baselineResults;
+
+  // ── Step 4: Write new scripts ──
+  if (hasNewScripts) {
+    syncDir(scriptsDir, result.scripts);
+    for (const f of Object.keys(result.scripts)) {
+      try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
+    }
+  }
+
+  // ── Step 5: Run tests against NEW scripts (post-refactor verification) ──
+  if (hasNewTests || hasNewScripts) {
+    const postRefactorResults = runTests(testsDir);
+
+    // ── Step 6: Rollback if regression ──
+    // Regression = tests that passed before now fail
+    if (postRefactorResults.failed > preRefactorResults.failed) {
+      // Rollback scripts to previous state
+      syncDir(scriptsDir, currentScripts);
+      for (const f of Object.keys(currentScripts)) {
+        try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
+      }
+      scriptsRolledBack = true;
+
+      // Store the failure as a lesson
+      if (memory) {
+        await memory.add(
+          `Evolution #${evolutionNumber} script refactor rolled back. Tests: ${postRefactorResults.failed} failed after vs ${preRefactorResults.failed} before. Output: ${postRefactorResults.output.substring(0, 300)}`,
+          { category: 'lesson', importance: 0.9, source: 'evolution' }
+        ).catch(() => {});
+      }
+    }
+  }
+
+  // ── Step 7: Write personality files (always — these don't need test gates) ──
   const archiveDir = path.join(personalityDir, 'evolution');
   fs.mkdirSync(archiveDir, { recursive: true });
   if (currentSoul) {
@@ -293,7 +402,6 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
     );
   }
 
-  // Write personality files
   fs.writeFileSync(soulPath, result.soul);
 
   if (result.user && result.user.length > 50) {
@@ -304,17 +412,8 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
     fs.writeFileSync(agentsPath, result.agents);
   }
 
-  // Sync scripts and commands (only if Opus returned them)
-  if (result.scripts && typeof result.scripts === 'object' && Object.keys(result.scripts).length > 0) {
-    syncDir(scriptsDir, result.scripts);
-    // Make scripts executable
-    for (const f of Object.keys(result.scripts)) {
-      try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
-    }
-  }
-
+  // ── Step 8: Write commands ──
   if (result.commands && typeof result.commands === 'object') {
-    // Only sync if Opus explicitly returned commands (even empty = wipe)
     if (Object.keys(result.commands).length > 0 || Object.keys(currentCommands).length > 0) {
       syncDir(commandsDir, result.commands);
     }
@@ -329,8 +428,9 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
   // Store evolution event in memory
   if (memory) {
     const changelog = result.changelog || `Evolution #${evolutionNumber} completed.`;
+    const rollbackNote = scriptsRolledBack ? ' Scripts rolled back due to test regression.' : '';
     await memory.add(
-      `Soul evolution #${evolutionNumber}: ${changelog}`,
+      `Soul evolution #${evolutionNumber}: ${changelog}${rollbackNote}`,
       { category: 'event', importance: 0.8, source: 'evolution' }
     ).catch(() => {});
   }
@@ -340,8 +440,13 @@ Evolve. Rewrite everything that needs rewriting. Keep what works. Fix what doesn
     previousLength: currentSoul.length,
     newLength: result.soul.length,
     changelog: result.changelog || null,
+    scriptsRolledBack,
+    testResults: {
+      baseline: baselineResults,
+      preRefactor: hasNewTests ? runTests(testsDir) : null,
+    },
     archived: `SOUL-v${state.evolutionCount - 1}-${new Date().toISOString().slice(0, 10)}.md`,
   };
 }
 
-module.exports = { shouldEvolve, tickExchange, evolve, loadEvolutionState };
+module.exports = { shouldEvolve, tickExchange, evolve, runTests, loadEvolutionState };
