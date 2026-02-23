@@ -1,7 +1,7 @@
 {
-  "name": "obol",
+  "name": "obol-ai",
   "version": "0.1.0",
-  "description": "Your AI, your rules. Lightweight AI assistant — Telegram + Anthropic + Supabase.",
+  "description": "Self-evolving AI assistant that learns, remembers, and acts on its own. Persistent vector memory, self-rewriting personality, proactive heartbeats.",
   "main": "src/index.js",
   "bin": {
     "obol": "./bin/obol.js"

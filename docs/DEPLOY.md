@@ -44,7 +44,7 @@ npm -v    # 10.x.x
 ## 4. Install OBOL
 
 ```bash
-npm install -g obol
+npm install -g obol-ai
 ```
 
 ## 5. Prepare Your Accounts
@@ -215,7 +215,7 @@ OBOL automatically backs up to GitHub daily at 3 AM (personality, scripts, comma
 To restore on a new droplet:
 
 ```bash
-npm install -g obol
+npm install -g obol-ai
 obol init --restore
 # Paste GitHub token → it clones your brain
 # Re-enter Telegram token + Anthropic key

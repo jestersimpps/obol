@@ -37,7 +37,7 @@ Named after the AI in [The Last Instruction](https://latentpress.com) — a mach
 ## Quick Start
 
 ```bash
-npm install -g obol
+npm install -g obol-ai
 obol init
 obol start
 ```
@@ -314,7 +314,7 @@ Memory lives in Supabase (survives independently).
 Restore on a new VPS:
 
 ```bash
-npm install -g obol
+npm install -g obol-ai
 obol init --restore    # Clones brain from GitHub
 obol start -d
 ```
