@@ -26,12 +26,27 @@ function createClaude(anthropicConfig, { personality, memory }) {
 
     // Auto-search memory for context before every message
     let memoryContext = '';
-    if (memory) {
+    if (memory && userMessage.length >= 15) {
       try {
-        const results = await memory.search(userMessage, { limit: 5, threshold: 0.4 });
-        if (results.length > 0) {
+        // Always include today's memories for recency
+        const todayMemories = await memory.byDate('today', { limit: 3 });
+
+        // Semantic search with strict threshold
+        const semanticMemories = await memory.search(userMessage, { limit: 3, threshold: 0.5 });
+
+        // Dedupe by ID and merge
+        const seen = new Set();
+        const combined = [];
+        for (const m of [...todayMemories, ...semanticMemories]) {
+          if (!seen.has(m.id)) {
+            seen.add(m.id);
+            combined.push(m);
+          }
+        }
+
+        if (combined.length > 0) {
           memoryContext = '\n\n[Relevant memories]\n' +
-            results.map(m => `- [${m.category}] ${m.content}`).join('\n');
+            combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
         }
       } catch {}
     }
