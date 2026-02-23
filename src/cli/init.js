@@ -7,12 +7,120 @@ const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE } = require('../config
 
 const OBOL_DIR = getConfigDir();
 
+async function validateCredential(name, validateFn) {
+  process.stdout.write(`  Validating ${name}...`);
+  try {
+    const result = await validateFn();
+    console.log(` ✅ ${result}`);
+    return true;
+  } catch (e) {
+    console.log(` ❌ ${e.message}`);
+    const { proceed } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'proceed',
+      message: 'Continue anyway? (you can fix later with obol config)',
+      default: true,
+    }]);
+    return proceed;
+  }
+}
+
+async function validateAnthropic(apiKey) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'hi' }],
+    }),
+  });
+  if (res.status === 401) throw new Error('Invalid API key');
+  if (res.status === 403) throw new Error('Key lacks permissions');
+  if (res.status === 400) {
+    const body = await res.json();
+    if (body.error?.message?.includes('billing')) throw new Error('No credits — add funds at console.anthropic.com');
+  }
+  return 'Key valid';
+}
+
+async function validateTelegram(token) {
+  const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+  const data = await res.json();
+  if (!data.ok) throw new Error('Invalid bot token');
+  return `Bot: @${data.result.username}`;
+}
+
+async function detectTelegramUserId(token) {
+  const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
+  const data = await res.json();
+  if (!data.ok || !data.result?.length) return null;
+  const users = new Map();
+  for (const update of data.result) {
+    const from = update.message?.from;
+    if (from && !from.is_bot) {
+      users.set(from.id, from.first_name + (from.username ? ` (@${from.username})` : ''));
+    }
+  }
+  return users.size > 0 ? users : null;
+}
+
+async function validateSupabase(url, serviceKey) {
+  const res = await fetch(`${url}/rest/v1/`, {
+    headers: {
+      'apikey': serviceKey,
+      'Authorization': `Bearer ${serviceKey}`,
+    },
+  });
+  if (res.status === 401 || res.status === 403) throw new Error('Invalid service key');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return 'Connected';
+}
+
+async function validateVercel(token) {
+  const res = await fetch('https://api.vercel.com/v9/projects', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) throw new Error('Invalid token');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return 'Token valid';
+}
+
+function checkNodeVersion() {
+  const [major] = process.versions.node.split('.').map(Number);
+  if (major < 18) {
+    console.error(`  ❌ Node.js 18+ required (you have ${process.version})`);
+    process.exit(1);
+  }
+}
+
 async function init(opts = {}) {
+  checkNodeVersion();
   console.log('\n🪙 OBOL — Your AI, your rules.\n');
 
-  // Check for restore mode
   if (opts.restore) {
     return await restore();
+  }
+
+  if (opts.reset) {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const { confirm } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirm',
+        message: 'This will erase your current config. Continue?',
+        default: false,
+      }]);
+      if (!confirm) {
+        console.log('  Cancelled.\n');
+        return;
+      }
+      fs.unlinkSync(CONFIG_FILE);
+      console.log('  Config removed. Starting fresh...\n');
+    }
   }
 
   // Create directory structure
@@ -21,40 +129,61 @@ async function init(opts = {}) {
   const config = {};
 
   // Step 1: Anthropic
-  console.log('─── Anthropic ───');
+  console.log('─── Step 1/7: Anthropic (AI brain) ───\n');
+  console.log('  OBOL uses Claude as its brain. You need an Anthropic API key.\n');
+  console.log('  How to get it:');
+  console.log('    1. Go to https://console.anthropic.com');
+  console.log('    2. Sign up or log in');
+  console.log('    3. Go to Settings > API Keys > Create Key');
+  console.log('    4. Copy the key (starts with sk-ant-)');
+  console.log('    5. Make sure you have credits: Billing > Add funds ($5 min)\n');
   const { anthropicKey } = await inquirer.prompt([{
     type: 'password',
     name: 'anthropicKey',
-    message: 'Paste your Anthropic API key:',
+    message: 'Anthropic API key:',
     mask: '*',
     validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
   }]);
   config.anthropic = { apiKey: anthropicKey };
-  console.log('  ✅ Anthropic configured\n');
+  await validateCredential('Anthropic', () => validateAnthropic(anthropicKey));
+  console.log('');
 
   // Step 2: Telegram
-  console.log('─── Telegram ───');
-  console.log('  Create a bot via @BotFather on Telegram, then paste the token.\n');
+  console.log('─── Step 2/7: Telegram (chat interface) ───\n');
+  console.log('  You talk to OBOL through a Telegram bot. You need to create one.\n');
+  console.log('  How to get your bot token:');
+  console.log('    1. Open Telegram on your phone or desktop');
+  console.log('    2. Search for @BotFather and start a chat');
+  console.log('    3. Send /newbot');
+  console.log('    4. Pick a display name (e.g. "My OBOL")');
+  console.log('    5. Pick a username ending in "bot" (e.g. "my_obol_bot")');
+  console.log('    6. BotFather replies with a token like 7123456789:AAF...');
+  console.log('    7. Copy that token\n');
   const { telegramToken } = await inquirer.prompt([{
     type: 'password',
     name: 'telegramToken',
-    message: 'Paste BotFather token:',
+    message: 'Telegram bot token:',
     mask: '*',
-    validate: (v) => v.includes(':') ? true : 'Invalid token format',
+    validate: (v) => v.includes(':') ? true : 'Should look like 7123456789:AAF... (contains a colon)',
   }]);
   config.telegram = { token: telegramToken };
-  console.log('  ✅ Telegram configured\n');
+  await validateCredential('Telegram', () => validateTelegram(telegramToken));
+  console.log('');
 
   // Step 3: Supabase
-  console.log('─── Memory (Supabase) ───');
+  console.log('─── Step 3/7: Supabase (memory) ───\n');
+  console.log('  Supabase gives your bot persistent vector memory so it can');
+  console.log('  remember conversations, facts, and context across restarts.\n');
+  console.log('  Sign up free at: https://supabase.com');
+  console.log('  You can auto-create a project or use an existing one.\n');
   const { supabaseSetup } = await inquirer.prompt([{
     type: 'list',
     name: 'supabaseSetup',
     message: 'Supabase setup:',
     choices: [
-      { name: 'Create new project (requires access token)', value: 'create' },
-      { name: 'Use existing project (paste URL + key)', value: 'existing' },
-      { name: 'Skip (no long-term memory)', value: 'skip' },
+      { name: 'Create new project (auto-setup, needs access token)', value: 'create' },
+      { name: 'Use existing project (need project ID + service role key)', value: 'existing' },
+      { name: 'Skip (no long-term memory — bot forgets on restart)', value: 'skip' },
     ],
   }]);
 
@@ -67,29 +196,50 @@ async function init(opts = {}) {
     console.log('  ⚠️  No memory configured — bot will forget between restarts\n');
   }
 
+  if (config.supabase?.url && config.supabase?.serviceKey) {
+    await validateCredential('Supabase', () => validateSupabase(config.supabase.url, config.supabase.serviceKey));
+    console.log('');
+  }
+
   // Step 4: GitHub
-  console.log('─── GitHub (backup + repos) ───');
+  console.log('─── Step 4/7: GitHub (backup) ───\n');
+  console.log('  OBOL backs up its personality, scripts, and commands to a');
+  console.log('  private GitHub repo daily. This lets you restore on any server.\n');
+  console.log('  How to get a token:');
+  console.log('    1. Go to https://github.com/settings/tokens');
+  console.log('    2. Click "Generate new token (classic)"');
+  console.log('    3. Name it "obol"');
+  console.log('    4. Check the "repo" scope (full control of private repos)');
+  console.log('    5. Click "Generate token" and copy it\n');
   const { githubToken } = await inquirer.prompt([{
     type: 'password',
     name: 'githubToken',
-    message: 'GitHub personal access token (repo scope):',
+    message: 'GitHub personal access token:',
     mask: '*',
   }]);
   config.github = await setupGitHub(githubToken);
 
-  // Step 4b: Vercel
-  console.log('─── Vercel (deploy sites) ───');
+  // Step 5: Vercel
+  console.log('─── Step 5/7: Vercel (deploy sites) ───\n');
+  console.log('  OBOL can deploy websites and apps to Vercel for you.\n');
+  console.log('  How to get a token:');
+  console.log('    1. Go to https://vercel.com (sign up free if needed)');
+  console.log('    2. Go to https://vercel.com/account/tokens');
+  console.log('    3. Click "Create" and name it "obol"');
+  console.log('    4. Copy the token\n');
   const { vercelToken } = await inquirer.prompt([{
     type: 'password',
     name: 'vercelToken',
-    message: 'Vercel token (from vercel.com/account/tokens):',
+    message: 'Vercel token:',
     mask: '*',
   }]);
   config.vercel = { token: vercelToken };
-  console.log('  ✅ Vercel configured\n');
+  await validateCredential('Vercel', () => validateVercel(vercelToken));
+  console.log('');
 
-  // Step 5: Identity
-  console.log('─── Identity ───');
+  // Step 6: Identity
+  console.log('─── Step 6/7: Identity ───\n');
+  console.log('  Give your bot a name and tell it who you are.\n');
   const { ownerName, botName } = await inquirer.prompt([
     { type: 'input', name: 'ownerName', message: 'Your name:', validate: (v) => v.length > 0 },
     { type: 'input', name: 'botName', message: 'Bot name:', default: 'OBOL' },
@@ -97,14 +247,84 @@ async function init(opts = {}) {
   config.owner = { name: ownerName };
   config.bot = { name: botName };
 
-  // Step 6: Allowed Telegram users
-  const { allowedUsers } = await inquirer.prompt([{
-    type: 'input',
-    name: 'allowedUsers',
-    message: 'Your Telegram user ID (or comma-separated IDs):',
-    validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs',
-  }]);
-  config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
+  // Step 7: Allowed Telegram users
+  console.log('\n─── Step 7/7: Access control ───\n');
+  console.log('  Only specific Telegram users can talk to your bot.');
+  console.log('  You need your numeric Telegram ID (not your @username).\n');
+
+  let detectedUsers = null;
+  if (config.telegram?.token) {
+    detectedUsers = await detectTelegramUserId(config.telegram.token);
+  }
+
+  if (detectedUsers) {
+    console.log('  Found users who messaged this bot:');
+    for (const [id, name] of detectedUsers) {
+      console.log(`    ${id} — ${name}`);
+    }
+    console.log('');
+    const ids = [...detectedUsers.keys()].join(', ');
+    const { useDetected } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'useDetected',
+      message: `Use ${detectedUsers.size === 1 ? 'this user' : 'these users'}? (${ids})`,
+      default: true,
+    }]);
+    if (useDetected) {
+      config.telegram.allowedUsers = [...detectedUsers.keys()];
+    } else {
+      const { allowedUsers } = await inquirer.prompt([{
+        type: 'input',
+        name: 'allowedUsers',
+        message: 'Telegram user ID(s) (comma-separated):',
+        validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs',
+      }]);
+      config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
+    }
+  } else {
+    console.log('  Send any message to your bot on Telegram now, then press Enter.');
+    console.log('  Or if you already know your ID, type it below.\n');
+    console.log('  How to find your Telegram ID manually:');
+    console.log('    1. Search for @userinfobot in Telegram and start a chat');
+    console.log('    2. It replies with your numeric ID (e.g. 206639616)\n');
+    const { method } = await inquirer.prompt([{
+      type: 'list',
+      name: 'method',
+      message: 'How to get your Telegram ID:',
+      choices: [
+        { name: 'I sent a message to the bot — detect my ID', value: 'detect' },
+        { name: 'I\'ll enter my ID manually', value: 'manual' },
+      ],
+    }]);
+
+    if (method === 'detect') {
+      console.log('  Checking for messages...');
+      const users = await detectTelegramUserId(config.telegram.token);
+      if (users) {
+        for (const [id, name] of users) {
+          console.log(`  ✅ Found: ${id} — ${name}`);
+        }
+        config.telegram.allowedUsers = [...users.keys()];
+      } else {
+        console.log('  ❌ No messages found. Enter your ID manually.\n');
+        const { allowedUsers } = await inquirer.prompt([{
+          type: 'input',
+          name: 'allowedUsers',
+          message: 'Telegram user ID(s):',
+          validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)',
+        }]);
+        config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
+      }
+    } else {
+      const { allowedUsers } = await inquirer.prompt([{
+        type: 'input',
+        name: 'allowedUsers',
+        message: 'Telegram user ID(s) (comma-separated):',
+        validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)',
+      }]);
+      config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
+    }
+  }
 
   // Save config
   saveConfig(config);
@@ -126,14 +346,29 @@ async function init(opts = {}) {
     }
   }
 
-  console.log(`\n🪙 Done! Run: obol start\n`);
+  console.log(`
+🪙 Done! Setup complete.
+
+  Next steps:
+    obol start      Start the bot
+    obol start -d   Start as background daemon
+    obol config     Edit configuration later
+    obol status     Check bot status
+
+  Config: ${CONFIG_FILE}
+`);
 }
 
 async function setupSupabaseNew() {
+  console.log('\n  An access token lets OBOL create and manage a Supabase project for you.\n');
+  console.log('  How to get it:');
+  console.log('    1. Go to https://supabase.com/dashboard/account/tokens');
+  console.log('    2. Click "Generate new token"');
+  console.log('    3. Name it "obol" and copy the token\n');
   const { accessToken } = await inquirer.prompt([{
     type: 'password',
     name: 'accessToken',
-    message: 'Supabase access token (from supabase.com/dashboard/account/tokens):',
+    message: 'Supabase access token:',
     mask: '*',
   }]);
 
@@ -201,12 +436,35 @@ async function waitForProject(token, projectId, maxWait = 120000) {
 }
 
 async function setupSupabaseExisting() {
-  const answers = await inquirer.prompt([
-    { type: 'input', name: 'url', message: 'Supabase project URL:', validate: (v) => v.includes('supabase.co') ? true : 'Should be https://xxx.supabase.co' },
-    { type: 'password', name: 'serviceKey', message: 'Service role key:', mask: '*' },
-  ]);
+  console.log('\n  You need two things from your Supabase project:\n');
+  console.log('  1. Project ID (or full URL)');
+  console.log('     - Go to your project dashboard');
+  console.log('     - The ID is in the URL: supabase.com/dashboard/project/<THIS PART>');
+  console.log('     - Or use the full URL: https://xxx.supabase.co\n');
+  console.log('  2. Service role key');
+  console.log('     - Go to: Project Settings > Data API (or API)');
+  console.log('     - Under "Project API keys", find the "service_role" key');
+  console.log('     - It says "This key has the ability to bypass Row Level Security"');
+  console.log('     - Click to reveal and copy it\n');
+  const { projectRef } = await inquirer.prompt([{
+    type: 'input',
+    name: 'projectRef',
+    message: 'Supabase project URL or project ID:',
+    validate: (v) => (v.includes('supabase.co') || /^[a-z]{20}$/.test(v.trim())) ? true : 'Enter https://xxx.supabase.co or a project ID',
+  }]);
+
+  const ref = projectRef.trim();
+  const url = ref.includes('supabase.co') ? ref.replace(/\/+$/, '') : `https://${ref}.supabase.co`;
+
+  const { serviceKey } = await inquirer.prompt([{
+    type: 'password',
+    name: 'serviceKey',
+    message: 'Service role key:',
+    mask: '*',
+  }]);
+
   console.log('  ✅ Supabase configured\n');
-  return answers;
+  return { url, serviceKey };
 }
 
 async function setupGitHub(githubToken) {

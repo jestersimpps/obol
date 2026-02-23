@@ -4,7 +4,7 @@
   "description": "Self-evolving AI assistant that learns, remembers, and acts on its own. Persistent vector memory, self-rewriting personality, proactive heartbeats.",
   "main": "src/index.js",
   "bin": {
-    "obol": "./bin/obol.js"
+    "obol": "bin/obol.js"
   },
   "scripts": {
     "start": "node src/index.js",

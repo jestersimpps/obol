@@ -14,9 +14,18 @@ program
   .command('init')
   .description('Set up your OBOL instance')
   .option('--restore', 'Restore from GitHub backup')
+  .option('--reset', 'Erase config and re-run setup')
   .action(async (opts) => {
     const { init } = require('../src/cli/init');
     await init(opts);
+  });
+
+program
+  .command('config')
+  .description('View and edit configuration')
+  .action(async () => {
+    const { config } = require('../src/cli/config');
+    await config();
   });
 
 program

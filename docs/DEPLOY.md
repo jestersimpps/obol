@@ -70,10 +70,17 @@ Before running `obol init`, have these ready:
 2. Send `/start`
 3. It replies with your numeric ID (e.g. `206639616`)
 
-### Supabase Access Token
+### Supabase (two options)
+
+**Option A: Auto-create project** — you need an access token:
 1. Go to [supabase.com](https://supabase.com) → sign up (free)
 2. Go to [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
 3. **Generate new token** → name it "obol" → copy it
+
+**Option B: Use existing project** — you need the project ID + service role key:
+1. Go to your project's **Settings > API** page: `supabase.com/dashboard/project/<project-id>/settings/api`
+2. Copy the **Project ID** (or full URL like `https://xxx.supabase.co`)
+3. Copy the **service_role key** (under Project API keys — the one that bypasses RLS)
 
 ### Vercel Token
 1. Go to [vercel.com](https://vercel.com) → sign up (free)
@@ -106,10 +113,10 @@ The wizard walks you through everything:
   ✅ Telegram configured
 
 ─── Memory (Supabase) ───
-  Supabase setup: Create new project
-  Supabase access token: ****
-  Creating project... ✅
-  Waiting for project to initialize (~60s)... ✅
+  Supabase setup: Use existing project
+  Supabase project URL or project ID: abcdefghijklmnopqrst
+  Service role key: ****
+  ✅ Supabase configured
   Running migrations... ✅
 
 ─── GitHub (backup) ───

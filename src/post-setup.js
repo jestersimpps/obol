@@ -389,6 +389,12 @@ APT::Periodic::AutocleanInterval "7";
 async function runPostSetup(config, reportFn) {
   if (isPostSetupDone()) return;
 
+  if (process.platform !== 'linux') {
+    reportFn?.(`⚠️  Post-setup tasks are designed for Linux VPS servers. Skipping on ${process.platform}.`);
+    markPostSetupDone();
+    return [];
+  }
+
   reportFn?.('🪙 Running post-setup tasks...\n');
 
   const results = [];

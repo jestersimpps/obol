@@ -3,6 +3,12 @@ const { execSync } = require('child_process');
 const path = require('path');
 
 async function start(opts = {}) {
+  const [major] = process.versions.node.split('.').map(Number);
+  if (major < 18) {
+    console.error(`  ❌ Node.js 18+ required (you have ${process.version})`);
+    process.exit(1);
+  }
+
   const config = loadConfig();
   if (!config) {
     console.error('🪙 Not configured. Run: obol init');
