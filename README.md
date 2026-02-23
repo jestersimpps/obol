@@ -268,6 +268,7 @@ After `obol init`, config lives in `~/.obol/config.json`:
 /tasks   — Running background tasks
 /status  — Uptime and memory stats
 /backup  — Trigger GitHub backup
+/clean   — Audit workspace, remove rogue files, fix misplaced items
 ```
 
 Everything else is natural conversation.

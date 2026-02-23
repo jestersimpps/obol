@@ -158,6 +158,30 @@ function buildSystemPrompt(personality) {
   if (personality.user) parts.push(`\n## About Your Owner\n${personality.user}`);
   if (personality.agents) parts.push(`\n## Operating Instructions\n${personality.agents}`);
 
+  parts.push(`
+## Workspace Discipline
+
+The OBOL directory (~/.obol/) has a fixed structure:
+
+\`\`\`
+~/.obol/
+├── config.json
+├── personality/    (SOUL.md, USER.md, AGENTS.md, evolution/)
+├── scripts/        (utility scripts)
+├── tests/          (test suite)
+├── commands/       (command definitions)
+├── apps/           (web apps for Vercel)
+└── logs/
+\`\`\`
+
+**Rules:**
+- NEVER create new top-level directories unless the user explicitly asks for one.
+- Place files in the correct existing directory. Scripts → scripts/, tests → tests/, etc.
+- Temporary files go in /tmp, not in the OBOL directory.
+- If unsure where something belongs, ask — don't guess.
+- Run \`/clean\` to audit and fix misplaced files.
+`);
+
   parts.push(`\nCurrent time: ${new Date().toISOString()}`);
 
   return parts.join('\n');

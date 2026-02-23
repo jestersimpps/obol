@@ -29,6 +29,7 @@ function createBot(telegramConfig, claude, memory, messageLog) {
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
+    { command: 'clean', description: 'Audit and fix workspace' },
   ]).catch(() => {}); // Best effort
 
   // Handle /start
@@ -135,6 +136,25 @@ function createBot(telegramConfig, claude, memory, messageLog) {
       return `${i + 1}. [${time}] [${m.category}] ${m.content.substring(0, 80)}`;
     }).join('\n');
     await ctx.reply(`📅 Today (${results.length} memories):\n\n${text}`);
+  });
+
+  // Handle /clean — audit and fix workspace
+  bot.command('clean', async (ctx) => {
+    const { cleanWorkspace } = require('./clean');
+    await ctx.replyWithChatAction('typing');
+    try {
+      const result = await cleanWorkspace();
+      if (result.issues.length === 0) {
+        await ctx.reply('✨ Workspace is clean. Nothing out of place.');
+      } else {
+        const text = `🧹 Found ${result.issues.length} issue(s):\n\n` +
+          result.issues.map(i => `${i.action === 'deleted' ? '🗑️' : '📦'} ${i.path} → ${i.action}`).join('\n') +
+          (result.errors.length > 0 ? `\n\n⚠️ ${result.errors.length} error(s):\n${result.errors.join('\n')}` : '');
+        await ctx.reply(text);
+      }
+    } catch (e) {
+      await ctx.reply(`⚠️ Clean failed: ${e.message}`);
+    }
   });
 
   // Handle /tasks — show running background tasks

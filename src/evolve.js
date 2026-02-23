@@ -338,6 +338,10 @@ Analyze the recent conversation history carefully. Look for:
 
 List every new tool you build in the \`upgrades\` field so the owner can be told about them.
 
+## WORKSPACE DISCIPLINE (CRITICAL)
+
+The OBOL directory has a FIXED structure: personality/, scripts/, tests/, commands/, apps/, logs/. Do NOT create new top-level directories. Everything must fit in the existing structure. If something doesn't fit, it doesn't belong.
+
 ## Output JSON (and ONLY JSON):
 
 \`\`\`json
