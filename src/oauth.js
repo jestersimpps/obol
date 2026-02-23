@@ -82,10 +82,11 @@ async function refreshTokens(refreshToken) {
   }
 
   const data = await res.json();
+  console.log(`[oauth] Refresh response: expires_in=${data.expires_in}, has_refresh=${!!data.refresh_token}`);
   return {
     accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expires: Date.now() + data.expires_in * 1000 - REFRESH_BUFFER_MS,
+    refreshToken: data.refresh_token || null,
+    expires: Date.now() + (data.expires_in || 3600) * 1000 - REFRESH_BUFFER_MS,
   };
 }
 

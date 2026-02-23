@@ -73,8 +73,9 @@ async function ensureFreshToken(anthropicConfig) {
   _refreshPromise = (async () => {
     try {
       const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
+      console.log('[oauth] Refresh succeeded, new refresh token:', !!tokens.refreshToken);
       anthropicConfig.oauth.accessToken = tokens.accessToken;
-      anthropicConfig.oauth.refreshToken = tokens.refreshToken;
+      if (tokens.refreshToken) anthropicConfig.oauth.refreshToken = tokens.refreshToken;
       anthropicConfig.oauth.expires = tokens.expires;
       delete anthropicConfig._oauthFailed;
 
