@@ -55,11 +55,13 @@ class MessageLog {
       // Consolidate every 5 exchanges
       if (count >= 5) {
         this.exchangeCount.set(chatId, 0);
-        this.consolidate(chatId).catch(() => {});
+        this.consolidate(chatId).catch(e => console.error('[consolidate] Failed:', e.message));
       }
 
       const { tickExchange } = require('./evolve');
-      tickExchange(this.userDir).catch(() => {});
+      tickExchange(this.userDir).then(result => {
+        if (result?.ready) this._evolutionReady = true;
+      }).catch(() => {});
     }
   }
 
@@ -96,7 +98,7 @@ class MessageLog {
 
       // Ask Haiku to extract memories worth storing long-term
       const response = await this.client.messages.create({
-        model: 'claude-haiku-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
         system: `Analyze this conversation and extract important facts worth remembering long-term.
 Before storing, check if each fact is genuinely new. Skip if it's essentially a repeat of something already known.

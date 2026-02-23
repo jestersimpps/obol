@@ -21,6 +21,15 @@ const BLOCKED_EXEC_PATTERNS = [
   /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
 ];
 
+const SENSITIVE_READ_PATHS = [
+  /\/etc\/(passwd|shadow|sudoers)/,
+  /\/etc\/ssh\//,
+  /\.(env|pem|key|crt|p12|pfx)(\s|$)/,
+  /~\/\.ssh\//,
+  /~\/\.gnupg\//,
+  /\/root\//,
+];
+
 function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
   if (useOAuth && anthropicConfig.oauth) {
     return new Anthropic({
@@ -58,7 +67,9 @@ async function ensureFreshToken(anthropicConfig) {
       console.warn('[oauth] Token refresh failed, falling back to API key:', e.message);
       anthropicConfig._oauthFailed = true;
     } else {
-      throw e;
+      const err = new Error(`OAuth token expired and refresh failed. Re-authenticate with: obol config → Anthropic → OAuth. (${e.message})`);
+      err.isOAuthExpiry = true;
+      throw err;
     }
   }
 }
@@ -470,6 +481,13 @@ async function executeToolCall(toolUse, memory, context = {}) {
             return `Blocked: "${input.command}" matches a dangerous pattern. Ask the user for confirmation first.`;
           }
         }
+        if (userDir) {
+          for (const pattern of SENSITIVE_READ_PATHS) {
+            if (pattern.test(input.command)) {
+              return `Blocked: command accesses a sensitive path. Ask the user for confirmation first.`;
+            }
+          }
+        }
         const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;
         const output = execSync(input.command, {
           encoding: 'utf-8',
@@ -477,6 +495,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
           maxBuffer: 1024 * 1024,
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: userDir || undefined,
+          env: userDir ? { ...process.env, HOME: userDir } : process.env,
         });
         return output.substring(0, 10000);
       }

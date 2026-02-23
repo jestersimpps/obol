@@ -5,6 +5,9 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
 const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
+const {
+  validateAnthropic, validateTelegram, validateSupabase, validateVercel,
+} = require('../validators');
 
 const OBOL_DIR = getConfigDir();
 
@@ -26,39 +29,6 @@ async function validateCredential(name, validateFn) {
   }
 }
 
-async function validateAnthropic(apiKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  });
-  if (res.status === 401) throw new Error('Invalid API key');
-  if (res.status === 403) throw new Error('Key lacks permissions');
-  if (res.status === 400) {
-    const body = await res.json();
-    if (body.error?.message?.includes('billing')) throw new Error('No credits — add funds at console.anthropic.com');
-  }
-  if (res.status === 429) throw new Error('Rate limited — key is valid but try again later');
-  if (res.status >= 500) throw new Error(`Anthropic server error (${res.status}) — key may be valid, try again`);
-  if (!res.ok && res.status !== 200) throw new Error(`Unexpected status: ${res.status}`);
-  return 'Key valid';
-}
-
-async function validateTelegram(token) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-  const data = await res.json();
-  if (!data.ok) throw new Error('Invalid bot token');
-  return `Bot: @${data.result.username}`;
-}
-
 async function detectTelegramUserId(token) {
   const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
   const data = await res.json();
@@ -73,33 +43,29 @@ async function detectTelegramUserId(token) {
   return users.size > 0 ? users : null;
 }
 
-async function validateSupabase(url, serviceKey) {
-  const res = await fetch(`${url}/rest/v1/`, {
-    headers: {
-      'apikey': serviceKey,
-      'Authorization': `Bearer ${serviceKey}`,
-    },
-  });
-  if (res.status === 401 || res.status === 403) throw new Error('Invalid service key');
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return 'Connected';
-}
-
-async function validateVercel(token) {
-  const res = await fetch('https://api.vercel.com/v9/projects', {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  if (res.status === 401 || res.status === 403) throw new Error('Invalid token');
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return 'Token valid';
-}
-
 function checkNodeVersion() {
   const [major] = process.versions.node.split('.').map(Number);
   if (major < 18) {
     console.error(`  ❌ Node.js 18+ required (you have ${process.version})`);
     process.exit(1);
   }
+}
+
+async function promptApiKey() {
+  console.log('\n  How to get it:');
+  console.log('    1. Go to https://console.anthropic.com');
+  console.log('    2. Sign up or log in');
+  console.log('    3. Go to Settings > API Keys > Create Key');
+  console.log('    4. Copy the key (starts with sk-ant-)');
+  console.log('    5. Make sure you have credits: Billing > Add funds ($5 min)\n');
+  const { anthropicKey } = await inquirer.prompt([{
+    type: 'password',
+    name: 'anthropicKey',
+    message: 'Anthropic API key:',
+    mask: '*',
+    validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
+  }]);
+  return anthropicKey;
 }
 
 async function init(opts = {}) {
@@ -167,22 +133,35 @@ async function init(opts = {}) {
 
   if (authMethod === 'oauth') {
     config.anthropic = await setupAnthropicOAuth();
-  } else {
-    console.log('\n  How to get it:');
-    console.log('    1. Go to https://console.anthropic.com');
-    console.log('    2. Sign up or log in');
-    console.log('    3. Go to Settings > API Keys > Create Key');
-    console.log('    4. Copy the key (starts with sk-ant-)');
-    console.log('    5. Make sure you have credits: Billing > Add funds ($5 min)\n');
-    const { anthropicKey } = await inquirer.prompt([{
-      type: 'password',
-      name: 'anthropicKey',
-      message: 'Anthropic API key:',
-      mask: '*',
-      validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
+
+    const { addApiKey } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'addApiKey',
+      message: 'Also add an API key as fallback? (used if OAuth token refresh fails)',
+      default: false,
     }]);
-    config.anthropic = { apiKey: anthropicKey };
-    await validateCredential('Anthropic', () => validateAnthropic(anthropicKey));
+    if (addApiKey) {
+      const apiKey = await promptApiKey();
+      await validateCredential('Anthropic API key', () => validateAnthropic(apiKey));
+      config.anthropic.apiKey = apiKey;
+    }
+  } else {
+    const apiKey = await promptApiKey();
+    config.anthropic = { apiKey };
+    await validateCredential('Anthropic', () => validateAnthropic(apiKey));
+
+    const { addOAuth } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'addOAuth',
+      message: 'Also set up Claude Max OAuth? (uses your Pro/Max subscription)',
+      default: false,
+    }]);
+    if (addOAuth) {
+      const oauthResult = await setupAnthropicOAuth();
+      if (oauthResult.oauth) {
+        config.anthropic.oauth = oauthResult.oauth;
+      }
+    }
   }
   console.log('');
 
@@ -316,6 +295,19 @@ async function init(opts = {}) {
   config.telegram.allowedUsers = await collectAllowedUsers(config.telegram.token);
 
   if (config.telegram.allowedUsers.length >= 2) {
+    console.log('  Since you have multiple users, name each one:\n');
+    config.users = {};
+    for (const userId of config.telegram.allowedUsers) {
+      const { userName } = await inquirer.prompt([{
+        type: 'input',
+        name: 'userName',
+        message: `Name for user ${userId}:`,
+        default: config.owner.name,
+        validate: (v) => v.length > 0,
+      }]);
+      config.users[String(userId)] = { name: userName };
+    }
+
     const { bridgeEnabled } = await inquirer.prompt([{
       type: 'confirm',
       name: 'bridgeEnabled',
@@ -341,6 +333,8 @@ async function init(opts = {}) {
     try {
       const { migrate } = require('../db/migrate');
       await migrate(config.supabase);
+      const markerPath = path.join(OBOL_DIR, '.migrated');
+      fs.writeFileSync(markerPath, new Date().toISOString());
       console.log('  ✅ Database ready');
     } catch (e) {
       console.error(`  ❌ Migration failed: ${e.message}`);
@@ -592,7 +586,7 @@ async function waitForProject(token, projectId, maxWait = 120000) {
 }
 
 async function setupSupabaseExisting() {
-  console.log('\n  You need two things from your Supabase project:\n');
+  console.log('\n  You need three things from your Supabase project:\n');
   console.log('  1. Project ID (or full URL)');
   console.log('     - Go to your project dashboard');
   console.log('     - The ID is in the URL: supabase.com/dashboard/project/<THIS PART>');
@@ -602,11 +596,15 @@ async function setupSupabaseExisting() {
   console.log('     - Under "Project API keys", find the "service_role" key');
   console.log('     - It says "This key has the ability to bypass Row Level Security"');
   console.log('     - Click to reveal and copy it\n');
+  console.log('  3. Access token (needed to run database migrations)');
+  console.log('     - Go to: https://supabase.com/dashboard/account/tokens');
+  console.log('     - Click "Generate new token", name it "obol"');
+  console.log('     - Copy the token\n');
   const { projectRef } = await inquirer.prompt([{
     type: 'input',
     name: 'projectRef',
     message: 'Supabase project URL or project ID:',
-    validate: (v) => (v.includes('supabase.co') || /^[a-z0-9]{20}$/.test(v.trim())) ? true : 'Enter https://xxx.supabase.co or a project ID',
+    validate: (v) => (v.includes('supabase.co') || /^[a-z]{20,}$/.test(v.trim())) ? true : 'Enter https://xxx.supabase.co or a project ID (lowercase letters, 20+ chars)',
   }]);
 
   const ref = projectRef.trim();
@@ -619,8 +617,15 @@ async function setupSupabaseExisting() {
     mask: '*',
   }]);
 
+  const { accessToken } = await inquirer.prompt([{
+    type: 'password',
+    name: 'accessToken',
+    message: 'Supabase access token:',
+    mask: '*',
+  }]);
+
   console.log('  ✅ Supabase configured\n');
-  return { url, serviceKey };
+  return { url, serviceKey, accessToken };
 }
 
 async function setupGitHub(githubToken) {
@@ -710,11 +715,28 @@ async function restore() {
     console.error(`  ❌ Restore failed: ${e.message}`);
   }
 
-  // Still need credentials
   console.log('  Now set up credentials:\n');
-  const { anthropicKey } = await inquirer.prompt([{
-    type: 'password', name: 'anthropicKey', message: 'Anthropic API key:', mask: '*',
+  const { authMethod } = await inquirer.prompt([{
+    type: 'list',
+    name: 'authMethod',
+    message: 'Authentication method:',
+    choices: [
+      { name: 'API Key', value: 'apikey' },
+      { name: 'Claude Max OAuth', value: 'oauth' },
+      { name: 'Both (OAuth primary, API key fallback)', value: 'both' },
+    ],
   }]);
+
+  let anthropicConfig = {};
+  if (authMethod === 'oauth' || authMethod === 'both') {
+    const oauthResult = await setupAnthropicOAuth();
+    anthropicConfig = oauthResult;
+  }
+  if (authMethod === 'apikey' || authMethod === 'both') {
+    const apiKey = await promptApiKey();
+    anthropicConfig.apiKey = apiKey;
+  }
+
   const { telegramToken } = await inquirer.prompt([{
     type: 'password', name: 'telegramToken', message: 'Telegram bot token:', mask: '*',
   }]);
@@ -728,7 +750,7 @@ async function restore() {
   const userIds = allowedUsers.split(',').map(id => parseInt(id.trim()));
 
   const existingConfig = loadConfig() || {};
-  existingConfig.anthropic = { apiKey: anthropicKey };
+  existingConfig.anthropic = anthropicConfig;
   existingConfig.telegram = { ...existingConfig.telegram, token: telegramToken, allowedUsers: userIds };
   existingConfig.github = { token: githubToken, username: user.login, repo: repoName };
   saveConfig(existingConfig);
@@ -755,13 +777,19 @@ function ensureDirs() {
 }
 
 function createPersonalityFiles(config) {
-  const soul = `# SOUL.md — Who is ${config.bot.name}?
+  for (const userId of config.telegram.allowedUsers) {
+    const ownerName = config.users?.[String(userId)]?.name || config.owner.name;
+    const personalityDir = path.join(OBOL_DIR, 'users', String(userId), 'personality');
+    fs.mkdirSync(personalityDir, { recursive: true });
+
+    if (!fs.existsSync(path.join(personalityDir, 'SOUL.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), `# SOUL.md — Who is ${config.bot.name}?
 
 Write your bot's personality here. This shapes how it talks, thinks, and behaves.
 
 ## Basics
 - **Name:** ${config.bot.name}
-- **Created by:** ${config.owner.name}
+- **Created by:** ${ownerName}
 - **Vibe:** Helpful, direct, gets things done
 
 ## Personality
@@ -777,9 +805,20 @@ Write your bot's personality here. This shapes how it talks, thinks, and behaves
 
 ---
 *Edit this file anytime to reshape your bot's personality.*
-`;
+`);
+    }
+    if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'USER.md'), `# USER.md — About ${ownerName}
 
-  const agents = `# AGENTS.md — How ${config.bot.name} Works
+- **Name:** ${ownerName}
+- **Telegram ID:** ${userId}
+
+---
+*Add more context about yourself so your bot can be more helpful.*
+`);
+    }
+    if (!fs.existsSync(path.join(personalityDir, 'AGENTS.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'AGENTS.md'), `# AGENTS.md — How ${config.bot.name} Works
 
 ## Memory
 Vector memory via Supabase pgvector. Local embeddings (all-MiniLM-L6-v2).
@@ -797,28 +836,7 @@ Drop .md files in your user commands/ directory — they become slash commands.
 
 ---
 *Edit this file to change how your bot operates.*
-`;
-
-  for (const userId of config.telegram.allowedUsers) {
-    const personalityDir = path.join(OBOL_DIR, 'users', String(userId), 'personality');
-    fs.mkdirSync(personalityDir, { recursive: true });
-
-    if (!fs.existsSync(path.join(personalityDir, 'SOUL.md'))) {
-      fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), soul);
-    }
-    if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
-      const user = `# USER.md — About ${config.owner.name}
-
-- **Name:** ${config.owner.name}
-- **Telegram ID:** ${userId}
-
----
-*Add more context about yourself so your bot can be more helpful.*
-`;
-      fs.writeFileSync(path.join(personalityDir, 'USER.md'), user);
-    }
-    if (!fs.existsSync(path.join(personalityDir, 'AGENTS.md'))) {
-      fs.writeFileSync(path.join(personalityDir, 'AGENTS.md'), agents);
+`);
     }
   }
 

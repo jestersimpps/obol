@@ -73,7 +73,7 @@ async function migrate(supabaseConfig) {
 
     // Indexes
     `CREATE INDEX IF NOT EXISTS obol_memory_embedding_idx ON obol_memory
-      USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
+      USING hnsw (embedding vector_cosine_ops);`,
     `CREATE INDEX IF NOT EXISTS obol_memory_created_at_idx ON obol_memory (created_at);`,
     `CREATE INDEX IF NOT EXISTS obol_memory_category_idx ON obol_memory (category);`,
     `CREATE INDEX IF NOT EXISTS obol_messages_chat_id_idx ON obol_messages (chat_id, created_at DESC);`,
@@ -140,35 +140,33 @@ async function migrate(supabaseConfig) {
   fs.mkdirSync(path.dirname(sqlFile), { recursive: true });
   fs.writeFileSync(sqlFile, sqlStatements.join('\n\n'));
 
-  // Try executing via Supabase Management API
-  if (accessToken) {
-    const projectRef = url.replace('https://', '').replace('.supabase.co', '');
-
-    for (const sql of sqlStatements) {
-      try {
-        const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ query: sql }),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          if (sql.includes('ivfflat') && err.includes('not enough')) continue;
-          console.log(`  ⚠️  SQL warning: ${err.substring(0, 100)}`);
-        }
-      } catch (e) {
-        console.log(`  ⚠️  Migration step failed: ${e.message}`);
-      }
-    }
+  if (!accessToken) {
+    console.log(`\n  ⚠️  No access token — cannot run migrations automatically.`);
+    console.log(`  Run this SQL in your Supabase dashboard (SQL Editor):`);
+    console.log(`  File saved to: ${sqlFile}\n`);
     return;
   }
 
-  console.log(`\n  ⚠️  Could not run migrations automatically.`);
-  console.log(`  Run this SQL in your Supabase dashboard (SQL Editor):`);
-  console.log(`  File saved to: ${sqlFile}\n`);
+  const projectRef = url.replace('https://', '').replace('.supabase.co', '');
+
+  for (const sql of sqlStatements) {
+    try {
+      const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: sql }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        console.log(`  ⚠️  SQL warning: ${err.substring(0, 100)}`);
+      }
+    } catch (e) {
+      console.log(`  ⚠️  Migration step failed: ${e.message}`);
+    }
+  }
 }
 
 module.exports = { migrate };

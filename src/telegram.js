@@ -6,7 +6,7 @@ const {
 } = require('./first-run');
 const { loadConfig } = require('./config');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
-const { shouldEvolve, evolve } = require('./evolve');
+const { evolve, loadEvolutionState } = require('./evolve');
 const { getTenant } = require('./tenant');
 const media = require('./media');
 
@@ -46,6 +46,7 @@ function createBot(telegramConfig, config) {
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
     { command: 'clean', description: 'Audit and fix workspace' },
+    { command: 'evolution', description: 'Evolution progress' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
 
@@ -173,6 +174,25 @@ function createBot(telegramConfig, config) {
     }
   });
 
+  bot.command('evolution', async (ctx) => {
+    const tenant = await getTenant(ctx.from.id, config);
+    const state = loadEvolutionState(tenant.userDir);
+    const cfg = loadConfig();
+    const threshold = cfg?.evolution?.exchanges || 100;
+    const count = state.exchangesSinceLastEvolution || 0;
+    const pct = Math.min(100, Math.round((count / threshold) * 100));
+    const bar = '█'.repeat(Math.floor(pct / 5)) + '░'.repeat(20 - Math.floor(pct / 5));
+
+    let text = `🧬 Evolution Progress\n\n`;
+    text += `${bar} ${pct}%\n`;
+    text += `${count}/${threshold} exchanges\n`;
+    text += `Evolutions completed: ${state.evolutionCount || 0}\n`;
+    if (state.lastEvolution) {
+      text += `Last evolution: ${new Date(state.lastEvolution).toLocaleDateString()}`;
+    }
+    await ctx.reply(text);
+  });
+
   bot.command('tasks', async (ctx) => {
     const tenant = await getTenant(ctx.from.id, config);
     const running = tenant.bg.getStatus();
@@ -195,6 +215,7 @@ function createBot(telegramConfig, config) {
 /today — Today's memories
 /forget <id> — Delete a memory
 /tasks — Running background tasks
+/evolution — Evolution progress
 /status — Bot status and uptime
 /backup — Trigger GitHub backup
 /clean — Audit workspace
@@ -222,6 +243,9 @@ function createBot(telegramConfig, config) {
           rateLimits.set(userId, userLimit);
           await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
           return;
+        }
+        if (userLimit.spamCount === 1) {
+          await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
         }
         return;
       }
@@ -304,7 +328,8 @@ function createBot(telegramConfig, config) {
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 
-      if (tenant.messageLog && await shouldEvolve(tenant.userDir).catch(() => false)) {
+      if (tenant.messageLog?._evolutionReady) {
+        tenant.messageLog._evolutionReady = false;
         setImmediate(async () => {
           try {
             const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir);
@@ -366,7 +391,9 @@ function createBot(telegramConfig, config) {
     } catch (e) {
       stopTyping();
       console.error('Message handling error:', e.message);
-      if (e.status === 401 || e.message?.includes('401')) {
+      if (e.isOAuthExpiry) {
+        await ctx.reply('OAuth token expired. Run `obol config` → Anthropic → re-authenticate OAuth.').catch(() => {});
+      } else if (e.status === 401 || e.message?.includes('401')) {
         await ctx.reply('API key invalid or expired. Run `obol config` to update.').catch(() => {});
       } else if (e.status === 429 || e.message?.includes('rate')) {
         await ctx.reply('Rate limited. Wait a moment and try again.').catch(() => {});
@@ -376,10 +403,17 @@ function createBot(telegramConfig, config) {
     }
   });
 
+  const MAX_MEDIA_SIZE = 50 * 1024 * 1024; // 50MB
+
   async function handleMedia(ctx) {
     const userId = ctx.from.id;
     const fileInfo = media.getFileInfo(ctx);
     if (!fileInfo) return;
+
+    if (fileInfo.fileSize > MAX_MEDIA_SIZE) {
+      await ctx.reply(`File too large (${(fileInfo.fileSize / 1024 / 1024).toFixed(1)}MB). Max is 50MB.`).catch(() => {});
+      return;
+    }
 
     const stopTyping = startTyping(ctx);
 

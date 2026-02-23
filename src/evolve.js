@@ -20,9 +20,9 @@ const { OBOL_DIR } = require('./config');
 const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
 
 const MODELS = {
-  personality: 'claude-sonnet-4-20250514',
-  code: 'claude-sonnet-4-20250514',
-  codeFix: 'claude-sonnet-4-20250514',
+  personality: 'claude-sonnet-4-6',
+  code: 'claude-sonnet-4-6',
+  codeFix: 'claude-sonnet-4-6',
 };
 const MAX_FIX_ATTEMPTS = 1;
 
@@ -54,7 +54,10 @@ async function tickExchange(userDir) {
   const state = loadEvolutionState(userDir);
   state.exchangesSinceLastEvolution++;
   saveEvolutionState(state, userDir);
-  return state.exchangesSinceLastEvolution;
+  const { loadConfig } = require('./config');
+  const config = loadConfig();
+  const threshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
+  return { count: state.exchangesSinceLastEvolution, ready: state.exchangesSinceLastEvolution >= threshold };
 }
 
 /**

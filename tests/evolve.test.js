@@ -62,14 +62,16 @@ describe('evolve', () => {
 
   describe('tickExchange', () => {
     it('increments counter from zero', async () => {
-      const count = await tickExchange(tmpDir);
-      expect(count).toBe(1);
+      const result = await tickExchange(tmpDir);
+      expect(result.count).toBe(1);
+      expect(result.ready).toBe(false);
     });
 
     it('returns the new count', async () => {
       await tickExchange(tmpDir);
-      const count = await tickExchange(tmpDir);
-      expect(count).toBe(2);
+      const result = await tickExchange(tmpDir);
+      expect(result.count).toBe(2);
+      expect(result.ready).toBe(false);
     });
 
     it('persists state to disk', async () => {
