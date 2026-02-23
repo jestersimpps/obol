@@ -324,12 +324,33 @@ obol start -d
 | Service | Cost |
 |---------|------|
 | VPS (DigitalOcean) | $6/mo |
-| Anthropic API | ~$2-5/mo |
-| Supabase | Free |
+| Anthropic API | Pay-per-use (see below) |
+| Supabase | Free tier |
 | GitHub | Free |
-| Vercel | Free |
+| Vercel | Free tier |
 | Embeddings | Free (local) |
-| **Total** | **~$9/mo** |
+
+### Anthropic API costs
+
+The API is pay-per-use with no monthly plans. Your cost depends on how much you chat.
+
+| Model | Input | Output | Used for |
+|-------|-------|--------|----------|
+| Haiku 4.5 | $1/MTok | $5/MTok | Message routing (~$0.0001/msg) |
+| Sonnet 4.6 | $3/MTok | $15/MTok | Chat, evolution, code |
+| Opus 4.6 | $5/MTok | $25/MTok | Complex tasks (router picks this rarely) |
+
+**Realistic monthly estimates:**
+
+| Usage | Messages/mo | Estimated API cost |
+|-------|-------------|-------------------|
+| Light | ~300 | ~$1-3 |
+| Moderate | ~1,000 | ~$5-10 |
+| Heavy | ~3,000+ | ~$15-30+ |
+
+Evolution cycles (every 100 messages) cost ~$0.02-0.05 each with Sonnet. The Haiku router adds negligible cost.
+
+**Tip:** Deposit $5 to start (Tier 1, capped at $100/mo). You can set spend limits in the [Anthropic Console](https://console.anthropic.com/settings/limits). We recommend **Tier 2** ($40 deposit, $500/mo cap) for comfortable headroom — you won't hit it with normal personal use, but it gives enough rate limits to avoid 429 errors during evolution cycles.
 
 ## Requirements
 
