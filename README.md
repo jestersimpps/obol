@@ -252,6 +252,34 @@ When users store secrets via the `pass` encrypted store, each user gets their ow
 
 Each new user starts fresh. Their bot evolves independently from every other user's.
 
+### Bridge (couples / roommates / teams)
+
+When two users share the same OBOL instance, their agents can talk to each other.
+
+```
+User A: "what does Jo want for dinner tonight?"
+Agent A: → bridge_ask → Agent B (one-shot, no tools, no history)
+Agent B: "Jo mentioned craving Thai food earlier today"
+Agent A: "Jo's been wanting Thai — maybe suggest pad see ew?"
+```
+
+```
+User A: "remind Jo I'll be home late"
+Agent A: → bridge_tell → stores in Agent B's memory + Telegram notification
+Jo gets: "🪙 Message from your partner's agent: I'll be home late"
+```
+
+Two tools:
+
+| Tool | Direction | What happens |
+|------|-----------|--------------|
+| `bridge_ask` | A → B → A | Query the partner's agent. One-shot Sonnet call with partner's personality + memories. No tools, no history, no recursion risk. |
+| `bridge_tell` | A → B | Send a message to the partner. Stored in their memory (importance 0.6) + Telegram notification. Their agent picks it up as context in future conversations. |
+
+The partner always gets notified when their agent is contacted. Privacy rules apply — the responding agent gives summaries, never raw data or secrets.
+
+Enable during `obol init` (auto-prompted when 2+ users are added) or toggle later with `obol config` → Bridge.
+
 ### Legacy migration
 
 Upgrading from single-user? It's automatic. On first boot, if `~/.obol/users/` doesn't exist but personality files do, OBOL migrates everything (files + DB records) to the first allowed user's directory. No manual steps needed.
@@ -349,6 +377,7 @@ Or edit `~/.obol/config.json` directly:
 |-----|---------|-------------|
 | `evolution.exchanges` | 100 | Messages between evolution cycles |
 | `heartbeat` | false | Enable proactive check-ins |
+| `bridge.enabled` | false | Let user agents query each other (requires 2+ users) |
 
 ## Telegram Commands
 

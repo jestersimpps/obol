@@ -4,17 +4,15 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
-function createClaude(anthropicConfig, { personality, memory, userDir }) {
+function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEnabled }) {
   const client = new Anthropic({ apiKey: anthropicConfig.apiKey });
 
-  const systemPrompt = buildSystemPrompt(personality, userDir);
+  const systemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
-  // Conversation history per chat (in-memory, resets on restart)
   const histories = new Map();
   const MAX_HISTORY = 50;
 
-  // Define tools
-  const tools = buildTools(memory);
+  const tools = buildTools(memory, { bridgeEnabled });
 
   async function chat(userMessage, context = {}) {
     context.userDir = userDir;
@@ -152,7 +150,7 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
   return { chat, client, reloadPersonality, clearHistory };
 }
 
-function buildSystemPrompt(personality, userDir) {
+function buildSystemPrompt(personality, userDir, opts = {}) {
   const parts = ['You are an AI assistant powered by OBOL.'];
 
   if (personality.soul) parts.push(`\n## Personality\n${personality.soul}`);
@@ -192,12 +190,25 @@ Example: \`pass insert ${passPrefix}/gmail-key\`
 Shared bot credentials (Anthropic, Telegram, Supabase) live under \`obol/\` — do NOT touch those.
 `);
 
+  if (opts.bridgeEnabled) {
+    parts.push(`
+## Bridge (Partner Agent)
+
+You have two bridge tools for communicating with your owner's partner's AI agent:
+
+- \`bridge_ask\` — Ask the partner's agent a question. Use when the user asks about the other person's preferences, schedule, mood, opinions, or anything their agent would know. The partner's agent answers from its own memory and personality.
+- \`bridge_tell\` — Send a message to the partner's agent. Use when the user wants to tell, remind, or send something to the other person. The message gets stored in the partner's memory and delivered via Telegram.
+
+Both tools notify the partner that their agent was contacted. Keep messages specific and concise.
+`);
+  }
+
   parts.push(`\nCurrent time: ${new Date().toISOString()}`);
 
   return parts.join('\n');
 }
 
-function buildTools(memory) {
+function buildTools(memory, opts = {}) {
   const tools = [];
 
   // Shell execution
@@ -338,6 +349,12 @@ function buildTools(memory) {
     },
   });
 
+  if (opts.bridgeEnabled) {
+    const { buildBridgeTool, buildBridgeTellTool } = require('./bridge');
+    tools.push(buildBridgeTool());
+    tools.push(buildBridgeTellTool());
+  }
+
   return tools;
 }
 
@@ -456,6 +473,18 @@ async function executeToolCall(toolUse, memory, context = {}) {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, input.content);
         return `Written: ${filePath}`;
+      }
+
+      case 'bridge_ask': {
+        const { bridgeAsk } = require('./bridge');
+        const { loadConfig: loadCfg } = require('./config');
+        return await bridgeAsk(input.question, context.userId, loadCfg(), context._notifyFn);
+      }
+
+      case 'bridge_tell': {
+        const { bridgeTell } = require('./bridge');
+        const { loadConfig: loadCfg2 } = require('./config');
+        return await bridgeTell(input.message, context.userId, loadCfg2(), context._notifyFn);
       }
 
       default:

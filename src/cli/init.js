@@ -249,81 +249,20 @@ async function init(opts = {}) {
 
   // Step 7: Allowed Telegram users
   console.log('\n─── Step 7/7: Access control ───\n');
-  console.log('  Only specific Telegram users can talk to your bot.');
-  console.log('  You need your numeric Telegram ID (not your @username).\n');
+  console.log('  Each allowed user gets their own isolated brain — separate');
+  console.log('  personality, memory, evolution cycle, and workspace.');
+  console.log('  You can add multiple users now or later with `obol config`.\n');
 
-  let detectedUsers = null;
-  if (config.telegram?.token) {
-    detectedUsers = await detectTelegramUserId(config.telegram.token);
-  }
+  config.telegram.allowedUsers = await collectAllowedUsers(config.telegram.token);
 
-  if (detectedUsers) {
-    console.log('  Found users who messaged this bot:');
-    for (const [id, name] of detectedUsers) {
-      console.log(`    ${id} — ${name}`);
-    }
-    console.log('');
-    const ids = [...detectedUsers.keys()].join(', ');
-    const { useDetected } = await inquirer.prompt([{
+  if (config.telegram.allowedUsers.length >= 2) {
+    const { bridgeEnabled } = await inquirer.prompt([{
       type: 'confirm',
-      name: 'useDetected',
-      message: `Use ${detectedUsers.size === 1 ? 'this user' : 'these users'}? (${ids})`,
+      name: 'bridgeEnabled',
+      message: 'Enable bridge between user agents? (lets agents query each other)',
       default: true,
     }]);
-    if (useDetected) {
-      config.telegram.allowedUsers = [...detectedUsers.keys()];
-    } else {
-      const { allowedUsers } = await inquirer.prompt([{
-        type: 'input',
-        name: 'allowedUsers',
-        message: 'Telegram user ID(s) (comma-separated):',
-        validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs',
-      }]);
-      config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
-    }
-  } else {
-    console.log('  Send any message to your bot on Telegram now, then press Enter.');
-    console.log('  Or if you already know your ID, type it below.\n');
-    console.log('  How to find your Telegram ID manually:');
-    console.log('    1. Search for @userinfobot in Telegram and start a chat');
-    console.log('    2. It replies with your numeric ID (e.g. 206639616)\n');
-    const { method } = await inquirer.prompt([{
-      type: 'list',
-      name: 'method',
-      message: 'How to get your Telegram ID:',
-      choices: [
-        { name: 'I sent a message to the bot — detect my ID', value: 'detect' },
-        { name: 'I\'ll enter my ID manually', value: 'manual' },
-      ],
-    }]);
-
-    if (method === 'detect') {
-      console.log('  Checking for messages...');
-      const users = await detectTelegramUserId(config.telegram.token);
-      if (users) {
-        for (const [id, name] of users) {
-          console.log(`  ✅ Found: ${id} — ${name}`);
-        }
-        config.telegram.allowedUsers = [...users.keys()];
-      } else {
-        console.log('  ❌ No messages found. Enter your ID manually.\n');
-        const { allowedUsers } = await inquirer.prompt([{
-          type: 'input',
-          name: 'allowedUsers',
-          message: 'Telegram user ID(s):',
-          validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)',
-        }]);
-        config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
-      }
-    } else {
-      const { allowedUsers } = await inquirer.prompt([{
-        type: 'input',
-        name: 'allowedUsers',
-        message: 'Telegram user ID(s) (comma-separated):',
-        validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)',
-      }]);
-      config.telegram.allowedUsers = allowedUsers.split(',').map(id => parseInt(id.trim()));
-    }
+    config.bridge = { enabled: bridgeEnabled };
   }
 
   saveConfig(config);
@@ -360,6 +299,74 @@ async function init(opts = {}) {
 
   Config: ${CONFIG_FILE}
 `);
+}
+
+async function collectAllowedUsers(token) {
+  const detected = token ? await detectTelegramUserId(token) : null;
+  const selected = [];
+
+  if (detected && detected.size > 0) {
+    console.log('  Found users who messaged this bot:\n');
+    const choices = [...detected.entries()].map(([id, name]) => ({
+      name: `${id} — ${name}`,
+      value: id,
+      checked: true,
+    }));
+    const { picked } = await inquirer.prompt([{
+      type: 'checkbox',
+      name: 'picked',
+      message: 'Select users to allow:',
+      choices,
+      validate: (v) => v.length > 0 ? true : 'Select at least one user',
+    }]);
+    selected.push(...picked);
+  } else {
+    console.log('  No messages detected from this bot yet.\n');
+    console.log('  How to find your Telegram ID:');
+    console.log('    1. Send any message to your bot on Telegram');
+    console.log('    2. Re-run `obol init` — it will auto-detect you');
+    console.log('    3. Or search @userinfobot on Telegram for your numeric ID\n');
+  }
+
+  const { addMore } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'addMore',
+    message: selected.length > 0
+      ? 'Add more users by ID?'
+      : 'Enter user IDs manually?',
+    default: selected.length === 0,
+  }]);
+
+  if (addMore) {
+    const { extraIds } = await inquirer.prompt([{
+      type: 'input',
+      name: 'extraIds',
+      message: 'Telegram user ID(s) (comma-separated):',
+      validate: (v) => {
+        if (!v.trim()) return 'Enter at least one ID';
+        return v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs (e.g. 206639616)';
+      },
+    }]);
+    const extras = extraIds.split(',').map(id => parseInt(id.trim()));
+    for (const id of extras) {
+      if (!selected.includes(id)) selected.push(id);
+    }
+  }
+
+  if (selected.length === 0) {
+    console.log('  ⚠️  No users added — nobody can talk to the bot.');
+    console.log('  Add users later with `obol config`\n');
+    return [];
+  }
+
+  console.log(`\n  ✅ ${selected.length} user${selected.length > 1 ? 's' : ''} allowed`);
+  for (const id of selected) {
+    const name = detected?.get(id);
+    console.log(`     ${id}${name ? ` — ${name}` : ''}`);
+  }
+  console.log('');
+
+  return selected;
 }
 
 async function setupSupabaseNew() {

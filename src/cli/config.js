@@ -1,5 +1,6 @@
 const inquirer = require('inquirer');
-const { loadConfig, saveConfig, CONFIG_FILE } = require('../config');
+const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir } = require('../config');
+const fs = require('fs');
 
 const SECTIONS = [
   {
@@ -41,10 +42,8 @@ const SECTIONS = [
     ],
   },
   {
-    name: 'Access Control',
-    fields: [
-      { key: 'telegram.allowedUsers', label: 'Allowed Telegram User IDs', secret: false },
-    ],
+    name: 'Users',
+    custom: true,
   },
   {
     name: 'Heartbeat',
@@ -56,6 +55,12 @@ const SECTIONS = [
     name: 'Evolution',
     fields: [
       { key: 'evolution.exchanges', label: 'Exchanges between evolutions (default: 100)', secret: false, type: 'number' },
+    ],
+  },
+  {
+    name: 'Bridge',
+    fields: [
+      { key: 'bridge.enabled', label: 'Enabled', secret: false, type: 'boolean' },
     ],
   },
 ];
@@ -89,6 +94,134 @@ function formatValue(value, secret) {
   return String(value);
 }
 
+async function detectTelegramUsers(token) {
+  if (!token) return null;
+  const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=50`);
+  const data = await res.json();
+  if (!data.ok || !data.result?.length) return null;
+  const users = new Map();
+  for (const update of data.result) {
+    const from = update.message?.from;
+    if (from && !from.is_bot) {
+      users.set(from.id, from.first_name + (from.username ? ` (@${from.username})` : ''));
+    }
+  }
+  return users.size > 0 ? users : null;
+}
+
+async function manageUsers(cfg) {
+  const currentUsers = cfg.telegram?.allowedUsers || [];
+
+  let managing = true;
+  while (managing) {
+    console.log(`\n  Current users (${currentUsers.length}):`);
+    if (currentUsers.length === 0) {
+      console.log('    (none)');
+    } else {
+      for (const id of currentUsers) {
+        const hasDir = fs.existsSync(getUserDir(id));
+        console.log(`    ${id}${hasDir ? ' ✅' : ' (no workspace yet)'}`);
+      }
+    }
+    console.log('');
+
+    const { action } = await inquirer.prompt([{
+      type: 'list',
+      name: 'action',
+      message: 'Manage users:',
+      choices: [
+        { name: 'Add user (detect from bot messages)', value: 'detect' },
+        { name: 'Add user (enter ID manually)', value: 'manual' },
+        ...(currentUsers.length > 0 ? [{ name: 'Remove user', value: 'remove' }] : []),
+        new inquirer.Separator(),
+        { name: 'Back', value: 'back' },
+      ],
+    }]);
+
+    if (action === 'back') break;
+
+    if (action === 'detect') {
+      const token = getNestedValue(cfg, 'telegram.token');
+      if (!token) {
+        console.log('  ❌ No Telegram token configured — set it first\n');
+        continue;
+      }
+      console.log('  Checking for messages...');
+      const detected = await detectTelegramUsers(token);
+      if (!detected || detected.size === 0) {
+        console.log('  ❌ No messages found. Have users send a message to the bot first.\n');
+        continue;
+      }
+
+      const newUsers = [...detected.entries()].filter(([id]) => !currentUsers.includes(id));
+      if (newUsers.length === 0) {
+        console.log('  All detected users are already allowed.\n');
+        continue;
+      }
+
+      const choices = newUsers.map(([id, name]) => ({
+        name: `${id} — ${name}`,
+        value: id,
+        checked: true,
+      }));
+      const { picked } = await inquirer.prompt([{
+        type: 'checkbox',
+        name: 'picked',
+        message: 'Select users to add:',
+        choices,
+      }]);
+
+      for (const id of picked) {
+        if (!currentUsers.includes(id)) {
+          currentUsers.push(id);
+          ensureUserDir(id);
+          console.log(`  ✅ Added ${id} — ${detected.get(id)}`);
+        }
+      }
+    }
+
+    if (action === 'manual') {
+      const { newId } = await inquirer.prompt([{
+        type: 'input',
+        name: 'newId',
+        message: 'Telegram user ID:',
+        validate: (v) => /^\d+$/.test(v.trim()) ? true : 'Must be a numeric ID (e.g. 206639616)',
+      }]);
+      const id = parseInt(newId.trim());
+      if (currentUsers.includes(id)) {
+        console.log(`  ⚠️  User ${id} already allowed\n`);
+      } else {
+        currentUsers.push(id);
+        ensureUserDir(id);
+        console.log(`  ✅ Added ${id} — workspace created`);
+      }
+    }
+
+    if (action === 'remove') {
+      const { removeId } = await inquirer.prompt([{
+        type: 'list',
+        name: 'removeId',
+        message: 'Remove which user?',
+        choices: [
+          ...currentUsers.map(id => ({ name: String(id), value: id })),
+          new inquirer.Separator(),
+          { name: 'Cancel', value: null },
+        ],
+      }]);
+      if (removeId !== null) {
+        const idx = currentUsers.indexOf(removeId);
+        if (idx !== -1) currentUsers.splice(idx, 1);
+        console.log(`  ✅ Removed ${removeId}`);
+        console.log(`  ⚠️  Workspace at ${getUserDir(removeId)} was NOT deleted (remove manually if needed)`);
+      }
+    }
+
+    setNestedValue(cfg, 'telegram.allowedUsers', currentUsers);
+    saveConfig(cfg);
+    console.log('  ✅ Saved');
+  }
+}
+
 async function config() {
   const cfg = loadConfig({ resolve: false });
   if (!cfg) {
@@ -98,12 +231,16 @@ async function config() {
 
   let editing = true;
   while (editing) {
+    const userCount = (cfg.telegram?.allowedUsers || []).length;
     const { section } = await inquirer.prompt([{
       type: 'list',
       name: 'section',
       message: 'Config section:',
       choices: [
-        ...SECTIONS.map(s => s.name),
+        ...SECTIONS.map(s => {
+          if (s.name === 'Users') return { name: `Users (${userCount} allowed)`, value: s.name };
+          return s.name;
+        }),
         new inquirer.Separator(),
         'Done',
       ],
@@ -112,6 +249,12 @@ async function config() {
     if (section === 'Done') break;
 
     const sec = SECTIONS.find(s => s.name === section);
+
+    if (sec.custom) {
+      await manageUsers(cfg);
+      continue;
+    }
+
     const fieldChoices = sec.fields.map(f => {
       const val = getNestedValue(cfg, f.key);
       return {
@@ -148,16 +291,6 @@ async function config() {
         validate: (v) => /^\d+$/.test(v.trim()) ? true : 'Must be a number',
       }]);
       setNestedValue(cfg, field.key, parseInt(newVal.trim()));
-    } else if (field.key === 'telegram.allowedUsers') {
-      const currentDisplay = Array.isArray(currentVal) ? currentVal.join(', ') : '';
-      const { newVal } = await inquirer.prompt([{
-        type: 'input',
-        name: 'newVal',
-        message: `${field.label} (comma-separated):`,
-        default: currentDisplay,
-        validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs',
-      }]);
-      setNestedValue(cfg, field.key, newVal.split(',').map(id => parseInt(id.trim())));
     } else {
       const promptType = field.secret ? 'password' : 'input';
       const opts = {

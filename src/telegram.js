@@ -219,6 +219,7 @@ function createBot(telegramConfig, config) {
           chatId: ctx.chat.id,
           bg: tenant.bg,
           ctx,
+          _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
         });
       }
 
