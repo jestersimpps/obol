@@ -93,11 +93,12 @@ function runTests(testsDir) {
     const testPath = path.join(testsDir, file);
     try {
       const cmd = file.endsWith('.js') ? `node "${testPath}"` : `bash "${testPath}"`;
+      const testUtilsPath = path.join(__dirname, 'test-utils.js');
       const output = execSync(cmd, {
         encoding: 'utf-8',
         timeout: 30000,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, OBOL_DIR, NODE_ENV: 'test' },
+        env: { ...process.env, OBOL_DIR, NODE_ENV: 'test', OBOL_TEST_UTILS: testUtilsPath },
       });
       passed++;
       outputs.push(`✅ ${file}: passed`);
@@ -218,53 +219,43 @@ Review and refactor every script. Standards:
 
 ## Part 5: Tests (CRITICAL)
 
-Write a test file for EVERY script. Tests verify that scripts work correctly.
+Write a test file for EVERY script. Tests verify scripts work correctly.
 
-**Test standards:**
-- One test file per script: \`test-<script-name>.js\` or \`test-<script-name>.sh\`
-- Tests must be self-contained — no external test framework needed
-- Each test file runs independently: \`node test-script.js\` → exit 0 = pass, exit 1 = fail
-- Test structure:
-  - Test valid inputs produce expected outputs
-  - Test invalid inputs produce errors (non-zero exit, stderr message)
-  - Test edge cases (empty input, missing args, malformed data)
-  - Test idempotency where applicable
-- Use simple assert pattern:
+**IMPORTANT: Use the shared test helper.** Do NOT duplicate test boilerplate. Import from the OBOL package:
 
 \`\`\`javascript
 #!/usr/bin/env node
-// Test: script-name.js
-const { execSync } = require('child_process');
 const path = require('path');
+const { suite, test, run, runFail, assert, assertEqual, assertIncludes, report } = require(process.env.OBOL_TEST_UTILS || 'obol/src/test-utils');
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'script-name.js');
 
-let passed = 0, failed = 0;
+suite('script-name.js');
 
-function test(name, fn) {
-  try { fn(); passed++; console.log('  ✅ ' + name); }
-  catch (e) { failed++; console.error('  ❌ ' + name + ': ' + e.message); }
-}
+test('valid input produces expected output', () => {
+  const out = run(SCRIPT, '--flag value');
+  assertIncludes(out, 'expected');
+});
 
-function run(args = '') {
-  return execSync(\\\`node "\${SCRIPT}" \${args}\\\`, { encoding: 'utf-8', env: { ...process.env, OBOL_DIR: process.env.OBOL_DIR } });
-}
+test('missing args fails', () => {
+  assert(runFail(SCRIPT), 'should exit non-zero');
+});
 
-function runFail(args = '') {
-  try { execSync(\\\`node "\${SCRIPT}" \${args}\\\`, { encoding: 'utf-8', stdio: ['pipe','pipe','pipe'] }); return false; }
-  catch { return true; }
-}
+test('edge case: empty input', () => {
+  assert(runFail(SCRIPT, '""'), 'should reject empty input');
+});
 
-console.log('Testing script-name.js');
-test('should do X with valid input', () => { /* ... */ });
-test('should fail on missing args', () => { if (!runFail()) throw new Error('should have failed'); });
-
-console.log(\\\`\\n\${passed} passed, \${failed} failed\\\`);
-if (failed > 0) process.exit(1);
+report();
 \`\`\`
 
-For bash scripts, use bash test files with similar patterns.
+**Standards:**
+- One test file per script: \`test-<script-name>.js\`
+- Always import from \`obol/src/test-utils\` — never rewrite test helpers
+- Available: \`suite(name)\`, \`test(name, fn)\`, \`run(path, args)\`, \`runFail(path, args)\`, \`assert(cond, msg)\`, \`assertEqual(a, b)\`, \`assertIncludes(str, sub)\`, \`report()\`
+- Test: valid inputs, invalid inputs, edge cases, idempotency
+- \`report()\` must be the last call — it exits with code 1 if any test failed
+- Write tests that catch real bugs, not trivial assertions
 
-**Tests run BEFORE and AFTER your refactor. If tests pass before but fail after, your script changes are rolled back.** Write tests that catch real bugs, not trivial assertions.
+**Tests run BEFORE and AFTER your refactor. If tests pass before but fail after, your script changes are rolled back.**
 
 Current test baseline: ${baselineResults.total} tests, ${baselineResults.passed} passed, ${baselineResults.failed} failed.
 
