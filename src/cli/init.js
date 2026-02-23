@@ -357,6 +357,7 @@ async function init(opts = {}) {
     obol start -d   Start as background daemon
     obol config     Edit configuration later
     obol status     Check bot status
+    obol upgrade    Update to latest version
 
   Config: ${CONFIG_FILE}
 `);

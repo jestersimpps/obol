@@ -223,9 +223,10 @@ pm2 restart obol
 ## Updating
 
 ```bash
-npm update -g obol-ai
-pm2 restart obol
+obol upgrade
 ```
+
+Checks npm for the latest version, stops the bot if running, installs the update, and restarts.
 
 ## Backup & Restore
 

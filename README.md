@@ -467,6 +467,7 @@ obol stop              # Stop (pm2 or PID fallback)
 obol logs              # Tail logs (pm2 or log file fallback)
 obol status            # Status
 obol backup            # Manual backup
+obol upgrade           # Update to latest version
 ```
 
 ## Directory Structure
