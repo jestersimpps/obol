@@ -1,7 +1,7 @@
 /**
  * Soul Evolution — periodic deep reflection + codebase maintenance.
  *
- * Every 50 exchanges, Opus:
+ * Every N exchanges (default 100), Sonnet:
  * 1. Rewrites SOUL.md — who the bot has become
  * 2. Rewrites USER.md — everything known about the owner
  * 3. Rewrites AGENTS.md — operational knowledge, workflows, lessons learned
@@ -18,7 +18,7 @@ const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
 const EVOLUTION_STATE_FILE = path.join(OBOL_DIR, '.evolution-state.json');
-const DEFAULT_EXCHANGES_PER_EVOLUTION = 50;
+const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
 
 // Cost control: models used per evolution phase
 const MODELS = {
@@ -449,7 +449,7 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   if (hasNewTests || hasNewScripts) {
     let postRefactorResults = runTests(testsDir);
 
-    // ── Step 6: If regression, give Opus a chance to fix ──
+    // ── Step 6: If regression, attempt automatic fix ──
     let fixAttempt = 0;
     while (postRefactorResults.failed > preRefactorResults.failed && fixAttempt < MAX_FIX_ATTEMPTS) {
       fixAttempt++;

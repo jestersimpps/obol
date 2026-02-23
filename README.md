@@ -8,7 +8,7 @@ One process. One chat. One brain that grows.
 
 ---
 
-🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md every N exchanges (configurable, default 50).
+🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md every N exchanges (configurable, default 100).
 
 🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
 
@@ -28,7 +28,7 @@ One process. One chat. One brain that grows.
 
 OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from a single Telegram chat on your VPS.
 
-It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 50 exchanges it reflects on who it's becoming, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
+It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 100 exchanges it reflects on who it's becoming, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
 
 Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
@@ -70,9 +70,9 @@ Today's top 3   Sonnet (default)
            ↓
    ┌───────┴────────┐
    ↓                ↓
-Every 5 msgs     Every 50 msgs
+Every 5 msgs     Every 100 msgs
    ↓                ↓
-Haiku              Opus
+Haiku              Sonnet
 consolidation      evolution cycle
    ↓                ↓
 Extract facts      Rewrite personality,
@@ -95,7 +95,7 @@ Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
 ### Layer 2: The Evolution Cycle
 
-Every N exchanges (configurable, default 50), the evolution cycle kicks in. It reads everything — personality files, the last 100 messages, top 20 memories, all scripts, tests, and commands — then rebuilds.
+Every N exchanges (configurable, default 100), the evolution cycle kicks in. It reads everything — personality files, the last 100 messages, top 20 memories, all scripts, tests, and commands — then rebuilds.
 
 **Cost-conscious model selection:** Evolution uses Sonnet for all phases — personality rewrites, code refactoring, and fix attempts. Opus-level reasoning isn't needed for reflection and refactoring, and Sonnet keeps evolution costs negligible (~$0.02 per cycle vs ~$0.30 with Opus).
 
@@ -116,14 +116,14 @@ Every N exchanges (configurable, default 50), the evolution cycle kicks in. It r
 **Test-gated refactoring:**
 
 1. Run existing tests → baseline
-2. Opus writes new tests + refactored scripts
+2. Sonnet writes new tests + refactored scripts
 3. Run new tests against old scripts → pre-refactor baseline
 4. Write new scripts
 5. Run new tests against new scripts → verification
 6. Regression? → one automatic fix attempt (tests are ground truth)
 7. Still failing? → rollback to old scripts, store failure as `lesson`
 
-**Proactive tool building** — Opus scans conversation history for repeated requests, friction points, and unmet needs, then builds the right solution:
+**Proactive tool building** — Sonnet scans conversation history for repeated requests, friction points, and unmet needs, then builds the right solution:
 
 | Need | Solution | Example |
 |------|----------|---------|
@@ -159,7 +159,7 @@ Day 1:   obol init → obol start → first conversation
 
 Day 2:   Every 5 messages → Haiku extracts facts to vector memory
 
-Week 2:  Evolution #1 → Opus rewrites everything
+Week 2:  Evolution #1 → Sonnet rewrites everything
          → voice shifts from generic to personal
          → old soul archived in evolution/
 
@@ -252,14 +252,14 @@ After `obol init`, config lives in `~/.obol/config.json`:
 ```json
 {
   "evolution": {
-    "exchanges": 50
+    "exchanges": 100
   }
 }
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `evolution.exchanges` | 50 | Messages between evolution cycles. Increase to reduce API costs. |
+| `evolution.exchanges` | 100 | Messages between evolution cycles. Increase to reduce API costs. |
 
 ## Telegram Commands
 
@@ -291,9 +291,9 @@ obol backup            # Manual backup
 ~/.obol/
 ├── config.json        # Credentials (migrated to pass after setup)
 ├── personality/
-│   ├── SOUL.md        # Bot personality (Opus rewrites every 50 exchanges)
-│   ├── USER.md        # Owner profile (Opus rewrites every 50 exchanges)
-│   ├── AGENTS.md      # Operational knowledge (Opus rewrites)
+│   ├── SOUL.md        # Bot personality (rewritten every 100 exchanges)
+│   ├── USER.md        # Owner profile (rewritten every 100 exchanges)
+│   ├── AGENTS.md      # Operational knowledge (rewritten every 100 exchanges)
 │   └── evolution/     # Archived previous souls
 ├── scripts/           # Deterministic utility scripts
 ├── tests/             # Test suite (gates refactors)
