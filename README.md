@@ -35,7 +35,13 @@ Today's context + semantic    Sonnet (daily) or Opus (complex)
     ↓
 Claude (tool use loop)
     ↓
-Response
+Response → logged to obol_messages
+    ↓
+Every 5 exchanges → Haiku consolidation
+    ↓
+Extract memories → obol_memory (vector)
+Update USER.md  → new facts about the owner
+Update SOUL.md  → explicit personality changes
 ```
 
 ### Smart Routing
@@ -46,6 +52,18 @@ Every message passes through Haiku (~$0.0001) which decides:
 - **Model** — Sonnet for daily chat, Opus for complex tasks (research, architecture, deep analysis)
 
 No wasted vector searches on "hey" or "lol". No expensive Opus calls for simple questions.
+
+### Two-Tier Memory
+
+Every message is logged to `obol_messages` (raw, no embeddings). Every 5 exchanges, Haiku reads the conversation and decides:
+
+| What | When | Example |
+|---|---|---|
+| **Vector memory** | Important facts, decisions, preferences | "Jo moved to Barcelona" → `obol_memory` |
+| **USER.md update** | Owner reveals personal info | "I just got a new job at X" → appends to USER.md |
+| **SOUL.md update** | Owner explicitly changes bot behavior | "be more sarcastic" → appends to SOUL.md |
+
+The bot evolves its own personality files over time. On restart, it loads the last 20 messages so it never starts blank.
 
 ### Non-Blocking Background Tasks
 
@@ -75,6 +93,8 @@ Claude decides when a task is heavy enough to background. Progress check-ins eve
 - **Deploy** — Build and ship websites to Vercel through chat
 - **Background tasks** — Non-blocking heavy work with progress check-ins
 - **Self-setup** — First conversation teaches OBOL who you are; it writes its own personality
+- **Self-evolving** — Haiku auto-updates USER.md and SOUL.md as it learns about you
+- **Full message log** — Every message stored, survives restarts, loads context on boot
 - **Auto-hardening** — SSH (port 2222), fail2ban, firewall, auto-updates, kernel security
 - **Encrypted secrets** — Auto-installs GPG + `pass`, migrates keys, wipes plaintext
 - **Backup** — Auto-commits brain to private GitHub repo daily
@@ -194,15 +214,22 @@ OBOL uses local embeddings (`all-MiniLM-L6-v2`, ~30MB, runs on CPU) with Supabas
 
 Memory categories: `fact`, `preference`, `decision`, `lesson`, `person`, `project`, `event`, `conversation`, `resource`, `pattern`, `context`
 
-Memory is automatic — Haiku decides when to search and optimizes the query. Today's memories are always included for recency. No manual commands needed.
+Memory is fully automatic:
+- **Routing** — Haiku decides when to search and optimizes the query
+- **Recall** — Today's memories always included for recency
+- **Storage** — Every message logged to `obol_messages`, important stuff extracted to `obol_memory` every 5 exchanges
+- **Evolution** — Personal facts update USER.md, behavior changes update SOUL.md
+- No manual commands needed
 
 ## Personality
 
-OBOL writes its own personality files during the first conversation. Edit them anytime:
+OBOL writes its own personality files during the first conversation, then keeps them updated automatically as it learns:
 
-- **SOUL.md** — Who is the bot? Its voice, humor, values
-- **USER.md** — Who are you? Context about the owner
-- **AGENTS.md** — How should it work? Tools, safety, workflows
+- **SOUL.md** — Who is the bot? Its voice, humor, values. Updated when you explicitly change its behavior.
+- **USER.md** — Who are you? Context about the owner. Updated when you reveal personal facts.
+- **AGENTS.md** — How should it work? Tools, safety, workflows.
+
+All changes are dated and deduped. Your bot's personality evolves naturally through conversation.
 
 ## Security
 
