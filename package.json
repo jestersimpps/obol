@@ -1,6 +1,6 @@
 {
   "name": "obol-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-evolving AI assistant that learns, remembers, and acts on its own. Persistent vector memory, self-rewriting personality, proactive heartbeats.",
   "main": "src/index.js",
   "bin": {
@@ -10,7 +10,14 @@
     "start": "node src/index.js",
     "test": "node tests/run.js"
   },
-  "keywords": ["ai", "assistant", "telegram", "anthropic", "claude", "vector-memory"],
+  "keywords": [
+    "ai",
+    "assistant",
+    "telegram",
+    "anthropic",
+    "claude",
+    "vector-memory"
+  ],
   "author": "Jo Vinkenroye <jestersimpps@gmail.com>",
   "license": "MIT",
   "dependencies": {
