@@ -197,12 +197,12 @@ That's it — OBOL auto-starts on boot and restarts if it crashes.
 
 ## 10. Customize Your Bot
 
-SSH in and edit the personality files:
+SSH in and edit the personality files (replace `USER_ID` with your Telegram user ID):
 
 ```bash
-nano ~/.obol/personality/SOUL.md    # Bot personality
-nano ~/.obol/personality/USER.md    # About you
-nano ~/.obol/personality/AGENTS.md  # How it works
+nano ~/.obol/users/USER_ID/personality/SOUL.md    # Bot personality
+nano ~/.obol/users/USER_ID/personality/USER.md    # About you
+nano ~/.obol/users/USER_ID/personality/AGENTS.md  # How it works
 ```
 
 Restart after changes:

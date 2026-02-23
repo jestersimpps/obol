@@ -5,14 +5,18 @@ const fs = require('fs');
 const { OBOL_DIR } = require('./config');
 
 function setupBackup(githubConfig) {
-  const { token, username, repo } = githubConfig;
-  const backupDir = path.join(OBOL_DIR, '.backup-repo');
+  const { listUsers } = require('./config');
 
-  // Daily backup at 3 AM
   cron.schedule('0 3 * * *', async () => {
     try {
-      await runBackup(githubConfig);
-      console.log(`[${new Date().toISOString()}] Backup complete`);
+      const users = listUsers();
+      for (const userId of users) {
+        const userDir = path.join(OBOL_DIR, 'users', userId);
+        await runBackup(githubConfig, null, userDir).catch(e =>
+          console.error(`[${new Date().toISOString()}] Backup failed for user ${userId}: ${e.message}`)
+        );
+      }
+      console.log(`[${new Date().toISOString()}] Backup complete (${users.length} users)`);
     } catch (e) {
       console.error(`[${new Date().toISOString()}] Backup failed: ${e.message}`);
     }
@@ -21,33 +25,30 @@ function setupBackup(githubConfig) {
   console.log('  ✅ GitHub backup scheduled (daily 3 AM)');
 }
 
-async function runBackup(githubConfig, commitMessage) {
+async function runBackup(githubConfig, commitMessage, userDir) {
   const { token, username, repo } = githubConfig;
-  const backupDir = path.join(OBOL_DIR, '.backup-repo');
+  const baseDir = userDir || OBOL_DIR;
+  const backupDir = path.join(baseDir, '.backup-repo');
   const repoUrl = `https://${token}@github.com/${username}/${repo}.git`;
 
-  // Clone or pull
   if (!fs.existsSync(path.join(backupDir, '.git'))) {
-    execSync(`git clone ${repoUrl} ${backupDir}`, { stdio: 'pipe' });
+    execSync(`git clone ${repoUrl} "${backupDir}"`, { stdio: 'pipe' });
   } else {
     execSync('git pull', { cwd: backupDir, stdio: 'pipe' });
   }
 
-  // Set git identity
   execSync('git config user.name "OBOL"', { cwd: backupDir });
   execSync('git config user.email "obol@backup"', { cwd: backupDir });
 
-  // Sync files (exclude secrets)
   const syncDirs = ['personality', 'scripts', 'tests', 'commands', 'apps'];
   for (const dir of syncDirs) {
-    const src = path.join(OBOL_DIR, dir);
+    const src = path.join(baseDir, dir);
     const dst = path.join(backupDir, dir);
     if (fs.existsSync(src)) {
-      execSync(`mkdir -p ${dst} && cp -r ${src}/* ${dst}/ 2>/dev/null || true`, { stdio: 'pipe' });
+      execSync(`mkdir -p "${dst}" && cp -r "${src}"/* "${dst}"/ 2>/dev/null || true`, { stdio: 'pipe' });
     }
   }
 
-  // Commit and push
   execSync('git add -A', { cwd: backupDir, stdio: 'pipe' });
 
   try {
@@ -58,9 +59,7 @@ async function runBackup(githubConfig, commitMessage) {
       execSync(`git commit -m "${msg}"`, { cwd: backupDir, stdio: 'pipe' });
       execSync('git push', { cwd: backupDir, stdio: 'pipe' });
     }
-  } catch {
-    // Nothing to commit
-  }
+  } catch {}
 }
 
 module.exports = { setupBackup, runBackup };

@@ -10,7 +10,7 @@ const path = require('path');
 const { OBOL_DIR } = require('./config');
 
 class MessageLog {
-  constructor(supabaseConfig, memory, claudeClient) {
+  constructor(supabaseConfig, memory, claudeClient, userId = 0, userDir = null) {
     this.url = supabaseConfig.url;
     this.headers = {
       'apikey': supabaseConfig.serviceKey,
@@ -20,7 +20,9 @@ class MessageLog {
     };
     this.memory = memory;
     this.client = claudeClient;
-    this.exchangeCount = new Map(); // chatId -> count since last consolidation
+    this.userId = userId;
+    this.userDir = userDir;
+    this.exchangeCount = new Map();
   }
 
   /**
@@ -34,10 +36,11 @@ class MessageLog {
         body: JSON.stringify({
           chat_id: chatId,
           role,
-          content: content.substring(0, 50000), // cap at 50k
+          content: content.substring(0, 50000),
           model: opts.model || null,
           tokens_in: opts.tokensIn || null,
           tokens_out: opts.tokensOut || null,
+          user_id: this.userId,
         }),
       });
     } catch {} // Best effort
@@ -53,9 +56,8 @@ class MessageLog {
         this.consolidate(chatId).catch(() => {});
       }
 
-      // Tick evolution counter
       const { tickExchange } = require('./evolve');
-      tickExchange().catch(() => {});
+      tickExchange(this.userDir).catch(() => {});
     }
   }
 
@@ -65,7 +67,7 @@ class MessageLog {
   async getRecent(chatId, limit = 20) {
     try {
       const res = await fetch(
-        `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`,
+        `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&user_id=eq.${this.userId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`,
         { headers: this.headers }
       );
       const data = await res.json();
@@ -133,8 +135,8 @@ Return empty array if nothing worth storing.`,
   }
 }
 
-function createMessageLog(supabaseConfig, memory, claudeClient) {
-  return new MessageLog(supabaseConfig, memory, claudeClient);
+function createMessageLog(supabaseConfig, memory, claudeClient, userId = 0, userDir = null) {
+  return new MessageLog(supabaseConfig, memory, claudeClient, userId, userDir);
 }
 
 module.exports = { createMessageLog };

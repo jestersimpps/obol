@@ -4,11 +4,10 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
-function createClaude(anthropicConfig, { personality, memory }) {
+function createClaude(anthropicConfig, { personality, memory, userDir }) {
   const client = new Anthropic({ apiKey: anthropicConfig.apiKey });
 
-  // Build system prompt from personality files
-  const systemPrompt = buildSystemPrompt(personality);
+  const systemPrompt = buildSystemPrompt(personality, userDir);
 
   // Conversation history per chat (in-memory, resets on restart)
   const histories = new Map();
@@ -18,6 +17,7 @@ function createClaude(anthropicConfig, { personality, memory }) {
   const tools = buildTools(memory);
 
   async function chat(userMessage, context = {}) {
+    context.userDir = userDir;
     const chatId = context.chatId || 'default';
 
     // Get or create history
@@ -136,7 +136,8 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
   }
 
   function reloadPersonality() {
-    const newPersonality = require('./personality').loadPersonality();
+    const pDir = userDir ? path.join(userDir, 'personality') : undefined;
+    const newPersonality = require('./personality').loadPersonality(pDir);
     Object.assign(personality, newPersonality);
   }
 
@@ -151,21 +152,24 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
   return { chat, client, reloadPersonality, clearHistory };
 }
 
-function buildSystemPrompt(personality) {
+function buildSystemPrompt(personality, userDir) {
   const parts = ['You are an AI assistant powered by OBOL.'];
 
   if (personality.soul) parts.push(`\n## Personality\n${personality.soul}`);
   if (personality.user) parts.push(`\n## About Your Owner\n${personality.user}`);
   if (personality.agents) parts.push(`\n## Operating Instructions\n${personality.agents}`);
 
+  const workDir = userDir || '~/.obol';
+  const userId = userDir ? path.basename(userDir) : null;
+  const passPrefix = userId ? `obol/users/${userId}` : 'obol';
+
   parts.push(`
 ## Workspace Discipline
 
-The OBOL directory (~/.obol/) has a fixed structure:
+Your workspace directory (${workDir}) has a fixed structure:
 
 \`\`\`
-~/.obol/
-├── config.json
+${workDir}/
 ├── personality/    (SOUL.md, USER.md, AGENTS.md, evolution/)
 ├── scripts/        (utility scripts)
 ├── tests/          (test suite)
@@ -180,6 +184,12 @@ The OBOL directory (~/.obol/) has a fixed structure:
 - Temporary files go in /tmp, not in the OBOL directory.
 - If unsure where something belongs, ask — don't guess.
 - Run \`/clean\` to audit and fix misplaced files.
+
+## Secrets (pass)
+
+When storing secrets with \`pass\`, ALWAYS use the prefix \`${passPrefix}/\`.
+Example: \`pass insert ${passPrefix}/gmail-key\`
+Shared bot credentials (Anthropic, Telegram, Supabase) live under \`obol/\` — do NOT touch those.
 `);
 
   parts.push(`\nCurrent time: ${new Date().toISOString()}`);
@@ -331,8 +341,22 @@ function buildTools(memory) {
   return tools;
 }
 
+function resolveUserPath(inputPath, userDir) {
+  if (!userDir) return inputPath;
+  const resolved = path.isAbsolute(inputPath)
+    ? path.resolve(inputPath)
+    : path.resolve(userDir, inputPath);
+  const normalizedUser = path.resolve(userDir);
+  if (!resolved.startsWith(normalizedUser + path.sep) && resolved !== normalizedUser) {
+    if (resolved.startsWith('/tmp')) return resolved;
+    throw new Error(`Path "${inputPath}" is outside your workspace. Use paths relative to your workspace or /tmp.`);
+  }
+  return resolved;
+}
+
 async function executeToolCall(toolUse, memory, context = {}) {
   const { name, input } = toolUse;
+  const userDir = context.userDir;
 
   try {
     switch (name) {
@@ -343,6 +367,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
           timeout,
           maxBuffer: 1024 * 1024,
           stdio: ['pipe', 'pipe', 'pipe'],
+          cwd: userDir || undefined,
         });
         return output.substring(0, 10000);
       }
@@ -392,11 +417,11 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const cfg = loadConfig();
         const token = cfg?.vercel?.token;
         if (!token) return 'Vercel not configured.';
-        const dir = input.directory;
+        const dir = userDir ? resolveUserPath(input.directory, userDir) : input.directory;
         const prod = input.production ? '--prod' : '';
-        const name = input.name ? `--name ${input.name}` : '';
+        const projName = input.name ? `--name ${input.name}` : '';
         const output = execSync(
-          `cd ${dir} && npx vercel ${prod} ${name} --token ${token} --yes 2>&1`,
+          `cd "${dir}" && npx vercel ${prod} ${projName} --token ${token} --yes 2>&1`,
           { encoding: 'utf-8', timeout: 120000 }
         );
         return output.substring(0, 5000);
@@ -417,19 +442,20 @@ async function executeToolCall(toolUse, memory, context = {}) {
       case 'web_fetch': {
         const res = await fetch(input.url);
         const text = await res.text();
-        // Basic HTML stripping
         const clean = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 10000);
         return clean;
       }
 
       case 'read_file': {
-        return fs.readFileSync(input.path, 'utf-8').substring(0, 50000);
+        const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+        return fs.readFileSync(filePath, 'utf-8').substring(0, 50000);
       }
 
       case 'write_file': {
-        fs.mkdirSync(path.dirname(input.path), { recursive: true });
-        fs.writeFileSync(input.path, input.content);
-        return `Written: ${input.path}`;
+        const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, input.content);
+        return `Written: ${filePath}`;
       }
 
       default:

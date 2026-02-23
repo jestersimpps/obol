@@ -33,25 +33,24 @@ const FILE_RULES = {
   '.md': 'commands', // .md files outside personality/ are probably commands
 };
 
-async function cleanWorkspace() {
+async function cleanWorkspace(userDir) {
+  const baseDir = userDir || OBOL_DIR;
   const issues = [];
   const errors = [];
 
-  if (!fs.existsSync(OBOL_DIR)) {
-    return { issues, errors: ['OBOL_DIR does not exist'] };
+  if (!fs.existsSync(baseDir)) {
+    return { issues, errors: ['Directory does not exist'] };
   }
 
-  const entries = fs.readdirSync(OBOL_DIR, { withFileTypes: true });
+  const entries = fs.readdirSync(baseDir, { withFileTypes: true });
 
   for (const entry of entries) {
-    const fullPath = path.join(OBOL_DIR, entry.name);
+    const fullPath = path.join(baseDir, entry.name);
 
     if (entry.isDirectory()) {
       if (!ALLOWED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-        // Rogue directory — check if it has useful files first
         const files = safeReaddir(fullPath);
         if (files.length === 0) {
-          // Empty rogue dir — delete
           try {
             fs.rmdirSync(fullPath);
             issues.push({ path: entry.name + '/', action: 'deleted (empty rogue dir)' });
@@ -59,14 +58,13 @@ async function cleanWorkspace() {
             errors.push(`Failed to remove ${entry.name}/: ${e.message}`);
           }
         } else {
-          // Non-empty rogue dir — relocate files, then delete
           for (const file of files) {
             const src = path.join(fullPath, file);
             const dest = guessDestination(file);
             if (dest) {
               try {
-                const destPath = path.join(OBOL_DIR, dest, file);
-                fs.mkdirSync(path.join(OBOL_DIR, dest), { recursive: true });
+                const destPath = path.join(baseDir, dest, file);
+                fs.mkdirSync(path.join(baseDir, dest), { recursive: true });
                 fs.renameSync(src, destPath);
                 issues.push({ path: `${entry.name}/${file}`, action: `moved → ${dest}/${file}` });
               } catch (e) {
@@ -81,21 +79,19 @@ async function cleanWorkspace() {
               }
             }
           }
-          // Try to remove the now-empty dir
           try {
             fs.rmdirSync(fullPath);
             issues.push({ path: entry.name + '/', action: 'deleted (rogue dir cleared)' });
-          } catch {} // May not be empty if errors occurred
+          } catch {}
         }
       }
     } else if (entry.isFile()) {
       if (!ALLOWED_FILES.has(entry.name) && !ALLOWED_PATTERNS.some(p => p.test(entry.name))) {
-        // Misplaced file at top level
         const dest = guessDestination(entry.name);
         if (dest) {
           try {
-            const destPath = path.join(OBOL_DIR, dest, entry.name);
-            fs.mkdirSync(path.join(OBOL_DIR, dest), { recursive: true });
+            const destPath = path.join(baseDir, dest, entry.name);
+            fs.mkdirSync(path.join(baseDir, dest), { recursive: true });
             fs.renameSync(fullPath, destPath);
             issues.push({ path: entry.name, action: `moved → ${dest}/${entry.name}` });
           } catch (e) {
@@ -113,16 +109,15 @@ async function cleanWorkspace() {
     }
   }
 
-  // Check for misplaced files within known directories
   const dirFileRules = {
-    personality: ['.md'],   // Only markdown
-    scripts: ['.js', '.sh'], // Only scripts
-    tests: ['.js', '.sh'],   // Only tests
-    commands: ['.md'],        // Only markdown
+    personality: ['.md'],
+    scripts: ['.js', '.sh'],
+    tests: ['.js', '.sh'],
+    commands: ['.md'],
   };
 
   for (const [dir, allowedExts] of Object.entries(dirFileRules)) {
-    const dirPath = path.join(OBOL_DIR, dir);
+    const dirPath = path.join(baseDir, dir);
     if (!fs.existsSync(dirPath)) continue;
 
     const files = safeReaddir(dirPath);
@@ -133,8 +128,8 @@ async function cleanWorkspace() {
         if (dest && dest !== dir) {
           try {
             const src = path.join(dirPath, file);
-            const destPath = path.join(OBOL_DIR, dest, file);
-            fs.mkdirSync(path.join(OBOL_DIR, dest), { recursive: true });
+            const destPath = path.join(baseDir, dest, file);
+            fs.mkdirSync(path.join(baseDir, dest), { recursive: true });
             fs.renameSync(src, destPath);
             issues.push({ path: `${dir}/${file}`, action: `moved → ${dest}/${file}` });
           } catch (e) {

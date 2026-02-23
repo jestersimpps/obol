@@ -1,5 +1,5 @@
 const { execSync } = require('child_process');
-const { loadConfig } = require('../config');
+const { loadConfig, listUsers } = require('../config');
 
 async function status() {
   const config = loadConfig();
@@ -39,6 +39,11 @@ async function status() {
   console.log(`  🚀 Vercel: ${config.vercel ? 'configured' : 'not set'}`);
   console.log(`  👤 Owner: ${config.owner?.name || 'not set'}`);
   console.log(`  🤖 Bot: ${config.bot?.name || 'OBOL'}`);
+
+  const users = listUsers();
+  if (users.length > 0) {
+    console.log(`  👥 Users: ${users.join(', ')}`);
+  }
 }
 
 module.exports = { status };

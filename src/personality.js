@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
-function loadPersonality() {
-  const dir = path.join(OBOL_DIR, 'personality');
+function loadPersonality(dir) {
+  dir = dir || path.join(OBOL_DIR, 'personality');
   const personality = {};
 
   const files = {

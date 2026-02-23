@@ -2,14 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
-const FIRST_RUN_FLAG = path.join(OBOL_DIR, '.first-run-complete');
-
-function isFirstRun() {
-  return !fs.existsSync(FIRST_RUN_FLAG);
+function isFirstRun(userDir) {
+  const flag = path.join(userDir || OBOL_DIR, '.first-run-complete');
+  return !fs.existsSync(flag);
 }
 
-function markFirstRunComplete() {
-  fs.writeFileSync(FIRST_RUN_FLAG, new Date().toISOString());
+function markFirstRunComplete(userDir) {
+  const flag = path.join(userDir || OBOL_DIR, '.first-run-complete');
+  fs.writeFileSync(flag, new Date().toISOString());
 }
 
 // System prompt for the first-run conversation
@@ -58,8 +58,8 @@ function cleanResponse(text) {
 }
 
 // Write the personality files from setup data
-function writePersonalityFromSetup(setup, botName) {
-  const dir = path.join(OBOL_DIR, 'personality');
+function writePersonalityFromSetup(setup, botName, userDir) {
+  const dir = path.join(userDir || OBOL_DIR, 'personality');
   fs.mkdirSync(dir, { recursive: true });
 
   if (setup.soul) {

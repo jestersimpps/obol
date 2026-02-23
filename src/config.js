@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const os = require('os');
 
 const OBOL_DIR = path.join(os.homedir(), '.obol');
+const USERS_DIR = path.join(OBOL_DIR, 'users');
 const CONFIG_FILE = path.join(OBOL_DIR, 'config.json');
 const PID_FILE = path.join(OBOL_DIR, 'obol.pid');
 const LOG_FILE = path.join(OBOL_DIR, 'logs', 'obol.log');
@@ -46,12 +47,35 @@ function saveConfig(config) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
 }
 
+function getUserDir(userId) {
+  return path.join(USERS_DIR, String(userId));
+}
+
+function ensureUserDir(userId) {
+  const dir = getUserDir(userId);
+  for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs']) {
+    fs.mkdirSync(path.join(dir, sub), { recursive: true });
+  }
+  return dir;
+}
+
+function listUsers() {
+  if (!fs.existsSync(USERS_DIR)) return [];
+  return fs.readdirSync(USERS_DIR).filter(f =>
+    fs.statSync(path.join(USERS_DIR, f)).isDirectory()
+  );
+}
+
 module.exports = {
   OBOL_DIR,
+  USERS_DIR,
   CONFIG_FILE,
   PID_FILE,
   LOG_FILE,
   getConfigDir,
   loadConfig,
   saveConfig,
+  getUserDir,
+  ensureUserDir,
+  listUsers,
 };

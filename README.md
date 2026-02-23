@@ -4,7 +4,7 @@
 
 **A self-healing, self-evolving AI agent.** Install it, talk to it, and it becomes yours.
 
-One process. One chat. One brain that grows.
+One process. Multiple users. Each brain grows independently.
 
 ---
 
@@ -26,9 +26,11 @@ One process. One chat. One brain that grows.
 
 ## What is it?
 
-OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from a single Telegram chat on your VPS.
+OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from Telegram on your VPS.
 
 It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 100 exchanges it reflects on who it's becoming, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
+
+One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, workspace, and first-run experience. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
 
 Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
@@ -173,7 +175,7 @@ Month 6: evolution/ has 12 archived souls
          and a dynamic unique to you
 ```
 
-**The same codebase deployed by two different people produces two completely different bots within a week.**
+**Two users on the same bot produce two completely different personalities within a week.**
 
 ### Background Tasks
 
@@ -191,6 +193,68 @@ OBOL: "11:42 PM CET"
 
 [90s] ✅ Done! Here are the top 5 coworking spaces: ...
 ```
+
+## Multi-User Architecture
+
+One Telegram bot token, one Node.js process, full per-user isolation.
+
+```
+Telegram bot (single token, single poll)
+      ↓
+Auth middleware (allowedUsers check)
+      ↓
+Router: ctx.from.id → tenant context
+      ↓
+┌─────────────────┐  ┌─────────────────┐
+│ User 206639616  │  │ User 789012345  │
+│ personality/    │  │ personality/    │
+│ scripts/        │  │ scripts/        │
+│ memory (DB)     │  │ memory (DB)     │
+│ evolution       │  │ evolution       │
+└─────────────────┘  └─────────────────┘
+```
+
+### What's shared vs isolated
+
+| Shared (one copy) | Isolated (per user) |
+|---|---|
+| Telegram bot token | Personality (SOUL.md, USER.md, AGENTS.md) |
+| Anthropic API key | Vector memory (scoped by user_id in DB) |
+| Supabase connection | Message history (scoped by user_id in DB) |
+| GitHub token | Evolution cycle + state |
+| Vercel token | Scripts, tests, commands, apps |
+| VPS hardening | Workspace directory (`~/.obol/users/{id}/`) |
+| Process manager (pm2) | First-run onboarding experience |
+| | GitHub backup (per-user repo dir) |
+
+### Tenant routing
+
+When a message arrives, OBOL looks up the sender's Telegram user ID and lazily creates (or retrieves from cache) their tenant context — a Claude instance, memory connection, message log, background runner, and personality, all scoped to that user's directory and DB namespace. No cross-contamination between users.
+
+### Workspace isolation
+
+Each user's tools (shell exec, file read/write) are sandboxed to their workspace directory. A user can't read or write files outside `~/.obol/users/{their-id}/` (with `/tmp` as the only escape hatch). Shell commands run with `cwd` set to the user's workspace.
+
+### Secret namespacing (pass)
+
+When users store secrets via the `pass` encrypted store, each user gets their own namespace:
+
+| Scope | Prefix | Example |
+|-------|--------|---------|
+| Shared bot credentials | `obol/` | `obol/anthropic-key` |
+| User secrets | `obol/users/{id}/` | `obol/users/206639616/gmail-key` |
+
+### Adding users
+
+1. Add their Telegram user ID to `allowedUsers` in `~/.obol/config.json` (or run `obol config`)
+2. Restart the bot
+3. They message the bot → OBOL creates their workspace, runs first-run onboarding, and writes their own SOUL.md + USER.md
+
+Each new user starts fresh. Their bot evolves independently from every other user's.
+
+### Legacy migration
+
+Upgrading from single-user? It's automatic. On first boot, if `~/.obol/users/` doesn't exist but personality files do, OBOL migrates everything (files + DB records) to the first allowed user's directory. No manual steps needed.
 
 ## Setup
 
@@ -317,18 +381,23 @@ obol backup            # Manual backup
 
 ```
 ~/.obol/
-├── config.json        # Credentials (migrated to pass after setup)
-├── personality/
-│   ├── SOUL.md        # Bot personality (rewritten every 100 exchanges)
-│   ├── USER.md        # Owner profile (rewritten every 100 exchanges)
-│   ├── AGENTS.md      # Operational knowledge (rewritten every 100 exchanges)
-│   └── evolution/     # Archived previous souls
-├── scripts/           # Deterministic utility scripts
-├── tests/             # Test suite (gates refactors)
-├── commands/          # Command definitions
-├── apps/              # Web apps (deployed to Vercel)
+├── config.json                    # Shared credentials + allowedUsers
+├── users/
+│   └── <telegram-user-id>/        # Per-user isolated context
+│       ├── personality/
+│       │   ├── SOUL.md            # Bot personality (rewritten every 100 exchanges)
+│       │   ├── USER.md            # Owner profile (rewritten every 100 exchanges)
+│       │   ├── AGENTS.md          # Operational knowledge
+│       │   └── evolution/         # Archived previous souls
+│       ├── scripts/               # Deterministic utility scripts
+│       ├── tests/                 # Test suite (gates refactors)
+│       ├── commands/              # Command definitions
+│       ├── apps/                  # Web apps (deployed to Vercel)
+│       └── logs/
 └── logs/
 ```
+
+Each allowed Telegram user gets their own isolated context — separate personality, memory namespace, evolution cycle, and first-run experience. One bot process, full per-user isolation.
 
 ## Backup & Restore
 
@@ -376,6 +445,7 @@ obol start -d
 | **Channels** | Telegram | Telegram, Discord, Signal, WhatsApp, IRC, Slack, iMessage + more |
 | **LLM** | Anthropic only | Anthropic, OpenAI, Google, Groq, local |
 | **Personality** | Self-evolving + self-healing + self-extending | Static (manual) |
+| **Multi-user** | Full per-user isolation (one process) | Per-channel config |
 | **Architecture** | Single process | Gateway daemon + sessions |
 | **Security** | Auto-hardens on first run | Manual |
 | **Model routing** | Automatic (Haiku) | Manual overrides |

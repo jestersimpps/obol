@@ -3,7 +3,7 @@ const open = require('open');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE } = require('../config');
+const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
 
 const OBOL_DIR = getConfigDir();
 
@@ -326,11 +326,14 @@ async function init(opts = {}) {
     }
   }
 
-  // Save config
   saveConfig(config);
   console.log(`\n  ✅ Config saved to ${CONFIG_FILE}`);
 
-  // Create personality files
+  for (const userId of config.telegram.allowedUsers) {
+    ensureUserDir(userId);
+    console.log(`  ✅ Created user directory for ${userId}`);
+  }
+
   createPersonalityFiles(config);
 
   // Run Supabase migrations
@@ -533,12 +536,7 @@ async function restore() {
   ensureDirs();
   try {
     execSync(`git clone https://${githubToken}@github.com/${user.login}/${repoName}.git /tmp/obol-restore`, { stdio: 'pipe' });
-    // Copy files
-    execSync(`cp -r /tmp/obol-restore/personality/* ${OBOL_DIR}/personality/ 2>/dev/null || true`);
-    execSync(`cp -r /tmp/obol-restore/scripts/* ${OBOL_DIR}/scripts/ 2>/dev/null || true`);
-    execSync(`cp -r /tmp/obol-restore/commands/* ${OBOL_DIR}/commands/ 2>/dev/null || true`);
-    execSync(`rm -rf /tmp/obol-restore`);
-    console.log('  ✅ Brain restored\n');
+    console.log('  ✅ Brain downloaded. Will be placed after user ID is configured.\n');
   } catch (e) {
     console.error(`  ❌ Restore failed: ${e.message}`);
   }
@@ -552,25 +550,42 @@ async function restore() {
     type: 'password', name: 'telegramToken', message: 'Telegram bot token:', mask: '*',
   }]);
 
+  const { allowedUsers } = await inquirer.prompt([{
+    type: 'input',
+    name: 'allowedUsers',
+    message: 'Telegram user ID(s) (comma-separated):',
+    validate: (v) => v.split(',').every(id => /^\d+$/.test(id.trim())) ? true : 'Must be numeric IDs',
+  }]);
+  const userIds = allowedUsers.split(',').map(id => parseInt(id.trim()));
+
   const existingConfig = loadConfig() || {};
   existingConfig.anthropic = { apiKey: anthropicKey };
-  existingConfig.telegram = { ...existingConfig.telegram, token: telegramToken };
+  existingConfig.telegram = { ...existingConfig.telegram, token: telegramToken, allowedUsers: userIds };
   existingConfig.github = { token: githubToken, username: user.login, repo: repoName };
   saveConfig(existingConfig);
+
+  for (const userId of userIds) {
+    const userDir = ensureUserDir(userId);
+    try {
+      execSync(`cp -r /tmp/obol-restore/personality/* "${userDir}/personality/" 2>/dev/null || true`);
+      execSync(`cp -r /tmp/obol-restore/scripts/* "${userDir}/scripts/" 2>/dev/null || true`);
+      execSync(`cp -r /tmp/obol-restore/commands/* "${userDir}/commands/" 2>/dev/null || true`);
+      console.log(`  ✅ Brain restored for user ${userId}`);
+    } catch {}
+  }
+  execSync('rm -rf /tmp/obol-restore');
 
   console.log('\n🪙 Restored! Run: obol start\n');
 }
 
 function ensureDirs() {
-  const dirs = ['personality', 'scripts', 'commands', 'logs'];
+  const dirs = ['logs', 'migrations', 'users'];
   for (const dir of dirs) {
     fs.mkdirSync(path.join(OBOL_DIR, dir), { recursive: true });
   }
 }
 
 function createPersonalityFiles(config) {
-  const personalityDir = path.join(OBOL_DIR, 'personality');
-
   const soul = `# SOUL.md — Who is ${config.bot.name}?
 
 Write your bot's personality here. This shapes how it talks, thinks, and behaves.
@@ -610,10 +625,10 @@ Write your bot's personality here. This shapes how it talks, thinks, and behaves
 Vector memory via Supabase pgvector. Local embeddings (all-MiniLM-L6-v2).
 
 ## Scripts
-Drop scripts in ~/.obol/scripts/ — they become available as tools.
+Drop scripts in your user scripts/ directory — they become available as tools.
 
 ## Commands
-Drop .md files in ~/.obol/commands/ — they become slash commands.
+Drop .md files in your user commands/ directory — they become slash commands.
 
 ## Safety
 - Don't exfiltrate private data
@@ -624,16 +639,22 @@ Drop .md files in ~/.obol/commands/ — they become slash commands.
 *Edit this file to change how your bot operates.*
 `;
 
-  if (!fs.existsSync(path.join(personalityDir, 'SOUL.md'))) {
-    fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), soul);
+  for (const userId of config.telegram.allowedUsers) {
+    const personalityDir = path.join(OBOL_DIR, 'users', String(userId), 'personality');
+    fs.mkdirSync(personalityDir, { recursive: true });
+
+    if (!fs.existsSync(path.join(personalityDir, 'SOUL.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), soul);
+    }
+    if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'USER.md'), user);
+    }
+    if (!fs.existsSync(path.join(personalityDir, 'AGENTS.md'))) {
+      fs.writeFileSync(path.join(personalityDir, 'AGENTS.md'), agents);
+    }
   }
-  if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
-    fs.writeFileSync(path.join(personalityDir, 'USER.md'), user);
-  }
-  if (!fs.existsSync(path.join(personalityDir, 'AGENTS.md'))) {
-    fs.writeFileSync(path.join(personalityDir, 'AGENTS.md'), agents);
-  }
-  console.log('  ✅ Personality files created in ~/.obol/personality/');
+
+  console.log('  ✅ Personality files created for each user');
 }
 
 module.exports = { init };

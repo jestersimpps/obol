@@ -3,14 +3,14 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR, loadConfig, saveConfig } = require('./config');
 
-const POST_SETUP_FLAG = path.join(OBOL_DIR, '.post-setup-complete');
-
-function isPostSetupDone() {
-  return fs.existsSync(POST_SETUP_FLAG);
+function isPostSetupDone(userDir) {
+  const flag = path.join(userDir || OBOL_DIR, '.post-setup-complete');
+  return fs.existsSync(flag);
 }
 
-function markPostSetupDone() {
-  fs.writeFileSync(POST_SETUP_FLAG, JSON.stringify({
+function markPostSetupDone(userDir) {
+  const flag = path.join(userDir || OBOL_DIR, '.post-setup-complete');
+  fs.writeFileSync(flag, JSON.stringify({
     completedAt: new Date().toISOString(),
     tasks: SETUP_TASKS.map(t => t.name),
   }));
@@ -386,12 +386,12 @@ APT::Periodic::AutocleanInterval "7";
 
 // ─── RUNNER ───
 
-async function runPostSetup(config, reportFn) {
-  if (isPostSetupDone()) return;
+async function runPostSetup(config, reportFn, userDir) {
+  if (isPostSetupDone(userDir)) return;
 
   if (process.platform !== 'linux') {
     reportFn?.(`⚠️  Post-setup tasks are designed for Linux VPS servers. Skipping on ${process.platform}.`);
-    markPostSetupDone();
+    markPostSetupDone(userDir);
     return [];
   }
 
@@ -405,7 +405,7 @@ async function runPostSetup(config, reportFn) {
     reportFn?.(`  ${result.success ? '✅' : '⚠️'} ${result.message}`);
   }
 
-  markPostSetupDone();
+  markPostSetupDone(userDir);
 
   const summary = results.map(r => `${r.success ? '✅' : '⚠️'} ${r.name}: ${r.message}`).join('\n');
   reportFn?.(`\n🪙 Post-setup complete!\n${summary}`);

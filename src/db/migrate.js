@@ -79,6 +79,46 @@ async function migrate(supabaseConfig) {
     `CREATE INDEX IF NOT EXISTS obol_messages_chat_id_idx ON obol_messages (chat_id, created_at DESC);`,
     `CREATE INDEX IF NOT EXISTS obol_messages_created_at_idx ON obol_messages (created_at DESC);`,
 
+    // User isolation columns
+    `ALTER TABLE obol_memory ADD COLUMN IF NOT EXISTS user_id BIGINT NOT NULL DEFAULT 0;`,
+    `ALTER TABLE obol_messages ADD COLUMN IF NOT EXISTS user_id BIGINT NOT NULL DEFAULT 0;`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_memory_user ON obol_memory (user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_messages_user ON obol_messages (user_id);`,
+
+    // Update match function to support user_id filtering
+    `CREATE OR REPLACE FUNCTION match_obol_memories(
+      query_embedding VECTOR(384),
+      match_threshold FLOAT,
+      match_count INT,
+      filter_category TEXT DEFAULT NULL,
+      filter_user_id BIGINT DEFAULT NULL
+    ) RETURNS TABLE (
+      id UUID,
+      content TEXT,
+      category TEXT,
+      tags TEXT[],
+      importance FLOAT,
+      source TEXT,
+      created_at TIMESTAMPTZ,
+      accessed_at TIMESTAMPTZ,
+      access_count INT,
+      similarity FLOAT
+    ) LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN QUERY
+      SELECT
+        m.id, m.content, m.category, m.tags, m.importance, m.source,
+        m.created_at, m.accessed_at, m.access_count,
+        1 - (m.embedding <=> query_embedding) AS similarity
+      FROM obol_memory m
+      WHERE 1 - (m.embedding <=> query_embedding) > match_threshold
+        AND (filter_category IS NULL OR m.category = filter_category)
+        AND (filter_user_id IS NULL OR m.user_id = filter_user_id)
+      ORDER BY m.embedding <=> query_embedding
+      LIMIT match_count;
+    END;
+    $$;`,
+
     // RLS
     `ALTER TABLE obol_memory ENABLE ROW LEVEL SECURITY;`,
     `ALTER TABLE obol_messages ENABLE ROW LEVEL SECURITY;`,

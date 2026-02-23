@@ -17,41 +17,43 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { OBOL_DIR } = require('./config');
 
-const EVOLUTION_STATE_FILE = path.join(OBOL_DIR, '.evolution-state.json');
 const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
 
-// Cost control: models used per evolution phase
 const MODELS = {
-  personality: 'claude-sonnet-4-20250514',   // SOUL/USER/AGENTS rewrite — Sonnet is plenty
-  code: 'claude-sonnet-4-20250514',           // Scripts/tests/commands — Sonnet handles this fine
-  codeFix: 'claude-sonnet-4-20250514',        // Fix attempts — definitely doesn't need Opus
+  personality: 'claude-sonnet-4-20250514',
+  code: 'claude-sonnet-4-20250514',
+  codeFix: 'claude-sonnet-4-20250514',
 };
-const MAX_FIX_ATTEMPTS = 1; // One fix attempt, then rollback. Don't burn tokens.
+const MAX_FIX_ATTEMPTS = 1;
 
-function loadEvolutionState() {
+function evolutionStatePath(userDir) {
+  return path.join(userDir || OBOL_DIR, '.evolution-state.json');
+}
+
+function loadEvolutionState(userDir) {
   try {
-    return JSON.parse(fs.readFileSync(EVOLUTION_STATE_FILE, 'utf-8'));
+    return JSON.parse(fs.readFileSync(evolutionStatePath(userDir), 'utf-8'));
   } catch {
     return { exchangesSinceLastEvolution: 0, evolutionCount: 0, lastEvolution: null };
   }
 }
 
-function saveEvolutionState(state) {
-  fs.writeFileSync(EVOLUTION_STATE_FILE, JSON.stringify(state, null, 2));
+function saveEvolutionState(state, userDir) {
+  fs.writeFileSync(evolutionStatePath(userDir), JSON.stringify(state, null, 2));
 }
 
-async function shouldEvolve() {
-  const state = loadEvolutionState();
+async function shouldEvolve(userDir) {
+  const state = loadEvolutionState(userDir);
   const { loadConfig } = require('./config');
   const config = loadConfig();
   const threshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
   return state.exchangesSinceLastEvolution >= threshold;
 }
 
-async function tickExchange() {
-  const state = loadEvolutionState();
+async function tickExchange(userDir) {
+  const state = loadEvolutionState(userDir);
   state.exchangesSinceLastEvolution++;
-  saveEvolutionState(state);
+  saveEvolutionState(state, userDir);
   return state.exchangesSinceLastEvolution;
 }
 
@@ -109,7 +111,7 @@ function runTests(testsDir) {
         encoding: 'utf-8',
         timeout: 30000,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, OBOL_DIR, NODE_ENV: 'test', OBOL_TEST_UTILS: testUtilsPath },
+        env: { ...process.env, OBOL_DIR: OBOL_DIR, NODE_ENV: 'test', OBOL_TEST_UTILS: testUtilsPath },
       });
       passed++;
       outputs.push(`✅ ${file}: passed`);
@@ -131,26 +133,27 @@ function runTests(testsDir) {
 /**
  * Commit and push current state to GitHub backup repo
  */
-async function backupSnapshot(message) {
+async function backupSnapshot(message, userDir) {
   try {
     const { loadConfig } = require('./config');
     const cfg = loadConfig();
     if (cfg?.github) {
       const { runBackup } = require('./backup');
-      await runBackup(cfg.github, message);
+      await runBackup(cfg.github, message, userDir);
     }
-  } catch {} // Best effort
+  } catch {}
 }
 
-async function evolve(claudeClient, messageLog, memory) {
-  const state = loadEvolutionState();
-  const personalityDir = path.join(OBOL_DIR, 'personality');
+async function evolve(claudeClient, messageLog, memory, userDir) {
+  const baseDir = userDir || OBOL_DIR;
+  const state = loadEvolutionState(userDir);
+  const personalityDir = path.join(baseDir, 'personality');
   const soulPath = path.join(personalityDir, 'SOUL.md');
   const userPath = path.join(personalityDir, 'USER.md');
   const agentsPath = path.join(personalityDir, 'AGENTS.md');
-  const scriptsDir = path.join(OBOL_DIR, 'scripts');
-  const testsDir = path.join(OBOL_DIR, 'tests');
-  const commandsDir = path.join(OBOL_DIR, 'commands');
+  const scriptsDir = path.join(baseDir, 'scripts');
+  const testsDir = path.join(baseDir, 'tests');
+  const commandsDir = path.join(baseDir, 'commands');
 
   // Read current state
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
@@ -164,8 +167,9 @@ async function evolve(claudeClient, messageLog, memory) {
   let recentMessages = [];
   if (messageLog) {
     try {
+      const userFilter = messageLog.userId ? `&user_id=eq.${messageLog.userId}` : '';
       const res = await fetch(
-        `${messageLog.url}/rest/v1/obol_messages?order=created_at.desc&limit=100&select=role,content,created_at`,
+        `${messageLog.url}/rest/v1/obol_messages?order=created_at.desc&limit=100&select=role,content,created_at${userFilter}`,
         { headers: messageLog.headers }
       );
       recentMessages = (await res.json()).reverse();
@@ -178,8 +182,9 @@ async function evolve(claudeClient, messageLog, memory) {
     try {
       const headers = messageLog?.headers || {};
       const url = memory.url || messageLog?.url;
+      const memUserFilter = messageLog?.userId ? `&user_id=eq.${messageLog.userId}` : '';
       const res = await fetch(
-        `${url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20`,
+        `${url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20${memUserFilter}`,
         { headers }
       );
       coreMemories = await res.json();
@@ -209,7 +214,7 @@ async function evolve(claudeClient, messageLog, memory) {
   const evolutionNumber = state.evolutionCount + 1;
 
   // ── Step 0: Snapshot before evolution ──
-  await backupSnapshot(`pre-evolution #${evolutionNumber}`);
+  await backupSnapshot(`pre-evolution #${evolutionNumber}`, userDir);
 
   // ── Step 1: Run existing tests as baseline ──
   const baselineResults = runTests(testsDir);
@@ -562,7 +567,7 @@ Fix the scripts. Tests define correct behavior.`
   // ── Step 9: Build and deploy apps ──
   const deployedApps = [];
   if (result.apps && typeof result.apps === 'object') {
-    const appsDir = path.join(OBOL_DIR, 'apps');
+    const appsDir = path.join(baseDir, 'apps');
 
     for (const [appName, app] of Object.entries(result.apps)) {
       if (!app.files || typeof app.files !== 'object') continue;
@@ -633,11 +638,10 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
-  // Update state
   state.exchangesSinceLastEvolution = 0;
   state.evolutionCount = evolutionNumber;
   state.lastEvolution = new Date().toISOString();
-  saveEvolutionState(state);
+  saveEvolutionState(state, userDir);
 
   // Store evolution event in memory
   if (memory) {
@@ -649,8 +653,7 @@ Fix the scripts. Tests define correct behavior.`
     ).catch(() => {});
   }
 
-  // ── Final: Snapshot after evolution ──
-  await backupSnapshot(`post-evolution #${evolutionNumber}`);
+  await backupSnapshot(`post-evolution #${evolutionNumber}`, userDir);
 
   return {
     evolutionNumber,
