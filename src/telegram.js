@@ -22,6 +22,18 @@ function createBot(telegramConfig, claude, memory) {
     await next();
   });
 
+  // Set bot commands menu
+  bot.api.setMyCommands([
+    { command: 'start', description: 'Start OBOL' },
+    { command: 'memory', description: 'Search or view memory stats' },
+    { command: 'tasks', description: 'Show running background tasks' },
+    { command: 'status', description: 'Bot status and uptime' },
+    { command: 'backup', description: 'Trigger GitHub backup now' },
+    { command: 'forget', description: 'Forget a specific memory by ID' },
+    { command: 'recent', description: 'Show recent memories' },
+    { command: 'today', description: 'What happened today' },
+  ]).catch(() => {}); // Best effort
+
   // Handle /start
   bot.command('start', async (ctx) => {
     await ctx.reply('🪙 OBOL is ready. Just send me a message.');
@@ -48,6 +60,78 @@ function createBot(telegramConfig, claude, memory) {
     }
 
     return ctx.reply('Usage: /memory search <query> | /memory stats');
+  });
+
+  // Handle /status
+  bot.command('status', async (ctx) => {
+    const uptime = process.uptime();
+    const mem = (process.memoryUsage().rss / 1024 / 1024).toFixed(0);
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const running = bg.getStatus();
+
+    let text = `🪙 OBOL Status\n\n`;
+    text += `⏱️ Uptime: ${h}h ${m}m\n`;
+    text += `💾 Memory: ${mem}MB\n`;
+    text += `⚡ Tasks: ${running.length} running\n`;
+
+    if (memory) {
+      const stats = await memory.stats().catch(() => null);
+      if (stats) text += `🧠 Memories: ${stats.total}`;
+    }
+
+    await ctx.reply(text);
+  });
+
+  // Handle /backup
+  bot.command('backup', async (ctx) => {
+    try {
+      const config = loadConfig();
+      if (!config?.github) return ctx.reply('GitHub backup not configured.');
+      const { runBackup } = require('./backup');
+      await ctx.reply('📦 Running backup...');
+      await runBackup(config.github);
+      await ctx.reply('✅ Backup complete');
+    } catch (e) {
+      await ctx.reply(`⚠️ Backup failed: ${e.message}`);
+    }
+  });
+
+  // Handle /forget
+  bot.command('forget', async (ctx) => {
+    if (!memory) return ctx.reply('Memory not configured.');
+    const id = ctx.message.text.split(' ')[1];
+    if (!id) return ctx.reply('Usage: /forget <memory-id>');
+    try {
+      await memory.forget(id);
+      await ctx.reply(`🗑️ Forgotten: ${id}`);
+    } catch (e) {
+      await ctx.reply(`⚠️ ${e.message}`);
+    }
+  });
+
+  // Handle /recent
+  bot.command('recent', async (ctx) => {
+    if (!memory) return ctx.reply('Memory not configured.');
+    const results = await memory.recent({ limit: 10 });
+    if (results.length === 0) return ctx.reply('No memories yet.');
+    const text = results.map((m, i) => {
+      const time = new Date(m.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      return `${i + 1}. [${time}] [${m.category}] ${m.content.substring(0, 80)}`;
+    }).join('\n');
+    await ctx.reply(`🕐 Recent memories:\n\n${text}`);
+  });
+
+  // Handle /today
+  bot.command('today', async (ctx) => {
+    if (!memory) return ctx.reply('Memory not configured.');
+    const results = await memory.byDate('today', { limit: 20 });
+    if (results.length === 0) return ctx.reply('Nothing stored today yet.');
+    const text = results.map((m, i) => {
+      const time = new Date(m.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      return `${i + 1}. [${time}] [${m.category}] ${m.content.substring(0, 80)}`;
+    }).join('\n');
+    await ctx.reply(`📅 Today (${results.length} memories):\n\n${text}`);
   });
 
   // Handle /tasks — show running background tasks
