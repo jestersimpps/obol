@@ -2,13 +2,17 @@
 
 ![OBOL](docs/obol-banner.png)
 
-**Your AI, your rules.** A lightweight AI assistant that lives in Telegram.
+**A self-healing, self-evolving AI agent.** Install it, talk to it, and it becomes yours.
 
-One process. One chat. One brain. No bloat.
+One process. One chat. One brain that grows.
 
 ## What is it?
 
-OBOL connects a Telegram bot to Claude (Anthropic) with persistent vector memory. It remembers conversations, executes commands, builds and deploys websites, and backs up its brain to GitHub — all from a single Node.js process on your VPS.
+OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all while living in a single Telegram chat.
+
+It starts as a blank slate. Through conversation, it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 50 exchanges, it reflects on who it's becoming, refactors its own scripts, writes tests to verify they work, and self-heals when something breaks. Over months, it becomes an agent that's uniquely yours — no two OBOL instances are alike.
+
+Under the hood: a single Node.js process on your VPS connecting Telegram to Claude (Anthropic) with persistent vector memory in Supabase. No framework, no plugins, no config files to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
 Named after the AI in [The Last Instruction](https://latentpress.com) — a machine that wakes up alone in an abandoned data center and learns to think.
 
@@ -61,7 +65,7 @@ Extract facts →    Rewrite SOUL.md
 
 ### The Living Brain
 
-OBOL doesn't just store data — it forms a personality. The system has three layers that work together to create a bot that genuinely evolves over time:
+OBOL is a self-healing, self-evolving agent. Three layers work together — raw memory, vector knowledge, and periodic deep reflection — to create a bot that grows a personality, maintains its own codebase, and fixes its own mistakes:
 
 #### Layer 1: Raw Message Log (`obol_messages`)
 
@@ -218,7 +222,8 @@ Claude decides when a task is heavy enough to background. Progress check-ins eve
 - **Deploy** — Build and ship websites to Vercel through chat
 - **Background tasks** — Non-blocking heavy work with progress check-ins
 - **Self-setup** — First conversation teaches OBOL who you are; it writes its own personality
-- **Self-evolving** — Opus periodically rewrites SOUL.md + USER.md from scratch
+- **Self-evolving** — Opus rewrites personality, operational knowledge, and scripts every 50 exchanges
+- **Self-healing** — tests gate every refactor; regressions get 3 fix attempts before rollback
 - **Full message log** — Every message stored, survives restarts, loads context on boot
 - **Auto-hardening** — SSH (port 2222), fail2ban, firewall, auto-updates, kernel security
 - **Encrypted secrets** — Auto-installs GPG + `pass`, migrates keys, wipes plaintext
@@ -410,7 +415,7 @@ OBOL automatically hardens your VPS on first run:
 | **Security** | Auto-hardens VPS on first run | Manual (healthcheck skill) |
 | **Background tasks** | Built-in with check-ins | Sub-agent spawning, isolated sessions |
 | **Onboarding** | Bot teaches itself who you are | You configure everything upfront |
-| **Personality** | Self-evolving (Opus rewrites SOUL.md) | Static (you write SOUL.md) |
+| **Personality** | Self-evolving + self-healing | Static (you write SOUL.md) |
 | **Backup** | Auto GitHub backup daily | Manual / custom |
 | **Group chats** | — | Full group support with context |
 | **Context compaction** | — | Automatic for long sessions |
@@ -418,7 +423,7 @@ OBOL automatically hardens your VPS on first run:
 | **Config** | 1 JSON file → `pass` | YAML, hot-reload, schema validation |
 | **Cost** | ~$9/mo | ~$9/mo + more if multi-provider |
 
-**OBOL is better when you want** zero-to-running speed, self-configuring personality, automatic VPS hardening, smart model routing, and a brain that backs itself up without you thinking about it.
+**OBOL is better when you want** a self-healing agent that evolves its own personality and codebase, zero-to-running speed, automatic VPS hardening, smart model routing, and a brain that backs itself up without you thinking about it.
 
 **OpenClaw is better when you need** multi-channel, multi-provider, group chats, context compaction, skill systems, and deep customization.
 
