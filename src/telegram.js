@@ -6,6 +6,7 @@ const {
 const { loadConfig } = require('./config');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
 const { BackgroundRunner } = require('./background');
+const { shouldEvolve, evolve } = require('./evolve');
 
 
 function createBot(telegramConfig, claude, memory, messageLog) {
@@ -209,6 +210,20 @@ function createBot(telegramConfig, claude, memory, messageLog) {
 
       // Log assistant response
       messageLog?.log(ctx.chat.id, 'assistant', response);
+
+      // Check if it's time for soul evolution
+      if (messageLog && await shouldEvolve().catch(() => false)) {
+        // Run evolution in background — don't block the response
+        setImmediate(async () => {
+          try {
+            const result = await evolve(claude.client, messageLog, memory);
+            claude.reloadPersonality?.();
+            await ctx.reply(`🪙 Soul evolution #${result.evolutionNumber} complete. I've grown.`).catch(() => {});
+          } catch (e) {
+            console.error('Evolution failed:', e.message);
+          }
+        });
+      }
 
       // Send response (split if too long)
       if (response.length > 4096) {

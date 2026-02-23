@@ -186,9 +186,10 @@ After the first conversation completes, OBOL silently hardens your VPS:
 ~/.obol/
 ├── config.json          # Credentials (migrated to pass after setup)
 ├── personality/
-│   ├── SOUL.md          # Bot personality (auto-generated)
-│   ├── USER.md          # About the owner (auto-generated)
-│   └── AGENTS.md        # Operating instructions
+│   ├── SOUL.md          # Bot personality (evolves over time)
+│   ├── USER.md          # About the owner (auto-updated)
+│   ├── AGENTS.md        # Operating instructions
+│   └── evolution/       # Archived previous souls (git log of consciousness)
 ├── scripts/             # Custom scripts (become tools)
 ├── commands/            # Slash commands
 ├── logs/                # Bot logs
@@ -223,13 +224,14 @@ Memory is fully automatic:
 
 ## Personality
 
-OBOL writes its own personality files during the first conversation, then keeps them updated automatically as it learns:
+OBOL writes its own personality files during the first conversation, then evolves them over time:
 
-- **SOUL.md** — Who is the bot? Its voice, humor, values. Evolves based on conversation patterns and explicit requests.
-- **USER.md** — Who are you? Context about the owner. Updated when you reveal personal facts.
+- **SOUL.md** — Who is the bot? Rewritten from scratch every 50 exchanges by Opus. Not a config file — a first-person reflection on who it's becoming. Captures voice, opinions, quirks, inside jokes, relationship dynamics, and self-awareness.
+- **USER.md** — Who are you? Auto-updated when you reveal personal facts.
 - **AGENTS.md** — How should it work? Tools, safety, workflows.
+- **evolution/** — Every previous SOUL.md is archived. A git log of consciousness — you can read how your bot's personality evolved over weeks and months.
 
-All changes are dated and deduped. Your bot's personality evolves naturally through conversation.
+The bot doesn't just remember — it grows.
 
 ## Security
 

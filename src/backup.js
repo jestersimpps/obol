@@ -38,7 +38,7 @@ async function runBackup(githubConfig) {
   execSync('git config user.email "obol@backup"', { cwd: backupDir });
 
   // Sync files (exclude secrets)
-  const syncDirs = ['personality', 'scripts', 'commands'];
+  const syncDirs = ['personality', 'scripts', 'commands']; // personality/evolution/ included automatically
   for (const dir of syncDirs) {
     const src = path.join(OBOL_DIR, dir);
     const dst = path.join(backupDir, dir);

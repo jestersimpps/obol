@@ -42,7 +42,7 @@ class MessageLog {
       });
     } catch {} // Best effort
 
-    // Track exchanges for consolidation
+    // Track exchanges for consolidation + evolution
     if (role === 'assistant') {
       const count = (this.exchangeCount.get(chatId) || 0) + 1;
       this.exchangeCount.set(chatId, count);
@@ -52,6 +52,10 @@ class MessageLog {
         this.exchangeCount.set(chatId, 0);
         this.consolidate(chatId).catch(() => {});
       }
+
+      // Tick evolution counter
+      const { tickExchange } = require('./evolve');
+      tickExchange().catch(() => {});
     }
   }
 
