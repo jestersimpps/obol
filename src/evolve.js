@@ -117,6 +117,20 @@ function runTests(testsDir) {
   };
 }
 
+/**
+ * Commit and push current state to GitHub backup repo
+ */
+async function backupSnapshot(message) {
+  try {
+    const { loadConfig } = require('./config');
+    const cfg = loadConfig();
+    if (cfg?.github) {
+      const { runBackup } = require('./backup');
+      await runBackup(cfg.github, message);
+    }
+  } catch {} // Best effort
+}
+
 async function evolve(claudeClient, messageLog, memory) {
   const state = loadEvolutionState();
   const personalityDir = path.join(OBOL_DIR, 'personality');
@@ -182,6 +196,9 @@ async function evolve(claudeClient, messageLog, memory) {
     .join('\n\n') || '(no commands)';
 
   const evolutionNumber = state.evolutionCount + 1;
+
+  // ── Step 0: Snapshot before evolution ──
+  await backupSnapshot(`pre-evolution #${evolutionNumber}`);
 
   // ── Step 1: Run existing tests as baseline ──
   const baselineResults = runTests(testsDir);
@@ -617,6 +634,9 @@ Fix the scripts. Tests define correct behavior.`
       { category: 'event', importance: 0.8, source: 'evolution' }
     ).catch(() => {});
   }
+
+  // ── Final: Snapshot after evolution ──
+  await backupSnapshot(`post-evolution #${evolutionNumber}`);
 
   return {
     evolutionNumber,

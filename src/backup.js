@@ -21,7 +21,7 @@ function setupBackup(githubConfig) {
   console.log('  ✅ GitHub backup scheduled (daily 3 AM)');
 }
 
-async function runBackup(githubConfig) {
+async function runBackup(githubConfig, commitMessage) {
   const { token, username, repo } = githubConfig;
   const backupDir = path.join(OBOL_DIR, '.backup-repo');
   const repoUrl = `https://${token}@github.com/${username}/${repo}.git`;
@@ -38,7 +38,7 @@ async function runBackup(githubConfig) {
   execSync('git config user.email "obol@backup"', { cwd: backupDir });
 
   // Sync files (exclude secrets)
-  const syncDirs = ['personality', 'scripts', 'commands']; // personality/evolution/ included automatically
+  const syncDirs = ['personality', 'scripts', 'tests', 'commands', 'apps'];
   for (const dir of syncDirs) {
     const src = path.join(OBOL_DIR, dir);
     const dst = path.join(backupDir, dir);
@@ -54,7 +54,8 @@ async function runBackup(githubConfig) {
     const status = execSync('git status --porcelain', { cwd: backupDir, encoding: 'utf-8' });
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
-      execSync(`git commit -m "backup: ${date}"`, { cwd: backupDir, stdio: 'pipe' });
+      const msg = commitMessage || `backup: ${date}`;
+      execSync(`git commit -m "${msg}"`, { cwd: backupDir, stdio: 'pipe' });
       execSync('git push', { cwd: backupDir, stdio: 'pipe' });
     }
   } catch {
