@@ -304,7 +304,7 @@ async function restore() {
 }
 
 function ensureDirs() {
-  const dirs = ['personality', 'scripts', 'commands', 'memory/daily', 'logs'];
+  const dirs = ['personality', 'scripts', 'commands', 'logs'];
   for (const dir of dirs) {
     fs.mkdirSync(path.join(OBOL_DIR, dir), { recursive: true });
   }

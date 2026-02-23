@@ -47,13 +47,6 @@ async function runBackup(githubConfig) {
     }
   }
 
-  // Sync daily memory notes (not vector data — that's in Supabase)
-  const memSrc = path.join(OBOL_DIR, 'memory', 'daily');
-  const memDst = path.join(backupDir, 'memory', 'daily');
-  if (fs.existsSync(memSrc)) {
-    execSync(`mkdir -p ${memDst} && cp -r ${memSrc}/* ${memDst}/ 2>/dev/null || true`, { stdio: 'pipe' });
-  }
-
   // Commit and push
   execSync('git add -A', { cwd: backupDir, stdio: 'pipe' });
 

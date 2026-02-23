@@ -95,7 +95,7 @@ Store important facts, decisions, preferences, and events automatically.
 Check in periodically. Be proactive — surface useful info, don't just wait.
 
 ## Backup
-Brain backs up to GitHub daily. Personality, scripts, commands, daily notes.
+Brain backs up to GitHub daily. Personality, scripts, commands.
 `);
   }
 }

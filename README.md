@@ -171,7 +171,6 @@ After the first conversation completes, OBOL silently hardens your VPS:
 │   └── AGENTS.md        # Operating instructions
 ├── scripts/             # Custom scripts (become tools)
 ├── commands/            # Slash commands
-├── memory/daily/        # Daily memory notes
 ├── logs/                # Bot logs
 └── migrations/          # SQL migrations
 ```
@@ -263,7 +262,7 @@ They're not competitors — OBOL is the on-ramp. When you outgrow it, graduate t
 
 ## Backup & Restore
 
-OBOL backs up to GitHub daily at 3 AM (personality, scripts, commands, daily notes).
+OBOL backs up to GitHub daily at 3 AM (personality, scripts, commands). Memory lives in Supabase.
 
 To restore on a new VPS:
 
