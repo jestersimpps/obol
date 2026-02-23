@@ -43,7 +43,9 @@ class MessageLog {
           user_id: this.userId,
         }),
       });
-    } catch {} // Best effort
+    } catch (e) {
+      console.error('[messages] Log failed:', e.message);
+    }
 
     // Track exchanges for consolidation + evolution
     if (role === 'assistant') {
@@ -135,7 +137,9 @@ Return empty array if nothing worth storing.`,
       }
 
       // Personality files (SOUL.md, USER.md) are only updated by Opus during soul evolution
-    } catch {} // Best effort
+    } catch (e) {
+      console.error('[consolidate] Failed:', e.message);
+    }
   }
 }
 

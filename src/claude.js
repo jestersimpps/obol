@@ -2,7 +2,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { OBOL_DIR } = require('./config');
+const { refreshTokens, isExpired, isOAuthToken } = require('./oauth');
+const { saveConfig, loadConfig } = require('./config');
+
+const MAX_EXEC_TIMEOUT = 120;
 
 const BLOCKED_EXEC_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
@@ -10,10 +13,47 @@ const BLOCKED_EXEC_PATTERNS = [
   /\bmkfs\b/, /\bdd\s+if=/, /\b:()\{\s*:|:&\s*\};:/,
   /\bchmod\s+(-R\s+)?[0-7]*\s+\/[^t]/,
   />\s*\/etc\//, />\s*\/boot\//,
+  /\beval\s+/, /\bsource\s+/,
+  /\bbash\s+-c\b/, /\bsh\s+-c\b/, /\bzsh\s+-c\b/,
+  /`[^`]*`/,
+  /\$\([^)]*\)/,
+  /\bpython[23]?\s+-c\b/, /\bperl\s+-e\b/, /\bruby\s+-e\b/, /\bnode\s+-e\b/,
+  /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
 ];
 
+function createAnthropicClient(anthropicConfig) {
+  if (anthropicConfig.oauth) {
+    return new Anthropic({
+      apiKey: null,
+      authToken: anthropicConfig.oauth.accessToken,
+      defaultHeaders: {
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20',
+      },
+    });
+  }
+  return new Anthropic({ apiKey: anthropicConfig.apiKey });
+}
+
+async function ensureFreshToken(anthropicConfig) {
+  if (!anthropicConfig.oauth) return;
+  if (!isExpired(anthropicConfig.oauth)) return;
+
+  const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
+  anthropicConfig.oauth.accessToken = tokens.accessToken;
+  anthropicConfig.oauth.refreshToken = tokens.refreshToken;
+  anthropicConfig.oauth.expires = tokens.expires;
+
+  const config = loadConfig({ resolve: false });
+  if (config) {
+    config.anthropic.oauth = anthropicConfig.oauth;
+    saveConfig(config);
+  }
+}
+
 function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEnabled }) {
-  const client = new Anthropic({ apiKey: anthropicConfig.apiKey });
+  let client = createAnthropicClient(anthropicConfig);
+  const useOAuth = !!anthropicConfig.oauth;
 
   const baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
@@ -25,6 +65,12 @@ function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEna
   async function chat(userMessage, context = {}) {
     context.userDir = userDir;
     const chatId = context.chatId || 'default';
+
+    // Refresh OAuth token if needed
+    if (useOAuth) {
+      await ensureFreshToken(anthropicConfig);
+      client = createAnthropicClient(anthropicConfig);
+    }
 
     // Get or create history
     if (!histories.has(chatId)) histories.set(chatId, []);
@@ -81,7 +127,9 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
               combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
           }
         }
-      } catch {}
+      } catch (e) {
+        console.error('[router] Memory/routing decision failed:', e.message);
+      }
     }
 
     // Add user message with memory context
@@ -372,11 +420,23 @@ function resolveUserPath(inputPath, userDir) {
     ? path.resolve(inputPath)
     : path.resolve(userDir, inputPath);
   const normalizedUser = path.resolve(userDir);
-  if (!resolved.startsWith(normalizedUser + path.sep) && resolved !== normalizedUser) {
-    if (resolved.startsWith('/tmp')) return resolved;
+
+  let realResolved = resolved;
+  try {
+    realResolved = fs.realpathSync(resolved);
+  } catch {
+    const parent = path.dirname(resolved);
+    try {
+      const realParent = fs.realpathSync(parent);
+      realResolved = path.join(realParent, path.basename(resolved));
+    } catch {}
+  }
+
+  if (!realResolved.startsWith(normalizedUser + path.sep) && realResolved !== normalizedUser) {
+    if (realResolved.startsWith('/tmp')) return realResolved;
     throw new Error(`Path "${inputPath}" is outside your workspace. Use paths relative to your workspace or /tmp.`);
   }
-  return resolved;
+  return realResolved;
 }
 
 async function executeToolCall(toolUse, memory, context = {}) {
@@ -391,7 +451,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
             return `Blocked: "${input.command}" matches a dangerous pattern. Ask the user for confirmation first.`;
           }
         }
-        const timeout = (input.timeout || 30) * 1000;
+        const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;
         const output = execSync(input.command, {
           encoding: 'utf-8',
           timeout,
@@ -443,13 +503,12 @@ async function executeToolCall(toolUse, memory, context = {}) {
       }
 
       case 'vercel_deploy': {
-        const { loadConfig } = require('./config');
-        const cfg = loadConfig();
-        const token = cfg?.vercel?.token;
+        const token = context.config?.vercel?.token;
         if (!token) return 'Vercel not configured.';
         const dir = userDir ? resolveUserPath(input.directory, userDir) : input.directory;
         const prod = input.production ? '--prod' : '';
-        const projName = input.name ? `--name ${input.name}` : '';
+        const safeName = input.name ? input.name.replace(/[^a-zA-Z0-9_-]/g, '') : '';
+        const projName = safeName ? `--name "${safeName}"` : '';
         const output = execSync(
           `cd "${dir}" && npx vercel ${prod} ${projName} --yes 2>&1`,
           { encoding: 'utf-8', timeout: 120000, env: { ...process.env, VERCEL_TOKEN: token } }
@@ -458,9 +517,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
       }
 
       case 'vercel_list': {
-        const { loadConfig } = require('./config');
-        const cfg = loadConfig();
-        const token = cfg?.vercel?.token;
+        const token = context.config?.vercel?.token;
         if (!token) return 'Vercel not configured.';
         const output = execSync(
           `npx vercel ls ${input.project} 2>&1`,
@@ -493,14 +550,12 @@ async function executeToolCall(toolUse, memory, context = {}) {
 
       case 'bridge_ask': {
         const { bridgeAsk } = require('./bridge');
-        const { loadConfig: loadCfg } = require('./config');
-        return await bridgeAsk(input.question, context.userId, loadCfg(), context._notifyFn, input.partner_id);
+        return await bridgeAsk(input.question, context.userId, context.config, context._notifyFn, input.partner_id);
       }
 
       case 'bridge_tell': {
         const { bridgeTell } = require('./bridge');
-        const { loadConfig: loadCfg2 } = require('./config');
-        return await bridgeTell(input.message, context.userId, loadCfg2(), context._notifyFn, input.partner_id);
+        return await bridgeTell(input.message, context.userId, context.config, context._notifyFn, input.partner_id);
       }
 
       default:
@@ -511,4 +566,4 @@ async function executeToolCall(toolUse, memory, context = {}) {
   }
 }
 
-module.exports = { createClaude };
+module.exports = { createClaude, createAnthropicClient };

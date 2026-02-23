@@ -54,7 +54,7 @@ async function createMemory(supabaseConfig, userId = 0) {
         match_threshold: threshold,
         match_count: limit,
         filter_category: category,
-        filter_user_id: userId || null,
+        filter_user_id: userId !== undefined && userId !== null ? userId : null,
       }),
     });
     const data = await res.json();

@@ -55,7 +55,7 @@ async function runBackup(githubConfig, commitMessage, userDir) {
     const status = execSync('git status --porcelain', { cwd: backupDir, encoding: 'utf-8' });
     if (status.trim()) {
       const date = new Date().toISOString().slice(0, 10);
-      const msg = commitMessage || `backup: ${date}`;
+      const msg = (commitMessage || `backup: ${date}`).replace(/"/g, '\\"');
       execSync(`git commit -m "${msg}"`, { cwd: backupDir, stdio: 'pipe' });
       execSync('git push', { cwd: backupDir, stdio: 'pipe' });
     }

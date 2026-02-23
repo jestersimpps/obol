@@ -204,41 +204,46 @@ function createBot(telegramConfig, config) {
     const userId = ctx.from.id;
     const userName = ctx.from.first_name || 'User';
 
-    const now = Date.now();
-    const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
-    if (now < userLimit.cooldownUntil) return;
-    if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
-      userLimit.spamCount++;
-      userLimit.lastMessage = now;
-      rateLimits.set(userId, userLimit);
-      if (userLimit.spamCount >= SPAM_THRESHOLD) {
-        userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
+    const tenant = await getTenant(userId, config);
+    const inFirstRun = isFirstRun(tenant.userDir);
+
+    if (!inFirstRun) {
+      const now = Date.now();
+      const userLimit = rateLimits.get(userId) || { lastMessage: 0, spamCount: 0, cooldownUntil: 0 };
+      if (now < userLimit.cooldownUntil) return;
+      if (now - userLimit.lastMessage < RATE_LIMIT_MS) {
+        userLimit.spamCount++;
+        userLimit.lastMessage = now;
         rateLimits.set(userId, userLimit);
-        await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
+        if (userLimit.spamCount >= SPAM_THRESHOLD) {
+          userLimit.cooldownUntil = now + SPAM_COOLDOWN_MS;
+          rateLimits.set(userId, userLimit);
+          await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
+          return;
+        }
         return;
       }
-      return;
+      userLimit.lastMessage = now;
+      userLimit.spamCount = 0;
+      rateLimits.set(userId, userLimit);
     }
-    userLimit.lastMessage = now;
-    userLimit.spamCount = 0;
-    rateLimits.set(userId, userLimit);
 
     const stopTyping = startTyping(ctx);
 
     try {
-      const tenant = await getTenant(userId, config);
 
       tenant.messageLog?.log(ctx.chat.id, 'user', userMessage);
 
       let response;
 
-      if (isFirstRun(tenant.userDir)) {
+      if (inFirstRun) {
         if (!firstRunHistories.has(userId)) firstRunHistories.set(userId, []);
         const history = firstRunHistories.get(userId);
-        history.push({ role: 'user', content: userMessage });
 
-        if (history.length >= MAX_FIRST_RUN_EXCHANGES * 2) {
-          history.push({ role: 'user', content: 'We have chatted enough. Please generate the personality files now based on everything you know. Include the obol-setup JSON block.' });
+        if (history.length >= (MAX_FIRST_RUN_EXCHANGES - 1) * 2) {
+          history.push({ role: 'user', content: userMessage + '\n\nWe have chatted enough. Please generate the personality files now based on everything you know. Include the obol-setup JSON block.' });
+        } else {
+          history.push({ role: 'user', content: userMessage });
         }
 
         const msg = await tenant.claude.client.messages.create({
@@ -290,6 +295,7 @@ function createBot(telegramConfig, config) {
           bg: tenant.bg,
           ctx,
           claude: tenant.claude,
+          config,
           _notifyFn: (targetUserId, message) => bot.api.sendMessage(targetUserId, message),
         });
       }

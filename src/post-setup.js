@@ -89,8 +89,15 @@ Expire-Date: 0
         // Verify pass is working
         execSync('pass ls', { stdio: 'pipe' });
 
+        const isOAuth = !!config.anthropic?.oauth;
+
         const secrets = {
-          'obol/anthropic-key': config.anthropic?.apiKey,
+          ...(isOAuth ? {
+            'obol/anthropic-oauth-access': config.anthropic.oauth.accessToken,
+            'obol/anthropic-oauth-refresh': config.anthropic.oauth.refreshToken,
+          } : {
+            'obol/anthropic-key': config.anthropic?.apiKey,
+          }),
           'obol/telegram-token': config.telegram?.token,
           'obol/supabase-url': config.supabase?.url,
           'obol/supabase-key': config.supabase?.serviceKey,
@@ -110,10 +117,15 @@ Expire-Date: 0
           migrated++;
         }
 
-        // Rewrite config.json without plaintext secrets
         const cleanConfig = {
           ...config,
-          anthropic: { apiKey: 'pass:obol/anthropic-key' },
+          anthropic: isOAuth ? {
+            oauth: {
+              accessToken: 'pass:obol/anthropic-oauth-access',
+              refreshToken: 'pass:obol/anthropic-oauth-refresh',
+              expires: config.anthropic.oauth.expires,
+            },
+          } : { apiKey: 'pass:obol/anthropic-key' },
           telegram: { ...config.telegram, token: 'pass:obol/telegram-token' },
           supabase: config.supabase ? {
             url: 'pass:obol/supabase-url',

@@ -74,6 +74,7 @@ TASK: ${task}`;
       taskState.status = 'done';
       taskState.result = result;
       clearInterval(taskState.checkInTimer);
+      claude.clearHistory(`bg-${taskState.id}`);
 
       // Send final result
       const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
@@ -109,14 +110,17 @@ TASK: ${task}`;
 Give a ONE LINE progress update (emoji + what's happening). Be specific about what you've found/done so far. Example: "⏳ Found 8 clinics, comparing ratings and prices..."`;
 
       // Use a separate quick call — don't interfere with the main task
+      const checkInChatId = `checkin-${taskState.id}`;
       const update = await claude.chat(checkInPrompt, {
-        chatId: `checkin-${taskState.id}-${elapsed}`,
+        chatId: checkInChatId,
         userName: 'CheckIn',
       });
 
       if (update && update.trim()) {
         await ctx.reply(update.trim()).catch(() => {});
       }
+
+      claude.clearHistory(checkInChatId);
     } catch {
       // Check-in failed — not critical, skip it
     }

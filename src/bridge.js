@@ -1,4 +1,20 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { createAnthropicClient } = require('./claude');
+
+const BRIDGE_MAX_PER_HOUR = 20;
+const bridgeUsage = new Map();
+
+function checkBridgeRateLimit(userId) {
+  const now = Date.now();
+  const hourAgo = now - 3600000;
+  const usage = bridgeUsage.get(userId) || [];
+  const recent = usage.filter(ts => ts > hourAgo);
+  if (recent.length >= BRIDGE_MAX_PER_HOUR) {
+    return `Bridge rate limit reached (${BRIDGE_MAX_PER_HOUR}/hour). Try again later.`;
+  }
+  recent.push(now);
+  bridgeUsage.set(userId, recent);
+  return null;
+}
 
 function isBridgeEnabled(config) {
   return config.bridge?.enabled === true;
@@ -7,10 +23,14 @@ function isBridgeEnabled(config) {
 function getPartnerUserId(userId, config, targetId) {
   const users = config.telegram?.allowedUsers || [];
   if (targetId) {
-    return users.includes(targetId) && targetId !== userId ? targetId : null;
+    if (!users.includes(targetId)) return { error: `User ${targetId} is not in the allowed users list.` };
+    if (targetId === userId) return { error: 'Cannot bridge to yourself.' };
+    return { partnerId: targetId };
   }
   const others = users.filter(id => id !== userId);
-  return others.length === 1 ? others[0] : null;
+  if (others.length === 0) return { error: 'No other users configured. Add more users with `obol config`.' };
+  if (others.length === 1) return { partnerId: others[0] };
+  return { error: `Multiple users available (${others.map(id => id).join(', ')}). Specify partner_id to choose which one.` };
 }
 
 function buildBridgeTool() {
@@ -31,8 +51,12 @@ function buildBridgeTool() {
 async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   if (!isBridgeEnabled(config)) return 'Bridge is not enabled.';
 
-  const partnerUserId = getPartnerUserId(fromUserId, config, targetId);
-  if (!partnerUserId) return 'No partner user found.';
+  const rateLimitErr = checkBridgeRateLimit(fromUserId);
+  if (rateLimitErr) return rateLimitErr;
+
+  const result = getPartnerUserId(fromUserId, config, targetId);
+  if (result.error) return result.error;
+  const partnerUserId = result.partnerId;
 
   const { getTenant } = require('./tenant');
   const partner = await getTenant(partnerUserId, config);
@@ -41,12 +65,14 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   let memoryContext = '';
   if (partner.memory) {
     try {
-      const memories = await partner.memory.search(question, { limit: 5, threshold: 0.4 });
+      const memories = await partner.memory.search(question, { limit: 5, threshold: 0.5 });
       if (memories.length > 0) {
         memoryContext = '\n\n[Relevant memories]\n' +
           memories.map(m => `- [${m.category}] ${m.content}`).join('\n');
       }
-    } catch {}
+    } catch (e) {
+      console.error(`[bridge] Memory search failed for ${partnerUserId}:`, e.message);
+    }
   }
 
   const systemParts = [
@@ -58,7 +84,7 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   if (partner.personality?.user) systemParts.push(`\n## About Your Owner\n${partner.personality.user}`);
   if (memoryContext) systemParts.push(memoryContext);
 
-  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+  const client = createAnthropicClient(config.anthropic);
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -72,7 +98,9 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   if (notifyFn) {
     try {
       await notifyFn(partnerUserId, `🪙 Your partner's agent asked about you:\n"${question}"`);
-    } catch {}
+    } catch (e) {
+      console.error(`[bridge] Notify failed for ${partnerUserId}:`, e.message);
+    }
   }
 
   if (partner.memory) {
@@ -82,7 +110,9 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
         importance: 0.4,
         source: `bridge:${fromUserId}`,
       });
-    } catch {}
+    } catch (e) {
+      console.error(`[bridge] Memory store failed for ${partnerUserId}:`, e.message);
+    }
   }
 
   return answer;
@@ -106,8 +136,12 @@ function buildBridgeTellTool() {
 async function bridgeTell(message, fromUserId, config, notifyFn, targetId) {
   if (!isBridgeEnabled(config)) return 'Bridge is not enabled.';
 
-  const partnerUserId = getPartnerUserId(fromUserId, config, targetId);
-  if (!partnerUserId) return 'No partner user found.';
+  const rateLimitErr = checkBridgeRateLimit(fromUserId);
+  if (rateLimitErr) return rateLimitErr;
+
+  const result = getPartnerUserId(fromUserId, config, targetId);
+  if (result.error) return result.error;
+  const partnerUserId = result.partnerId;
 
   const { getTenant } = require('./tenant');
   const partner = await getTenant(partnerUserId, config);
@@ -120,16 +154,20 @@ async function bridgeTell(message, fromUserId, config, notifyFn, targetId) {
         importance: 0.6,
         source: `bridge:${fromUserId}`,
       });
-    } catch {}
+    } catch (e) {
+      console.error(`[bridge] Memory store failed for ${partnerUserId}:`, e.message);
+    }
   }
 
   if (notifyFn) {
     try {
       await notifyFn(partnerUserId, `🪙 Message from your partner's agent:\n"${message}"`);
-    } catch {}
+    } catch (e) {
+      console.error(`[bridge] Notify failed for ${partnerUserId}:`, e.message);
+    }
   }
 
   return 'Message delivered and stored in partner\'s memory.';
 }
 
-module.exports = { isBridgeEnabled, getPartnerUserId, buildBridgeTool, buildBridgeTellTool, bridgeAsk, bridgeTell };
+module.exports = { isBridgeEnabled, getPartnerUserId, checkBridgeRateLimit, buildBridgeTool, buildBridgeTellTool, bridgeAsk, bridgeTell };

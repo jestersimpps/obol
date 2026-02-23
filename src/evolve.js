@@ -173,7 +173,9 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
         { headers: messageLog.headers }
       );
       recentMessages = (await res.json()).reverse();
-    } catch {}
+    } catch (e) {
+      console.error('[evolve] Failed to fetch recent messages:', e.message);
+    }
   }
 
   // Get high-importance memories
@@ -181,14 +183,17 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
   if (memory) {
     try {
       const headers = messageLog?.headers || {};
-      const url = memory.url || messageLog?.url;
+      const url = messageLog?.url;
+      if (!url) throw new Error('No Supabase URL available');
       const memUserFilter = messageLog?.userId ? `&user_id=eq.${messageLog.userId}` : '';
       const res = await fetch(
         `${url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20${memUserFilter}`,
         { headers }
       );
       coreMemories = await res.json();
-    } catch {}
+    } catch (e) {
+      console.error('[evolve] Failed to fetch core memories:', e.message);
+    }
   }
 
   const transcript = recentMessages.map(m =>
@@ -602,8 +607,8 @@ Fix the scripts. Tests define correct behavior.`
           const token = cfg?.vercel?.token;
           if (token) {
             const deployOutput = execSync(
-              `npx vercel --prod --name ${appName} --token ${token} --yes 2>&1`,
-              { cwd: appDir, encoding: 'utf-8', timeout: 120000 }
+              `npx vercel --prod --name "${appName.replace(/[^a-zA-Z0-9_-]/g, '')}" --yes 2>&1`,
+              { cwd: appDir, encoding: 'utf-8', timeout: 120000, env: { ...process.env, VERCEL_TOKEN: token } }
             );
             // Extract URL from Vercel output
             const urlMatch = deployOutput.match(/https:\/\/[^\s]+\.vercel\.app/);

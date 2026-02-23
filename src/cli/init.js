@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
+const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
 
 const OBOL_DIR = getConfigDir();
 
@@ -153,22 +154,36 @@ async function init(opts = {}) {
 
   // Step 1: Anthropic
   console.log('─── Step 1/7: Anthropic (AI brain) ───\n');
-  console.log('  OBOL uses Claude as its brain. You need an Anthropic API key.\n');
-  console.log('  How to get it:');
-  console.log('    1. Go to https://console.anthropic.com');
-  console.log('    2. Sign up or log in');
-  console.log('    3. Go to Settings > API Keys > Create Key');
-  console.log('    4. Copy the key (starts with sk-ant-)');
-  console.log('    5. Make sure you have credits: Billing > Add funds ($5 min)\n');
-  const { anthropicKey } = await inquirer.prompt([{
-    type: 'password',
-    name: 'anthropicKey',
-    message: 'Anthropic API key:',
-    mask: '*',
-    validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
+  console.log('  OBOL uses Claude as its brain. Choose how to connect:\n');
+  const { authMethod } = await inquirer.prompt([{
+    type: 'list',
+    name: 'authMethod',
+    message: 'Authentication method:',
+    choices: [
+      { name: 'API Key (usage-based billing from console.anthropic.com)', value: 'apikey' },
+      { name: 'Claude Max OAuth (use your Pro/Max subscription)', value: 'oauth' },
+    ],
   }]);
-  config.anthropic = { apiKey: anthropicKey };
-  await validateCredential('Anthropic', () => validateAnthropic(anthropicKey));
+
+  if (authMethod === 'oauth') {
+    config.anthropic = await setupAnthropicOAuth();
+  } else {
+    console.log('\n  How to get it:');
+    console.log('    1. Go to https://console.anthropic.com');
+    console.log('    2. Sign up or log in');
+    console.log('    3. Go to Settings > API Keys > Create Key');
+    console.log('    4. Copy the key (starts with sk-ant-)');
+    console.log('    5. Make sure you have credits: Billing > Add funds ($5 min)\n');
+    const { anthropicKey } = await inquirer.prompt([{
+      type: 'password',
+      name: 'anthropicKey',
+      message: 'Anthropic API key:',
+      mask: '*',
+      validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
+    }]);
+    config.anthropic = { apiKey: anthropicKey };
+    await validateCredential('Anthropic', () => validateAnthropic(anthropicKey));
+  }
   console.log('');
 
   // Step 2: Telegram
@@ -226,13 +241,13 @@ async function init(opts = {}) {
 
   // Step 4: GitHub
   console.log('─── Step 4/7: GitHub (backup) ───\n');
-  const { skipGithub } = await inquirer.prompt([{
+  const { setupGithub } = await inquirer.prompt([{
     type: 'confirm',
-    name: 'skipGithub',
+    name: 'setupGithub',
     message: 'Set up GitHub backup?',
     default: true,
   }]);
-  if (skipGithub) {
+  if (setupGithub) {
     console.log('  OBOL backs up its personality, scripts, and commands to a');
     console.log('  private GitHub repo daily. This lets you restore on any server.\n');
     console.log('  How to get a token:');
@@ -255,13 +270,13 @@ async function init(opts = {}) {
 
   // Step 5: Vercel
   console.log('─── Step 5/7: Vercel (deploy sites) ───\n');
-  const { skipVercel } = await inquirer.prompt([{
+  const { setupVercel } = await inquirer.prompt([{
     type: 'confirm',
-    name: 'skipVercel',
+    name: 'setupVercel',
     message: 'Set up Vercel deployments?',
     default: true,
   }]);
-  if (skipVercel) {
+  if (setupVercel) {
     console.log('  OBOL can deploy websites and apps to Vercel for you.\n');
     console.log('  How to get a token:');
     console.log('    1. Go to https://vercel.com (sign up free if needed)');
@@ -346,6 +361,70 @@ async function init(opts = {}) {
 `);
 }
 
+async function setupAnthropicOAuth() {
+  console.log('\n  This will open your browser to sign in with your Anthropic account.\n');
+
+  const { verifier, challenge } = await generatePKCE();
+  const authUrl = buildAuthorizationUrl(challenge, verifier);
+
+  console.log('  Opening browser...\n');
+  try {
+    await open(authUrl);
+  } catch {
+    console.log('  Could not open browser automatically.');
+  }
+  console.log(`  If the browser didn't open, go to:\n  ${authUrl}\n`);
+  console.log('  After signing in, you\'ll see a page with a code.');
+  console.log('  The URL will look like: ...callback?code=XXXXX#STATE\n');
+
+  const { callbackInput } = await inquirer.prompt([{
+    type: 'input',
+    name: 'callbackInput',
+    message: 'Paste the full callback URL or just the code:',
+    validate: (v) => v.trim().length > 0 ? true : 'Required',
+  }]);
+
+  let code, state;
+  const input = callbackInput.trim();
+
+  if (input.includes('code=')) {
+    const url = new URL(input);
+    code = url.searchParams.get('code');
+    state = url.hash?.replace('#', '') || verifier;
+  } else if (input.includes('#')) {
+    [code, state] = input.split('#');
+  } else {
+    code = input;
+    state = verifier;
+  }
+
+  process.stdout.write('  Exchanging code for tokens...');
+  try {
+    const tokens = await exchangeCodeForTokens(code, state, verifier);
+    console.log(' ✅ Authenticated');
+    console.log(`  Access token expires: ${new Date(tokens.expires).toLocaleString()}\n`);
+    return {
+      oauth: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expires: tokens.expires,
+      },
+    };
+  } catch (e) {
+    console.log(` ❌ ${e.message}`);
+    console.log('\n  Falling back to API key...\n');
+    const { anthropicKey } = await inquirer.prompt([{
+      type: 'password',
+      name: 'anthropicKey',
+      message: 'Anthropic API key:',
+      mask: '*',
+      validate: (v) => v.startsWith('sk-ant-') ? true : 'Should start with sk-ant-',
+    }]);
+    await validateCredential('Anthropic', () => validateAnthropic(anthropicKey));
+    return { apiKey: anthropicKey };
+  }
+}
+
 async function collectAllowedUsers(token) {
   const detected = token ? await detectTelegramUserId(token) : null;
   const selected = [];
@@ -427,9 +506,24 @@ async function setupSupabaseNew() {
     mask: '*',
   }]);
 
+  const { region } = await inquirer.prompt([{
+    type: 'list',
+    name: 'region',
+    message: 'Supabase region (pick closest to your server):',
+    choices: [
+      { name: 'US East (Virginia)', value: 'us-east-1' },
+      { name: 'US West (Oregon)', value: 'us-west-1' },
+      { name: 'EU Central (Frankfurt)', value: 'eu-central-1' },
+      { name: 'EU West (London)', value: 'eu-west-2' },
+      { name: 'AP Southeast (Singapore)', value: 'ap-southeast-1' },
+      { name: 'AP Northeast (Tokyo)', value: 'ap-northeast-1' },
+      { name: 'AP South (Mumbai)', value: 'ap-south-1' },
+      { name: 'SA East (Sao Paulo)', value: 'sa-east-1' },
+    ],
+  }]);
+
   console.log('  Creating project...');
   try {
-    // Generate a random password for the DB
     const dbPass = require('crypto').randomBytes(16).toString('hex');
 
     const res = await fetch('https://api.supabase.com/v1/projects', {
@@ -440,7 +534,7 @@ async function setupSupabaseNew() {
       },
       body: JSON.stringify({
         name: 'obol',
-        region: 'eu-central-1',
+        region,
         plan: 'free',
         db_pass: dbPass,
       }),
@@ -480,13 +574,20 @@ async function setupSupabaseNew() {
 async function waitForProject(token, projectId, maxWait = 120000) {
   const start = Date.now();
   while (Date.now() - start < maxWait) {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    const remaining = Math.ceil((maxWait - (Date.now() - start)) / 1000);
+    process.stdout.write(`\r  Waiting... ${elapsed}s elapsed, ~${remaining}s remaining`);
     const res = await fetch(`https://api.supabase.com/v1/projects/${projectId}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     const project = await res.json();
-    if (project.status === 'ACTIVE_HEALTHY') return;
+    if (project.status === 'ACTIVE_HEALTHY') {
+      process.stdout.write('\r' + ' '.repeat(60) + '\r');
+      return;
+    }
     await new Promise(r => setTimeout(r, 5000));
   }
+  process.stdout.write('\n');
   throw new Error('Project creation timed out');
 }
 
@@ -593,7 +694,17 @@ async function restore() {
 
   ensureDirs();
   try {
-    execSync(`git clone https://${githubToken}@github.com/${user.login}/${repoName}.git /tmp/obol-restore`, { stdio: 'pipe' });
+    execSync(`git clone https://github.com/${user.login}/${repoName}.git /tmp/obol-restore`, {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        GIT_ASKPASS: 'echo',
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: `url.https://${githubToken}@github.com/.insteadOf`,
+        GIT_CONFIG_VALUE_0: 'https://github.com/',
+      },
+    });
     console.log('  ✅ Brain downloaded. Will be placed after user ID is configured.\n');
   } catch (e) {
     console.error(`  ❌ Restore failed: ${e.message}`);
@@ -668,15 +779,6 @@ Write your bot's personality here. This shapes how it talks, thinks, and behaves
 *Edit this file anytime to reshape your bot's personality.*
 `;
 
-  const user = `# USER.md — About ${config.owner.name}
-
-- **Name:** ${config.owner.name}
-- **Telegram ID:** ${config.telegram.allowedUsers.join(', ')}
-
----
-*Add more context about yourself so your bot can be more helpful.*
-`;
-
   const agents = `# AGENTS.md — How ${config.bot.name} Works
 
 ## Memory
@@ -705,6 +807,14 @@ Drop .md files in your user commands/ directory — they become slash commands.
       fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), soul);
     }
     if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
+      const user = `# USER.md — About ${config.owner.name}
+
+- **Name:** ${config.owner.name}
+- **Telegram ID:** ${userId}
+
+---
+*Add more context about yourself so your bot can be more helpful.*
+`;
       fs.writeFileSync(path.join(personalityDir, 'USER.md'), user);
     }
     if (!fs.existsSync(path.join(personalityDir, 'AGENTS.md'))) {
