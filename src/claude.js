@@ -31,7 +31,7 @@ const SENSITIVE_READ_PATHS = [
 ];
 
 function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
-  if (useOAuth && anthropicConfig.oauth) {
+  if (useOAuth && anthropicConfig.oauth?.accessToken) {
     return new Anthropic({
       apiKey: null,
       authToken: anthropicConfig.oauth.accessToken,
@@ -48,8 +48,17 @@ function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
 }
 
 async function ensureFreshToken(anthropicConfig) {
-  if (!anthropicConfig.oauth) return;
+  if (!anthropicConfig.oauth?.accessToken) return;
   if (!isExpired(anthropicConfig.oauth)) return;
+  if (!anthropicConfig.oauth.refreshToken) {
+    if (anthropicConfig.apiKey) {
+      anthropicConfig._oauthFailed = true;
+      return;
+    }
+    const err = new Error('OAuth token expired and no refresh token available. Re-authenticate with: obol config → Anthropic → OAuth');
+    err.isOAuthExpiry = true;
+    throw err;
+  }
 
   try {
     const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
@@ -77,7 +86,7 @@ async function ensureFreshToken(anthropicConfig) {
 
 function createClaude(anthropicConfig, { personality, memory, userDir, bridgeEnabled }) {
   let client = createAnthropicClient(anthropicConfig);
-  const useOAuth = !!anthropicConfig.oauth;
+  const useOAuth = !!anthropicConfig.oauth?.accessToken;
 
   const baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
@@ -282,9 +291,14 @@ ${workDir}/
 
 ## Secrets (pass)
 
-When storing secrets with \`pass\`, ALWAYS use the prefix \`${passPrefix}/\`.
+When storing NEW user secrets with \`pass\`, use the prefix \`${passPrefix}/\`.
 Example: \`pass insert ${passPrefix}/gmail-key\`
-Shared bot credentials (Anthropic, Telegram, Supabase) live under \`obol/\` — do NOT touch those.
+
+Shared bot credentials live under \`obol/\` — do NOT touch or re-create these:
+\`obol/anthropic-key\`, \`obol/telegram-token\`, \`obol/supabase-url\`, \`obol/supabase-key\`, \`obol/github-token\`, \`obol/vercel-token\`
+
+To check if a secret exists: \`pass show obol/github-token\`
+To list all secrets: \`pass ls\`
 `);
 
   if (opts.bridgeEnabled) {
@@ -509,13 +523,19 @@ async function executeToolCall(toolUse, memory, context = {}) {
           }
         }
         const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;
+        const realHome = process.env.HOME || '/root';
         const output = execSync(input.command, {
           encoding: 'utf-8',
           timeout,
           maxBuffer: 1024 * 1024,
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: userDir || undefined,
-          env: userDir ? { ...process.env, HOME: userDir } : process.env,
+          env: userDir ? {
+            ...process.env,
+            HOME: userDir,
+            GNUPGHOME: process.env.GNUPGHOME || `${realHome}/.gnupg`,
+            PASSWORD_STORE_DIR: process.env.PASSWORD_STORE_DIR || `${realHome}/.password-store`,
+          } : process.env,
         });
         const truncated = output.substring(0, 10000);
         return output.length > 10000 ? truncated + '\n...(truncated)' : truncated;
@@ -584,10 +604,14 @@ async function executeToolCall(toolUse, memory, context = {}) {
       case 'vercel_list': {
         const token = context.config?.vercel?.token;
         if (!token) return 'Vercel not configured.';
-        const output = execSync(
-          `npx vercel ls ${input.project} 2>&1`,
-          { encoding: 'utf-8', timeout: 30000, env: { ...process.env, VERCEL_TOKEN: token } }
-        );
+        const listArgs = ['vercel', 'ls'];
+        if (input.project) {
+          const safeProject = input.project.replace(/[^a-zA-Z0-9_\-./]/g, '');
+          if (safeProject) listArgs.push(safeProject);
+        }
+        const output = execFileSync('npx', listArgs, {
+          encoding: 'utf-8', timeout: 30000, env: { ...process.env, VERCEL_TOKEN: token },
+        });
         return output.substring(0, 5000);
       }
 

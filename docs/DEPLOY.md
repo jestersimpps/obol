@@ -41,11 +41,13 @@ node -v   # v22.x.x
 npm -v    # 10.x.x
 ```
 
-## 4. Install OBOL
+## 4. Install OBOL and pm2
 
 ```bash
-npm install -g obol-ai
+npm install -g obol-ai pm2
 ```
+
+> `obol start -d` auto-installs pm2 if missing, but installing it upfront avoids surprises.
 
 ## 5. Prepare Your Accounts
 
@@ -155,6 +157,8 @@ obol start
 
 Go to Telegram, open your bot, send a message. You should get a response from Claude.
 
+> **Heads up:** Your first conversation triggers post-setup, which moves SSH to port 2222. If your terminal disconnects, reconnect with `ssh -p 2222 root@YOUR_DROPLET_IP`.
+
 Press `Ctrl+C` to stop.
 
 ## 8. Run as Daemon
@@ -163,34 +167,27 @@ Press `Ctrl+C` to stop.
 obol start -d
 ```
 
-Check it's running:
+This uses pm2 under the hood (auto-installs if needed). The bot auto-restarts on crash.
 
 ```bash
-obol status
-obol logs
+obol status              # is it running? uptime? memory?
+obol logs                # tail logs
+obol stop                # stop the daemon
 ```
 
-## 9. Keep It Running (pm2, optional)
-
-pm2 keeps OBOL alive, auto-restarts on crash, and survives reboots. pm2 is installed automatically when you run `obol start -d`. If pm2 isn't installed, `obol stop` and `obol logs` fall back to PID files and log files.
+pm2 commands also work directly:
 
 ```bash
-# Install pm2 globally
-npm install -g pm2
+pm2 logs obol            # tail logs
+pm2 restart obol         # restart
+pm2 monit                # live monitoring dashboard
+```
 
-# Start OBOL with pm2
-pm2 start $(which obol) --name obol -- start
+## 9. Survive Reboots
 
-# Auto-start on boot
+```bash
 pm2 startup
 pm2 save
-
-# Useful commands
-pm2 status          # See running processes
-pm2 logs obol       # Tail logs
-pm2 restart obol    # Restart
-pm2 stop obol       # Stop
-pm2 monit           # Live monitoring dashboard
 ```
 
 That's it — OBOL auto-starts on boot and restarts if it crashes.
@@ -226,7 +223,7 @@ pm2 restart obol
 ## Updating
 
 ```bash
-npm update -g obol
+npm update -g obol-ai
 pm2 restart obol
 ```
 
@@ -237,7 +234,7 @@ OBOL automatically backs up to GitHub daily at 3 AM (personality, scripts, comma
 To restore on a new droplet:
 
 ```bash
-npm install -g obol-ai
+npm install -g obol-ai pm2
 obol init --restore
 # Paste GitHub token → it clones your brain
 # Re-enter Telegram token + Anthropic key
@@ -280,6 +277,44 @@ Check that your Telegram user ID is correct in `~/.obol/config.json`:
 cat ~/.obol/config.json | grep allowedUsers
 ```
 
+### `pass` errors on startup
+
+```
+Error: obol/anthropic-oauth-refresh is not in the password store.
+[config] Failed to resolve obol/anthropic-oauth-refresh — key not found
+```
+
+This means the config references a `pass` key that doesn't exist in the encrypted store. Common after a fresh install or failed secret migration.
+
+**What happens:** The missing value resolves to `null`. If it's an OAuth token, OBOL falls back to API key auth. If it's the API key itself, the bot won't start.
+
+**Fix it:**
+
+```bash
+# Check what secrets are stored
+pass ls
+
+# Check what the config expects
+cat ~/.obol/config.json
+
+# Option A: Re-add the missing secret
+pass insert obol/anthropic-oauth-refresh
+
+# Option B: Switch to API key auth (if you're not using OAuth)
+obol config
+# → Anthropic → API Key
+
+# Option C: Re-run the full setup
+obol init --reset
+```
+
+### OAuth token expired
+
+If you see `OAuth token expired and no refresh token available`:
+
+1. If you have an API key configured, OBOL silently falls back to it
+2. If not, re-authenticate: `obol config` > Anthropic > OAuth
+
 ### Memory not working
 ```bash
 # Test Supabase connection
@@ -292,7 +327,7 @@ Upgrade to 2GB droplet:
 # In DigitalOcean dashboard: Droplet → Resize → 2GB ($12/mo)
 ```
 
-Or add swap:
+Or add swap (OBOL does this automatically, but if it didn't):
 ```bash
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
@@ -310,6 +345,23 @@ ufw enable
 ```
 OBOL does this automatically during post-setup.
 
+## What OBOL Does on First Boot
+
+After your first Telegram conversation, OBOL runs post-setup tasks automatically (Linux only). Progress is reported directly in the Telegram chat:
+
+| Task | What |
+|------|------|
+| **GPG + pass** | Installs encrypted secret storage, migrates all plaintext secrets from config.json |
+| **pm2** | Verifies pm2 is installed (already done in step 4, this is a safety check) |
+| **Swap** | Creates 2GB swap if RAM < 2GB (embedding model needs ~200MB) |
+| **SSH hardening** | Port 2222, key-only auth, max 3 retries, no root password |
+| **fail2ban** | Bans IPs after 3 failed SSH attempts (1 hour ban) |
+| **Firewall** | UFW deny-all inbound, allow port 2222 only |
+| **Auto-updates** | Unattended security upgrades enabled |
+| **Kernel hardening** | SYN cookies, reverse path filtering, no ICMP redirects |
+
+These run once and are tracked in `~/.obol/.post-setup-complete`. To re-run, delete that file and restart.
+
 ---
 
-*That's it. One droplet, one process, one bot. 🪙*
+*That's it. One droplet, one process, one bot.*

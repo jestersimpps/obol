@@ -1,5 +1,6 @@
 const inquirer = require('inquirer');
 const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir } = require('../config');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 
 const SECTIONS = [
@@ -98,8 +99,27 @@ function maskSecret(value) {
 function formatValue(value, secret) {
   if (value === undefined || value === null) return '(not set)';
   if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'string' && value.startsWith('pass:')) {
+    if (!secret) return value;
+    const passKey = value.slice(5);
+    try {
+      const { execSync } = require('child_process');
+      const resolved = execSync(`pass show ${passKey}`, { encoding: 'utf-8' }).trim();
+      return maskSecret(resolved);
+    } catch {
+      return '(pass key missing)';
+    }
+  }
   if (secret) return maskSecret(value);
   return String(value);
+}
+
+function updatePassSecret(passKey, newValue) {
+  const result = spawnSync('pass', ['insert', '-f', '-m', passKey], {
+    input: newValue,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  return result.status === 0;
 }
 
 async function detectTelegramUsers(token) {
@@ -318,6 +338,7 @@ async function config() {
       setNestedValue(cfg, field.key, parseInt(newVal.trim()));
     } else {
       const promptType = field.secret ? 'password' : 'input';
+      const isPassRef = typeof currentVal === 'string' && currentVal.startsWith('pass:');
       const opts = {
         type: promptType,
         name: 'newVal',
@@ -325,14 +346,23 @@ async function config() {
       };
       if (field.secret) {
         opts.mask = '*';
-        if (currentVal) {
-          console.log(`  Current: ${maskSecret(currentVal)}`);
-        }
+        console.log(`  Current: ${formatValue(currentVal, true)}`);
       } else {
         opts.default = currentVal != null ? String(currentVal) : '';
       }
       const { newVal } = await inquirer.prompt([opts]);
-      setNestedValue(cfg, field.key, newVal);
+
+      if (isPassRef) {
+        const passKey = currentVal.slice(5);
+        if (updatePassSecret(passKey, newVal)) {
+          console.log(`  ✅ Updated in pass store (${passKey})`);
+        } else {
+          console.log(`  ⚠️  Failed to update pass store, saving to config directly`);
+          setNestedValue(cfg, field.key, newVal);
+        }
+      } else {
+        setNestedValue(cfg, field.key, newVal);
+      }
     }
 
     saveConfig(cfg);

@@ -70,4 +70,12 @@ program
     await backup();
   });
 
+program
+  .command('upgrade')
+  .description('Update to the latest version')
+  .action(async () => {
+    const { upgrade } = require('../src/cli/upgrade');
+    await upgrade();
+  });
+
 program.parse();

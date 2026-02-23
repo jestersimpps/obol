@@ -23,7 +23,9 @@ function resolvePassValues(obj) {
         const { execSync } = require('child_process');
         result[key] = execSync(`pass show ${passKey}`, { encoding: 'utf-8' }).trim();
       } catch (e) {
-        console.warn(`[config] Failed to resolve pass:${passKey} — ${e.message?.includes('not found') ? 'key not found' : 'pass not installed or unavailable'}`);
+        const reason = e.message?.includes('not found') ? 'key not found' : 'pass not installed or unavailable';
+        console.error(`[config] Failed to resolve ${passKey} — ${reason}`);
+        result[key] = null;
       }
     } else if (typeof result[key] === 'object') {
       result[key] = resolvePassValues(result[key]);

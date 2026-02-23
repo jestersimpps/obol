@@ -41,10 +41,10 @@ Named after the AI in [The Last Instruction](https://latentpress.com) — a mach
 ```bash
 npm install -g obol-ai
 obol init
-obol start
+obol start -d
 ```
 
-The init wizard walks you through everything — credentials are validated inline, and your Telegram ID is auto-detected. OBOL handles the rest.
+The init wizard walks you through everything — credentials are validated inline, and your Telegram ID is auto-detected. `obol start -d` runs as a background daemon via pm2 (auto-installs pm2 if missing).
 
 ## How It Works
 
@@ -339,7 +339,7 @@ For Telegram user IDs, OBOL auto-detects by checking who messaged the bot. Just 
 
 ### First Conversation
 
-Send your first message. OBOL introduces itself, asks 2-3 questions, then writes its own SOUL.md and USER.md. After that, it silently hardens your VPS (Linux only — skipped on macOS/Windows):
+Send your first message. OBOL introduces itself, asks 2-3 questions, then writes its own SOUL.md and USER.md. After that, it hardens your VPS and reports progress directly in the Telegram chat (Linux only — skipped on macOS/Windows):
 
 | Task | What |
 |------|------|
@@ -353,6 +353,69 @@ Send your first message. OBOL introduces itself, asks 2-3 questions, then writes
 | Kernel | SYN cookies, no ICMP redirects |
 
 > ⚠️ After first run, SSH moves to port 2222: `ssh -p 2222 root@YOUR_IP`
+
+## Running the Bot
+
+### Foreground (testing)
+
+```bash
+obol start
+```
+
+Logs print to stdout. Ctrl+C to stop.
+
+### Daemon (production)
+
+```bash
+obol start -d
+```
+
+This uses pm2 under the hood (auto-installs if needed). The bot auto-restarts on crash and survives reboots.
+
+```bash
+obol status              # check if running + uptime + memory
+obol logs                # tail logs
+obol stop                # stop the daemon
+
+# pm2 commands also work directly
+pm2 logs obol            # tail logs
+pm2 restart obol         # restart
+pm2 monit                # live dashboard
+```
+
+To survive server reboots:
+
+```bash
+pm2 startup
+pm2 save
+```
+
+### Authentication
+
+OBOL supports two Anthropic auth methods:
+
+| Method | How | Fallback |
+|--------|-----|----------|
+| **API Key** | `sk-ant-...` from console.anthropic.com | — |
+| **Claude Max OAuth** | Browser sign-in during `obol init` | Auto-refreshes tokens; falls back to API key if refresh fails |
+
+You can configure both during init. If OAuth tokens expire and refresh fails, OBOL silently falls back to the API key.
+
+### Secret Storage (pass)
+
+On Linux, OBOL auto-encrypts all credentials on first boot:
+
+1. Installs GPG + `pass`
+2. Migrates plaintext secrets from `config.json` into the encrypted store
+3. Config values become references like `pass:obol/anthropic-key`
+
+If a pass key is missing at runtime, the value resolves to `null` and OBOL falls back gracefully (skips OAuth, uses API key, etc). You'll see a one-time error in logs.
+
+```bash
+pass ls                         # list stored secrets
+pass show obol/anthropic-key    # reveal a secret
+pass insert obol/my-secret      # add a new secret
+```
 
 ## Resilience
 

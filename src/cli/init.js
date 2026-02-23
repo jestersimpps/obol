@@ -385,8 +385,21 @@ async function setupAnthropicOAuth() {
     validate: (v) => v.trim().length > 0 ? true : 'Required',
   }]);
 
-  let code, state;
   const input = callbackInput.trim();
+
+  if (input.includes('sk-ant-oat')) {
+    console.log('  ✅ OAuth token detected — using directly');
+    console.log('  ⚠️  No refresh token — you\'ll need to re-auth when it expires\n');
+    return {
+      oauth: {
+        accessToken: input,
+        refreshToken: null,
+        expires: Date.now() + 60 * 60 * 1000,
+      },
+    };
+  }
+
+  let code, state;
 
   if (input.includes('code=')) {
     const url = new URL(input);
