@@ -1,5 +1,6 @@
 const inquirer = require('inquirer');
 const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir } = require('../config');
+const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 
@@ -8,8 +9,9 @@ const SECTIONS = [
     name: 'Anthropic',
     fields: [
       { key: 'anthropic.apiKey', label: 'API Key', secret: true },
-      { key: 'anthropic.oauth.accessToken', label: 'OAuth Access Token', secret: true },
-      { key: 'anthropic.oauth.refreshToken', label: 'OAuth Refresh Token', secret: true },
+      { key: '_oauth_flow', label: 'Set up / reset OAuth', custom: 'oauth' },
+      { key: 'anthropic.oauth.accessToken', label: 'OAuth Access Token (manual)', secret: true },
+      { key: 'anthropic.oauth.refreshToken', label: 'OAuth Refresh Token (manual)', secret: true },
     ],
   },
   {
@@ -266,6 +268,59 @@ async function manageUsers(cfg) {
   }
 }
 
+async function runOAuthFlow(cfg) {
+  console.log('\n  Starting OAuth flow with Anthropic...\n');
+
+  const { verifier, challenge } = await generatePKCE();
+  const authUrl = buildAuthorizationUrl(challenge, verifier);
+
+  console.log('  1. Open this URL in your browser:\n');
+  console.log(`  ${authUrl}\n`);
+  console.log('  2. Authorize the app, then copy the FULL redirect URL from your browser.\n');
+  console.log('     It will look like: https://console.anthropic.com/oauth/code/callback?code=XXXXX#STATE\n');
+
+  const { callbackInput } = await inquirer.prompt([{
+    type: 'input',
+    name: 'callbackInput',
+    message: 'Paste the full callback URL or just the code:',
+    validate: (v) => v.trim().length > 0 ? true : 'Required',
+  }]);
+
+  try {
+    const input = callbackInput.trim();
+    let code, state;
+
+    if (input.includes('code=')) {
+      const url = new URL(input);
+      code = url.searchParams.get('code');
+      state = url.hash?.replace('#', '') || verifier;
+    } else if (input.includes('#')) {
+      [code, state] = input.split('#');
+    } else {
+      code = input;
+      state = verifier;
+    }
+
+    if (!code) {
+      console.log('  No code found\n');
+      return;
+    }
+
+    console.log('  Exchanging code for tokens...');
+    const tokens = await exchangeCodeForTokens(code, state, verifier);
+
+    setNestedValue(cfg, 'anthropic.oauth.accessToken', tokens.accessToken);
+    setNestedValue(cfg, 'anthropic.oauth.refreshToken', tokens.refreshToken);
+    setNestedValue(cfg, 'anthropic.oauth.expires', tokens.expires);
+    saveConfig(cfg);
+
+    console.log('  OAuth configured with access + refresh token');
+    console.log(`  Token expires: ${new Date(tokens.expires).toISOString()}\n`);
+  } catch (e) {
+    console.log(`  OAuth flow failed: ${e.message}\n`);
+  }
+}
+
 async function config() {
   const cfg = loadConfig({ resolve: false });
   if (!cfg) {
@@ -301,6 +356,20 @@ async function config() {
 
     const fields = sec.fields;
     const fieldChoices = fields.map(f => {
+      if (f.custom) {
+        const hasOAuth = !!getNestedValue(cfg, 'anthropic.oauth.accessToken');
+        const hasRefresh = !!getNestedValue(cfg, 'anthropic.oauth.refreshToken');
+        const expires = getNestedValue(cfg, 'anthropic.oauth.expires');
+        const expired = expires && Date.now() >= expires;
+        let status = '';
+        if (hasOAuth && hasRefresh && !expired) status = ' ✅';
+        else if (hasOAuth && expired) status = ' ⚠️  expired';
+        else if (hasOAuth && !hasRefresh) status = ' ⚠️  no refresh token';
+        return {
+          name: `${f.label}${status}`,
+          value: f,
+        };
+      }
       const val = getNestedValue(cfg, f.key);
       return {
         name: `${f.label}: ${formatValue(val, f.secret)}`,
@@ -316,6 +385,11 @@ async function config() {
     }]);
 
     if (!field) continue;
+
+    if (field.custom === 'oauth') {
+      await runOAuthFlow(cfg);
+      continue;
+    }
 
     const currentVal = getNestedValue(cfg, field.key);
 

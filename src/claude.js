@@ -47,6 +47,8 @@ function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
   throw new Error('No Anthropic credentials configured. Run: obol config');
 }
 
+let _refreshPromise = null;
+
 async function ensureFreshToken(anthropicConfig) {
   if (!anthropicConfig.oauth?.accessToken) return;
   if (!isExpired(anthropicConfig.oauth)) return;
@@ -60,27 +62,55 @@ async function ensureFreshToken(anthropicConfig) {
     throw err;
   }
 
-  try {
-    const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
-    anthropicConfig.oauth.accessToken = tokens.accessToken;
-    anthropicConfig.oauth.refreshToken = tokens.refreshToken;
-    anthropicConfig.oauth.expires = tokens.expires;
-    delete anthropicConfig._oauthFailed;
+  if (_refreshPromise) {
+    try {
+      await _refreshPromise;
+    } catch {}
+    if (!isExpired(anthropicConfig.oauth)) return;
+    if (anthropicConfig._oauthFailed) return;
+  }
 
-    const config = loadConfig({ resolve: false });
-    if (config) {
-      config.anthropic.oauth = anthropicConfig.oauth;
-      saveConfig(config);
+  _refreshPromise = (async () => {
+    try {
+      const tokens = await refreshTokens(anthropicConfig.oauth.refreshToken);
+      anthropicConfig.oauth.accessToken = tokens.accessToken;
+      anthropicConfig.oauth.refreshToken = tokens.refreshToken;
+      anthropicConfig.oauth.expires = tokens.expires;
+      delete anthropicConfig._oauthFailed;
+
+      const config = loadConfig({ resolve: false });
+      if (config) {
+        config.anthropic.oauth = anthropicConfig.oauth;
+        saveConfig(config);
+      }
+    } catch (e) {
+      console.warn('[oauth] Refresh failed, checking disk for updated tokens:', e.message);
+      const diskConfig = loadConfig({ resolve: false });
+      if (diskConfig?.anthropic?.oauth?.accessToken &&
+          diskConfig.anthropic.oauth.accessToken !== anthropicConfig.oauth.accessToken &&
+          !isExpired(diskConfig.anthropic.oauth)) {
+        anthropicConfig.oauth.accessToken = diskConfig.anthropic.oauth.accessToken;
+        anthropicConfig.oauth.refreshToken = diskConfig.anthropic.oauth.refreshToken;
+        anthropicConfig.oauth.expires = diskConfig.anthropic.oauth.expires;
+        delete anthropicConfig._oauthFailed;
+        return;
+      }
+
+      if (anthropicConfig.apiKey) {
+        console.warn('[oauth] Token refresh failed, falling back to API key:', e.message);
+        anthropicConfig._oauthFailed = true;
+      } else {
+        const err = new Error(`OAuth token expired and refresh failed: ${e.message}`);
+        err.isOAuthExpiry = true;
+        throw err;
+      }
     }
-  } catch (e) {
-    if (anthropicConfig.apiKey) {
-      console.warn('[oauth] Token refresh failed, falling back to API key:', e.message);
-      anthropicConfig._oauthFailed = true;
-    } else {
-      const err = new Error(`OAuth token expired and refresh failed. Re-authenticate with: obol config → Anthropic → OAuth. (${e.message})`);
-      err.isOAuthExpiry = true;
-      throw err;
-    }
+  })();
+
+  try {
+    await _refreshPromise;
+  } finally {
+    _refreshPromise = null;
   }
 }
 

@@ -392,7 +392,8 @@ function createBot(telegramConfig, config) {
       stopTyping();
       console.error('Message handling error:', e.message);
       if (e.isOAuthExpiry) {
-        await ctx.reply('OAuth token expired. Run `obol config` → Anthropic → re-authenticate OAuth.').catch(() => {});
+        console.error('[oauth] Full error:', e.stack || e.message);
+        await ctx.reply(`OAuth error: ${e.message}\n\nRun \`obol config\` → Anthropic → re-authenticate OAuth.`).catch(() => {});
       } else if (e.status === 401 || e.message?.includes('401')) {
         await ctx.reply('API key invalid or expired. Run `obol config` to update.').catch(() => {});
       } else if (e.status === 429 || e.message?.includes('rate')) {
