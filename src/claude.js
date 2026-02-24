@@ -794,7 +794,7 @@ function buildTools(memory, opts = {}) {
         title: { type: 'string', description: 'Short title for the reminder/event' },
         due_at: { type: 'string', description: 'ISO 8601 datetime string for when the event is due (e.g. 2026-02-25T15:00:00)' },
         timezone: { type: 'string', description: 'IANA timezone (e.g. Europe/Brussels, America/New_York). Default: UTC' },
-        description: { type: 'string', description: 'Optional longer description' },
+        description: { type: 'string', description: 'Context or details about the event. Always include relevant info from the conversation (e.g. what to do, who it involves, where).' },
       },
       required: ['title', 'due_at'],
     },

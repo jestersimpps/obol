@@ -180,24 +180,24 @@ async function migrate(supabaseConfig) {
   }
 
   const projectRef = url.replace('https://', '').replace('.supabase.co', '');
+  const batchedSql = sqlStatements.join('\n\n');
 
-  for (const sql of sqlStatements) {
-    try {
-      const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: sql }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.log(`  ⚠️  SQL warning: ${err.substring(0, 100)}`);
-      }
-    } catch (e) {
-      console.log(`  ⚠️  Migration step failed: ${e.message}`);
+  try {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: batchedSql }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.log(`  ⚠️  Migration warning: ${err.substring(0, 200)}`);
     }
+  } catch (e) {
+    console.log(`  ⚠️  Migration failed: ${e.message}`);
   }
 }
 
