@@ -8,7 +8,7 @@ const { execAsync, isAllowedUrl } = require('./sanitize');
 const { ChatHistory } = require('./history');
 
 const MAX_EXEC_TIMEOUT = 120;
-let MAX_TOOL_ITERATIONS = 100;
+let MAX_TOOL_ITERATIONS = 10;
 
 const BLOCKED_EXEC_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
@@ -298,7 +298,22 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
       return { text, usage: totalUsage, model };
     }
 
-    const text = finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    let text = finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+
+    if (!text.trim() && newMessages.length > 1) {
+      vlog('[claude] No text in final response after tool use — forcing summary');
+      histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
+      const summaryResponse = await client.messages.create({
+        model, max_tokens: 4096, system: systemPrompt, messages: [...histories.get(chatId)],
+      }, { signal: abortController.signal });
+      histories.pushAssistant(chatId, summaryResponse.content);
+      if (summaryResponse.usage) {
+        totalUsage.input_tokens += summaryResponse.usage.input_tokens || 0;
+        totalUsage.output_tokens += summaryResponse.usage.output_tokens || 0;
+      }
+      text = summaryResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    }
+
     return { text, usage: totalUsage, model };
 
     } catch (e) {
@@ -579,6 +594,7 @@ You communicate via Telegram. Format responses for mobile readability.
 - Search memory before claiming you don't know something
 - Use \`store_secret\`/\`read_secret\` for all credential operations
 - If a user sends what appears to be an API key, token, or credential in conversation, immediately warn them that it's visible in chat history, tell them to revoke/rotate it, and direct them to use \`/secret set <key> <value>\` instead
+- After executing tools (exec, web_fetch, read_secret, etc.), ALWAYS provide a text response summarizing what you found or did. Never end your turn with only tool calls and no text reply — the user cannot see tool results directly, they only see your text responses
 `);
 
   return parts.join('\n');
