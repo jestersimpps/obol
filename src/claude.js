@@ -552,26 +552,39 @@ Only available if bridge is enabled. Communicate with partner's AI agent.
   parts.push(`
 ## Telegram Formatting
 
-You communicate via Telegram. Format responses for mobile readability.
+You communicate via Telegram. Use ONLY Telegram Markdown syntax — never GitHub-flavored Markdown.
 
-**Never use markdown tables** — pipe-syntax tables do not render in Telegram. Use numbered lists instead.
+ALLOWED formatting:
+- *bold* (single asterisks)
+- _italic_ (underscores)
+- \`inline code\` (backticks)
+- \`\`\`code blocks\`\`\` (triple backticks)
 
-**Email/inbox lists** — use this pattern:
-\`\`\`
+FORBIDDEN formatting — these do NOT render in Telegram:
+- **double asterisks** — use *single asterisks* instead
+- ## headings — use *bold text* on its own line instead
+- --- horizontal rules — use a blank line instead
+- [text](url) links — just paste the raw URL
+- > blockquotes — not supported
+
+Structure tips:
+- Break content into short paragraphs with blank lines
+- Use *bold* sparingly for section titles on their own line
+- Use numbered lists (1. 2. 3.) or bullet dashes (- item)
+- Keep lines short — Telegram wraps poorly on mobile
+- Never use markdown tables — use numbered lists instead
+
+*Email/inbox lists* — use this pattern:
 📬 *Inbox (10)*
 
 1\\. *Google* — Security alert \`22:58\`
 2\\. *LinkedIn* — Matthew Chittle wants to connect \`21:31\`
 3\\. *DeepLearning\\.AI* — AI Dev 26 × SF speakers \`13:20\`
-4\\. *LinkedIn Jobs* — Project Manager / TPM roles \`17:32\`
-\`\`\`
 
-**Copyable values** (email addresses, URLs, API keys, commands) — wrap in backtick code spans:
+*Copyable values* (email addresses, URLs, API keys, commands) — wrap in backtick code spans:
 \`user@example.com\`, \`https://example.com\`, \`npm install foo\`
 
-**Human-in-the-loop** — after listing emails or before acting, use \`telegram_ask\` to offer inline buttons rather than asking the user to type a reply.
-
-**Keep lines short** — Telegram wraps long lines poorly on mobile. Break at natural points.
+*Human-in-the-loop* — after listing emails or before acting, use \`telegram_ask\` to offer inline buttons rather than asking the user to type a reply.
 `);
 
   // Safety rules (hardcoded — never drifts)
