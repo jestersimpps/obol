@@ -666,7 +666,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
       const caption = ctx.message.caption || '';
 
-      if (tenant.memory) {
+      if (tenant.memory && !media.isImage(fileInfo)) {
         const memContent = media.buildMemoryContent(fileInfo, filename, savedPath, caption);
         await tenant.memory.add(memContent, {
           category: 'resource',
@@ -706,6 +706,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
+
+        if (tenant.memory) {
+          const analysisMemory = `Image: ${filename} (saved at ${savedPath})${caption ? `. Caption: "${caption}"` : ''}. Analysis: ${response.substring(0, 1500)}`;
+          await tenant.memory.add(analysisMemory, {
+            category: 'resource',
+            importance: 0.7,
+            source: 'image-analysis',
+            tags: ['image', ...(caption ? caption.toLowerCase().split(/\s+/).slice(0, 3) : [])],
+          }).catch(() => {});
+        }
 
         if (response.length > 4096) {
           for (const chunk of splitMessage(response, 4096)) {
