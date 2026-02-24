@@ -2,6 +2,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { getUserDir } = require('./config');
+const { deriveKey, encrypt, decrypt } = require('./encrypt');
 
 const KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;
 
@@ -25,6 +26,10 @@ function passPrefix(userId) {
   return `obol/users/${userId}`;
 }
 
+function secretsKey(userId) {
+  return deriveKey(`obol-secrets-${userId}`);
+}
+
 function secretsJsonPath(userId) {
   const dir = getUserDir(userId);
   return path.join(dir, 'secrets.json');
@@ -34,7 +39,13 @@ function loadSecretsJson(userId) {
   const p = secretsJsonPath(userId);
   if (!fs.existsSync(p)) return {};
   try {
-    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+    const raw = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    const key = secretsKey(userId);
+    const decrypted = {};
+    for (const [k, v] of Object.entries(raw)) {
+      decrypted[k] = decrypt(v, key);
+    }
+    return decrypted;
   } catch {
     return {};
   }
@@ -43,7 +54,12 @@ function loadSecretsJson(userId) {
 function saveSecretsJson(userId, data) {
   const p = secretsJsonPath(userId);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(data, null, 2), { mode: 0o600 });
+  const key = secretsKey(userId);
+  const encrypted = {};
+  for (const [k, v] of Object.entries(data)) {
+    encrypted[k] = encrypt(v, key);
+  }
+  fs.writeFileSync(p, JSON.stringify(encrypted, null, 2), { mode: 0o600 });
 }
 
 function storeSecret(userId, key, value) {
@@ -119,8 +135,13 @@ function listSecrets(userId) {
     }
   }
 
-  const secrets = loadSecretsJson(userId);
-  return Object.keys(secrets);
+  const p = secretsJsonPath(userId);
+  if (!fs.existsSync(p)) return [];
+  try {
+    return Object.keys(JSON.parse(fs.readFileSync(p, 'utf-8')));
+  } catch {
+    return [];
+  }
 }
 
 module.exports = { storeSecret, readSecret, removeSecret, listSecrets, hasPassStore, validateKey };

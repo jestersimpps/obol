@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const os = require('os');
+const { deriveKey, encrypt, decrypt } = require('./encrypt');
 
 const OBOL_DIR = path.join(os.homedir(), '.obol');
 const USERS_DIR = path.join(OBOL_DIR, 'users');
@@ -34,6 +34,71 @@ function resolvePassValues(obj) {
   return result;
 }
 
+const SENSITIVE_PATHS = [
+  'anthropic.apiKey',
+  'anthropic.oauth.accessToken',
+  'anthropic.oauth.refreshToken',
+  'telegram.token',
+  'supabase.serviceKey',
+  'supabase.accessToken',
+  'github.token',
+  'vercel.token',
+];
+
+function configKey() {
+  return deriveKey('obol-config');
+}
+
+function getPath(obj, dotPath) {
+  return dotPath.split('.').reduce((o, k) => o?.[k], obj);
+}
+
+function setPath(obj, dotPath, value) {
+  const parts = dotPath.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') return;
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function encryptSensitiveFields(config) {
+  const key = configKey();
+  const copy = JSON.parse(JSON.stringify(config));
+  for (const p of SENSITIVE_PATHS) {
+    const val = getPath(copy, p);
+    if (typeof val === 'string' && val && !val.startsWith('pass:')) {
+      setPath(copy, p, encrypt(val, key));
+    }
+  }
+  return copy;
+}
+
+const ENCRYPTED_RE = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/;
+
+function decryptSensitiveFields(config) {
+  const key = configKey();
+  let hadPlaintext = false;
+  for (const p of SENSITIVE_PATHS) {
+    const val = getPath(config, p);
+    if (typeof val === 'string' && val && !val.startsWith('pass:')) {
+      if (ENCRYPTED_RE.test(val)) {
+        try {
+          setPath(config, p, decrypt(val, key));
+        } catch {}
+      } else {
+        hadPlaintext = true;
+      }
+    }
+  }
+  if (hadPlaintext) {
+    const encrypted = encryptSensitiveFields(config);
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(encrypted, null, 2), { mode: 0o600 });
+  }
+  return config;
+}
+
 function loadConfig({ resolve = true } = {}) {
   if (!fs.existsSync(CONFIG_FILE)) return null;
   let raw;
@@ -51,6 +116,7 @@ function loadConfig({ resolve = true } = {}) {
     console.error('[config] Fix the file manually or run: obol init --reset');
     return null;
   }
+  decryptSensitiveFields(config);
   const warnings = validateConfigSchema(config);
   if (warnings.length > 0) {
     for (const w of warnings) console.warn(`[config] ${w}`);
@@ -74,7 +140,8 @@ function validateConfigSchema(config) {
 
 function saveConfig(config) {
   fs.mkdirSync(OBOL_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
+  const encrypted = encryptSensitiveFields(config);
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(encrypted, null, 2), { mode: 0o600 });
 }
 
 function getUserDir(userId) {
