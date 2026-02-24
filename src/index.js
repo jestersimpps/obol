@@ -1,13 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const { loadConfig, OBOL_DIR } = require('./config');
+const { loadConfig } = require('./config');
 const { createBot, checkUpgradeNotify } = require('./telegram');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./heartbeat');
 const { migrateToMultiTenant } = require('./legacy-migrate');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
-
-const MIGRATION_MARKER = path.join(OBOL_DIR, '.migrated');
 
 async function main() {
   const config = loadConfig();
@@ -21,17 +17,12 @@ async function main() {
   await migrateToMultiTenant(config);
 
   if (config.supabase?.url && config.supabase?.serviceKey) {
-    if (fs.existsSync(MIGRATION_MARKER)) {
-      console.log('  Database already migrated');
-    } else {
-      try {
-        const { migrate } = require('./db/migrate');
-        await migrate(config.supabase);
-        fs.writeFileSync(MIGRATION_MARKER, new Date().toISOString());
-        console.log('  Database ready');
-      } catch (e) {
-        console.error(`  Database migration failed: ${e.message}`);
-      }
+    try {
+      const { migrate } = require('./db/migrate');
+      await migrate(config.supabase);
+      console.log('  Database ready');
+    } catch (e) {
+      console.error(`  Database migration failed: ${e.message}`);
     }
   }
 
