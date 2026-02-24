@@ -456,7 +456,14 @@ Your message is deleted immediately when using /secret set to keep credentials o
       const text = events.map((e, i) => {
         const tz = e.timezone || 'UTC';
         const dueLocal = new Date(e.due_at).toLocaleString('en-US', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' });
-        return `${i + 1}. *${e.title}*\n   ${dueLocal} (${tz})\n   \`${e.id}\``;
+        const icon = e.cron_expr ? '🔄' : '📌';
+        let line = `${i + 1}. ${icon} *${e.title}*\n   ${dueLocal} (${tz})`;
+        if (e.cron_expr) {
+          line += `\n   \`${e.cron_expr}\` · ${e.run_count || 0} runs`;
+          if (e.max_runs) line += `/${e.max_runs}`;
+        }
+        line += `\n   \`${e.id}\``;
+        return line;
       }).join('\n\n');
       await sendHtml(ctx, `📅 **Upcoming Events**\n\n${text}`);
     } catch (e) {

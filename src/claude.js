@@ -577,10 +577,12 @@ Examples:
 Returns the tapped button label, or \`"timeout"\` if the user doesn't respond within the timeout (default 60s).
 
 ### Scheduling (\`schedule_event\`, \`list_events\`, \`cancel_event\`)
-Schedule reminders and events. The user gets a Telegram message when the time comes.
-- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description
-- \`list_events\` — list pending/sent/cancelled events
+Schedule one-time or recurring reminders. The user gets a Telegram message each time an event fires.
+- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description. For recurring events add \`cron_expr\` (5-field cron), optional \`max_runs\` and \`ends_at\`.
+- \`list_events\` — list pending/sent/cancelled/completed events
 - \`cancel_event\` — cancel a scheduled event by ID
+
+Cron examples: \`0 9 * * 1-5\` (weekdays 9am), \`0 8 * * 1\` (Mondays 8am), \`*/30 * * * *\` (every 30 min), \`0 0 1 * *\` (1st of month).
 
 When scheduling: always search memory first for the user's timezone/location. If no timezone found, ask the user or default to UTC. Parse natural language dates relative to the user's timezone.
 
@@ -890,14 +892,17 @@ function buildTools(memory, opts = {}) {
 
   tools.push({
     name: 'schedule_event',
-    description: 'Schedule a reminder or event. The user will receive a Telegram message when the time comes. Always search memory first for the user\'s timezone/location. If no timezone found, ask the user or default to UTC.',
+    description: 'Schedule a one-time or recurring reminder/event. For recurring events, provide a cron_expr (standard 5-field cron: minute hour day-of-month month day-of-week). The user will receive a Telegram message each time it fires. Always search memory first for the user\'s timezone/location.',
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Short title for the reminder/event' },
-        due_at: { type: 'string', description: 'ISO 8601 datetime string for when the event is due (e.g. 2026-02-25T15:00:00)' },
+        due_at: { type: 'string', description: 'ISO 8601 datetime for the first fire time (e.g. 2026-02-25T15:00:00)' },
         timezone: { type: 'string', description: 'IANA timezone (e.g. Europe/Brussels, America/New_York). Default: UTC' },
-        description: { type: 'string', description: 'Context or details about the event. Always include relevant info from the conversation (e.g. what to do, who it involves, where).' },
+        description: { type: 'string', description: 'Context or details about the event' },
+        cron_expr: { type: 'string', description: 'Cron expression for recurring events (5-field: "0 9 * * 1-5" = weekdays 9am). Omit for one-time events.' },
+        max_runs: { type: 'number', description: 'Maximum number of times to fire (omit for unlimited)' },
+        ends_at: { type: 'string', description: 'ISO 8601 datetime after which the recurring event stops' },
       },
       required: ['title', 'due_at'],
     },
@@ -909,7 +914,7 @@ function buildTools(memory, opts = {}) {
     input_schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['pending', 'sent', 'cancelled'], description: 'Filter by status (default: pending)' },
+        status: { type: 'string', enum: ['pending', 'sent', 'cancelled', 'completed'], description: 'Filter by status (default: pending)' },
       },
     },
   });
@@ -986,7 +991,7 @@ function buildRunnableTools(tools, memory, context, vlog) {
           tool.name === 'memory_add' ? `[${input.category || 'fact'}]` :
           tool.name === 'web_fetch' ? input.url :
           tool.name === 'background_task' ? input.task?.substring(0, 60) :
-          tool.name === 'schedule_event' ? `${input.title} @ ${input.due_at}` :
+          tool.name === 'schedule_event' ? `${input.title} @ ${input.due_at}${input.cron_expr ? ` [${input.cron_expr}]` : ''}` :
           tool.name === 'cancel_event' ? input.event_id :
           tool.name === 'create_pdf' ? (input.filename || 'document') :
           tool.name === 'text_to_speech' ? input.text?.substring(0, 60) :
@@ -1281,9 +1286,33 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const tz = input.timezone || 'UTC';
         const localDate = new Date(input.due_at);
         if (isNaN(localDate.getTime())) return `Invalid date: ${input.due_at}`;
+
+        if (input.cron_expr) {
+          try {
+            const { parseExpression } = require('cron-parser');
+            parseExpression(input.cron_expr, { tz });
+          } catch (e) {
+            return `Invalid cron expression "${input.cron_expr}": ${e.message}`;
+          }
+        }
+
         const utcDate = toUTC(input.due_at, tz);
-        const event = await context.scheduler.add(context.chatId, input.title, utcDate, tz, input.description || null);
+        const endsAtUtc = input.ends_at ? toUTC(input.ends_at, tz) : null;
+        const event = await context.scheduler.add(
+          context.chatId, input.title, utcDate, tz,
+          input.description || null, input.cron_expr || null,
+          input.max_runs || null, endsAtUtc
+        );
         const displayTime = new Date(utcDate).toLocaleString('en-US', { timeZone: tz });
+
+        if (input.cron_expr) {
+          let result = `Recurring event scheduled: "${input.title}"\nFirst run: ${displayTime} (${tz})\nSchedule: ${input.cron_expr}`;
+          if (input.max_runs) result += `\nMax runs: ${input.max_runs}`;
+          if (input.ends_at) result += `\nEnds: ${new Date(endsAtUtc).toLocaleString('en-US', { timeZone: tz })}`;
+          result += `\nID: ${event.id}`;
+          return result;
+        }
+
         return `Scheduled: "${input.title}" for ${displayTime} (${tz}) — ID: ${event.id}`;
       }
 
@@ -1291,15 +1320,25 @@ async function executeToolCall(toolUse, memory, context = {}) {
         if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
         const events = await context.scheduler.list({ status: input.status });
         if (events.length === 0) return `No ${input.status || 'pending'} events.`;
-        return JSON.stringify(events.map(e => ({
-          id: e.id,
-          title: e.title,
-          description: e.description,
-          due_at: e.due_at,
-          timezone: e.timezone,
-          due_local: new Date(e.due_at).toLocaleString('en-US', { timeZone: e.timezone }),
-          status: e.status,
-        })));
+        return JSON.stringify(events.map(e => {
+          const entry = {
+            id: e.id,
+            title: e.title,
+            description: e.description,
+            due_at: e.due_at,
+            timezone: e.timezone,
+            due_local: new Date(e.due_at).toLocaleString('en-US', { timeZone: e.timezone }),
+            status: e.status,
+            recurring: !!e.cron_expr,
+          };
+          if (e.cron_expr) {
+            entry.cron_expr = e.cron_expr;
+            entry.run_count = e.run_count;
+            entry.max_runs = e.max_runs;
+            entry.ends_at = e.ends_at;
+          }
+          return entry;
+        }));
       }
 
       case 'cancel_event': {

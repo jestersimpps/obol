@@ -26,6 +26,7 @@
     "@supabase/supabase-js": "^2.49.1",
     "@xenova/transformers": "^2.17.2",
     "commander": "^13.1.0",
+    "cron-parser": "^5.5.0",
     "grammy": "^1.35.0",
     "inquirer": "^8.2.6",
     "node-cron": "^3.0.3",

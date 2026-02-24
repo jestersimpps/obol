@@ -23,14 +23,21 @@ function setupHeartbeat(bot, supabaseConfig) {
         try {
           const tz = event.timezone || 'UTC';
           const dueLocal = new Date(event.due_at).toLocaleString('en-US', { timeZone: tz });
-          let text = `⏰ *Reminder:* ${event.title}`;
+          const isRecurring = !!event.cron_expr;
+          const prefix = isRecurring ? '🔄 *Recurring Reminder:*' : '⏰ *Reminder:*';
+          let text = `${prefix} ${event.title}`;
           if (event.description) text += `\n${event.description}`;
           text += `\n_${dueLocal} (${tz})_`;
 
           await bot.api.sendMessage(event.chat_id, text, { parse_mode: 'Markdown' }).catch(() =>
-            bot.api.sendMessage(event.chat_id, `⏰ Reminder: ${event.title}${event.description ? '\n' + event.description : ''}`)
+            bot.api.sendMessage(event.chat_id, `${isRecurring ? '🔄 Recurring Reminder' : '⏰ Reminder'}: ${event.title}${event.description ? '\n' + event.description : ''}`)
           );
-          await scheduler.markSent(event.id);
+
+          if (isRecurring) {
+            await scheduler.reschedule(event.id, event.cron_expr, tz, event.run_count, event.max_runs, event.ends_at);
+          } else {
+            await scheduler.markSent(event.id);
+          }
         } catch (e) {
           console.error(`[scheduler] Failed to send event ${event.id}:`, e.message);
         }

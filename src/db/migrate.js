@@ -178,6 +178,20 @@ async function migrate(supabaseConfig) {
       CREATE POLICY "service_role_all" ON obol_tool_prefs FOR ALL TO service_role USING (true) WITH CHECK (true);
     EXCEPTION WHEN duplicate_object THEN NULL;
     END $$;`,
+
+    // Cron/recurring event columns
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS cron_expr TEXT;`,
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMPTZ;`,
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS run_count INT NOT NULL DEFAULT 0;`,
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS max_runs INT;`,
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ;`,
+
+    `DO $$ BEGIN
+      ALTER TABLE obol_events DROP CONSTRAINT IF EXISTS obol_events_status_check;
+      ALTER TABLE obol_events ADD CONSTRAINT obol_events_status_check
+        CHECK (status IN ('pending','sent','cancelled','completed'));
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$;`,
   ];
 
   // Save SQL file for manual fallback
