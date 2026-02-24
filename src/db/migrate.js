@@ -154,6 +154,14 @@ async function migrate(supabaseConfig) {
     // Drop redundant user_id from obol_messages (chat_id == user_id for Telegram private chats)
     `DROP INDEX IF EXISTS idx_obol_messages_user;`,
     `ALTER TABLE obol_messages DROP COLUMN IF EXISTS user_id;`,
+
+    // Atomic access count increment for memory search hits
+    `CREATE OR REPLACE FUNCTION increment_memory_access(memory_ids UUID[])
+    RETURNS VOID LANGUAGE SQL AS $$
+      UPDATE obol_memory
+      SET access_count = access_count + 1, accessed_at = NOW()
+      WHERE id = ANY(memory_ids);
+    $$;`,
   ];
 
   // Save SQL file for manual fallback

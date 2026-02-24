@@ -63,13 +63,13 @@ async function createMemory(supabaseConfig, userId = 0) {
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
 
-    // Update accessed_at
+    // Atomically increment access_count and update accessed_at
     if (data.length > 0) {
       const ids = data.map(m => m.id);
-      await fetch(`${url}/rest/v1/obol_memory?id=in.(${ids.join(',')})`, {
-        method: 'PATCH',
-        headers: { ...headers, 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ accessed_at: new Date().toISOString() }),
+      await fetch(`${url}/rest/v1/rpc/increment_memory_access`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ memory_ids: ids }),
       }).catch(() => {}); // Best effort
     }
 

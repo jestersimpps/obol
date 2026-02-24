@@ -113,20 +113,42 @@ class MessageLog {
       // Ask Haiku to extract memories worth storing long-term
       const response = await this.client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        system: `Analyze this conversation and extract important facts worth remembering long-term.
-Before storing, check if each fact is genuinely new. Skip if it's essentially a repeat of something already known.
+        max_tokens: 1500,
+        system: `Extract ALL noteworthy information from this conversation for long-term memory. Be aggressive — when in doubt, store it.
 
 Return JSON:
 {
   "memories": [
-    {"content": "concise fact", "category": "fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context"}
+    {
+      "content": "specific, detailed fact",
+      "category": "fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context",
+      "tags": ["tag1", "tag2"],
+      "importance": 0.5
+    }
   ]
 }
 
-Skip: greetings, small talk, filler. Keep: facts, decisions, preferences, people, projects, events, lessons learned.
+STORE generously:
+- Personal details (name, age, location, job, relationships, hobbies)
+- Preferences and opinions on any topic
+- Ongoing projects, goals, tasks, deadlines
+- Decisions made and their rationale
+- Skills, tools, expertise, tech stack
+- Plans, intentions, next steps
+- Emotional context (stressed, excited, frustrated)
+- Resources mentioned (tools, sites, books, services)
+- Events, dates, timelines
+- Recurring topics or interests
+- Patterns in behavior or communication
+- Anything the user would want recalled later
 
-Return empty array if nothing worth storing.`,
+Tags: 2-5 specific lowercase keywords. Examples: ["python", "side-project"], ["health", "sleep"], ["work", "deadline"]
+
+Importance: 0.3 = minor detail, 0.5 = useful context, 0.7 = important, 0.9 = critical to remember
+
+ONLY skip: pure content-free exchanges ("hi", "ok", "thanks", "bye") with zero informational value.
+
+Return empty array only if the entire conversation has no extractable facts.`,
         messages: [{ role: 'user', content: transcript }],
       });
 
@@ -142,20 +164,22 @@ Return empty array if nothing worth storing.`,
       }
 
       if (extracted.memories?.length && this.memory) {
+        const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
         for (const mem of extracted.memories) {
-          if (mem.content && mem.content.length > 10) {
-            try {
-              const existing = await this.memory.search(mem.content, { limit: 1, threshold: 0.85 });
-              if (existing.length > 0) continue;
-            } catch {}
-            const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
-            const category = validCategories.has(mem.category) ? mem.category : 'conversation';
-            await this.memory.add(mem.content, {
-              category,
-              importance: 0.5,
-              source: 'auto-consolidation',
-            });
-          }
+          if (!mem.content || mem.content.length <= 10) continue;
+          try {
+            const existing = await this.memory.search(mem.content, { limit: 1, threshold: 0.92 });
+            if (existing.length > 0) continue;
+          } catch {}
+          const category = validCategories.has(mem.category) ? mem.category : 'fact';
+          const tags = Array.isArray(mem.tags) ? mem.tags.slice(0, 5) : [];
+          const importance = typeof mem.importance === 'number' ? Math.min(1, Math.max(0, mem.importance)) : 0.5;
+          await this.memory.add(mem.content, {
+            category,
+            tags,
+            importance,
+            source: 'auto-consolidation',
+          });
         }
       }
 
