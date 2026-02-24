@@ -119,6 +119,7 @@ function validate(messages) {
 
   const allToolUseIds = new Set();
   const allToolResultIds = new Set();
+  const duplicateToolResultIds = [];
 
   for (const msg of messages) {
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -128,9 +129,18 @@ function validate(messages) {
     }
     if (msg.role === 'user' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
-        if (b.type === 'tool_result') allToolResultIds.add(b.tool_use_id);
+        if (b.type === 'tool_result') {
+          if (allToolResultIds.has(b.tool_use_id)) {
+            duplicateToolResultIds.push(b.tool_use_id);
+          }
+          allToolResultIds.add(b.tool_use_id);
+        }
       }
     }
+  }
+
+  for (const id of duplicateToolResultIds) {
+    errors.push(`duplicate tool_result for tool_use_id=${id}`);
   }
 
   for (const id of allToolResultIds) {
@@ -150,10 +160,16 @@ function validate(messages) {
 
 function repair(messages) {
   const allToolUseIds = new Set();
+  const allToolResultIds = new Set();
   for (const msg of messages) {
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (b.type === 'tool_use') allToolUseIds.add(b.id);
+      }
+    }
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (b.type === 'tool_result') allToolResultIds.add(b.tool_use_id);
       }
     }
   }
@@ -183,7 +199,7 @@ function repair(messages) {
     if (next?.role === 'user' && Array.isArray(next.content)) {
       const existingIds = new Set(
         next.content.filter(b => b.type === 'tool_result').map(b => b.tool_use_id));
-      const missingIds = toolUseIds.filter(id => !existingIds.has(id));
+      const missingIds = toolUseIds.filter(id => !existingIds.has(id) && !allToolResultIds.has(id));
       if (missingIds.length > 0) {
         next.content = [
           ...next.content,
@@ -193,10 +209,14 @@ function repair(messages) {
         ];
       }
     } else {
-      const fakeResults = toolUseIds.map(id => ({
-        type: 'tool_result', tool_use_id: id, content: '[interrupted]',
-      }));
-      messages.splice(i + 1, 0, { role: 'user', content: fakeResults });
+      const existingElsewhere = toolUseIds.filter(id => allToolResultIds.has(id));
+      const trulyMissing = toolUseIds.filter(id => !allToolResultIds.has(id));
+      if (trulyMissing.length > 0) {
+        const fakeResults = trulyMissing.map(id => ({
+          type: 'tool_result', tool_use_id: id, content: '[interrupted]',
+        }));
+        messages.splice(i + 1, 0, { role: 'user', content: fakeResults });
+      }
     }
   }
 
@@ -211,6 +231,17 @@ function repair(messages) {
       messages[i - 1] = { role: 'user', content: [...prevArr, ...currArr] };
       messages.splice(i, 1);
     }
+  }
+
+  for (const msg of messages) {
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) continue;
+    const seen = new Set();
+    msg.content = msg.content.filter(b => {
+      if (b.type !== 'tool_result') return true;
+      if (seen.has(b.tool_use_id)) return false;
+      seen.add(b.tool_use_id);
+      return true;
+    });
   }
 }
 

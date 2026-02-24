@@ -808,14 +808,15 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
-    if (!data.startsWith('ask:')) return ctx.answerCallbackQuery();
+    const answer = (opts) => ctx.answerCallbackQuery(opts).catch(() => {});
+    if (!data.startsWith('ask:')) return answer();
     const parts = data.split(':');
     const askId = parseInt(parts[1]);
     const optIdx = parseInt(parts[2]);
     const pending = pendingAsks.get(askId);
-    if (!pending) return ctx.answerCallbackQuery({ text: 'Expired' });
+    if (!pending) return answer({ text: 'Expired' });
     const selected = pending.options[optIdx];
-    await ctx.answerCallbackQuery({ text: selected });
+    await answer({ text: selected });
     clearTimeout(pending.timer);
     pendingAsks.delete(askId);
     ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`, { parse_mode: 'Markdown' }).catch(() => {});
