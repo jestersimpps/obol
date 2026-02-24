@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, OBOL_DIR } = require('./config');
-const { createBot } = require('./telegram');
+const { createBot, checkUpgradeNotify } = require('./telegram');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./heartbeat');
 const { migrateToMultiTenant } = require('./legacy-migrate');
@@ -42,6 +42,8 @@ async function main() {
   }
 
   const bot = createBot(config.telegram, config);
+
+  checkUpgradeNotify(bot).catch(() => {});
 
   if (config.heartbeat !== false) {
     setupHeartbeat();

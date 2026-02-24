@@ -1,4 +1,5 @@
 const path = require('path');
+const { execSync } = require('child_process');
 const { Bot, GrammyError, HttpError, InlineKeyboard } = require('grammy');
 const { loadConfig } = require('./config');
 const { evolve, loadEvolutionState } = require('./evolve');
@@ -7,6 +8,7 @@ const { loadTraits, saveTraits, DEFAULT_TRAITS } = require('./personality');
 const media = require('./media');
 const credentials = require('./credentials');
 const { getMaxToolIterations, setMaxToolIterations } = require('./claude');
+const pkg = require('../package.json');
 
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
@@ -79,6 +81,7 @@ function createBot(telegramConfig, config) {
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
+    { command: 'upgrade', description: 'Check for updates and upgrade' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
 
@@ -374,6 +377,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /clean — Audit workspace
 /verbose — Toggle verbose mode on/off
 /toolimit — View or set max tool iterations
+/upgrade — Check for updates and upgrade
 /help — This message`);
   });
 
@@ -382,6 +386,34 @@ Your message is deleted immediately when using /secret set to keep credentials o
     const tenant = await getTenant(ctx.from.id, config);
     tenant.verbose = !tenant.verbose;
     await ctx.reply(tenant.verbose ? '🔍 Verbose mode ON' : '🔇 Verbose mode OFF');
+  });
+
+  bot.command('upgrade', async (ctx) => {
+    const current = pkg.version;
+    let latest;
+    try {
+      latest = execSync(`npm view ${pkg.name} version`, { encoding: 'utf-8' }).trim();
+    } catch {
+      await ctx.reply('Could not reach npm registry');
+      return;
+    }
+
+    if (current === latest) {
+      await ctx.reply(`Already on latest (${current})`);
+      return;
+    }
+
+    await ctx.reply(`Upgrading ${current} → ${latest}, back in a moment...`);
+
+    try {
+      execSync(`npm install -g ${pkg.name}@latest`, { encoding: 'utf-8', timeout: 120000 });
+      const { OBOL_DIR } = require('./config');
+      const notifyPath = path.join(OBOL_DIR, '.upgrade-notify.json');
+      fs.writeFileSync(notifyPath, JSON.stringify({ chatId: ctx.chat.id, version: latest }));
+      execSync('pm2 restart obol', { encoding: 'utf-8', timeout: 15000 });
+    } catch (e) {
+      await ctx.reply(`Upgrade failed: ${e.message.substring(0, 200)}`);
+    }
   });
 
   bot.command('toolimit', async (ctx) => {
@@ -778,4 +810,15 @@ function splitMessage(text, maxLength) {
   return chunks;
 }
 
-module.exports = { createBot };
+async function checkUpgradeNotify(bot) {
+  const { OBOL_DIR } = require('./config');
+  const notifyPath = path.join(OBOL_DIR, '.upgrade-notify.json');
+  if (!fs.existsSync(notifyPath)) return;
+  try {
+    const { chatId, version } = JSON.parse(fs.readFileSync(notifyPath, 'utf-8'));
+    fs.unlinkSync(notifyPath);
+    await bot.api.sendMessage(chatId, `🪙 Upgraded to ${version}`);
+  } catch {}
+}
+
+module.exports = { createBot, checkUpgradeNotify };
