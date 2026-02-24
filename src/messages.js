@@ -49,7 +49,6 @@ class MessageLog {
           model: opts.model || null,
           tokens_in: opts.tokensIn || null,
           tokens_out: opts.tokensOut || null,
-          user_id: this.userId,
         }),
       });
     } catch (e) {
@@ -81,7 +80,7 @@ class MessageLog {
   async getRecent(chatId, limit = 20) {
     try {
       const res = await fetch(
-        `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&user_id=eq.${this.userId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`,
+        `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`,
         { headers: this.headers }
       );
       const data = await res.json();
@@ -101,7 +100,7 @@ class MessageLog {
       const since = this._lastConsolidatedAt.get(chatId);
       this._lastConsolidatedAt.set(chatId, new Date().toISOString());
 
-      let fetchUrl = `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&user_id=eq.${this.userId}&order=created_at.desc&limit=10&select=role,content,created_at`;
+      let fetchUrl = `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=10&select=role,content,created_at`;
       if (since) fetchUrl += `&created_at=gt.${since}`;
       const msgRes = await fetch(fetchUrl, { headers: this.headers });
       const messages = msgRes.ok ? (await msgRes.json()).reverse() : await this.getRecent(chatId, 10).catch(() => []);

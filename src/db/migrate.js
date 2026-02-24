@@ -130,6 +130,30 @@ async function migrate(supabaseConfig) {
       CREATE POLICY "service_role_all" ON obol_messages FOR ALL TO service_role USING (true) WITH CHECK (true);
     EXCEPTION WHEN duplicate_object THEN NULL;
     END $$;`,
+
+    // Events table (scheduling & reminders)
+    `CREATE TABLE IF NOT EXISTS obol_events (
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      chat_id BIGINT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_at TIMESTAMPTZ NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','cancelled')),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_events_due ON obol_events (due_at) WHERE status = 'pending';`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_events_user ON obol_events (user_id);`,
+    `ALTER TABLE obol_events ENABLE ROW LEVEL SECURITY;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
+
+    // Drop redundant user_id from obol_messages (chat_id == user_id for Telegram private chats)
+    `DROP INDEX IF EXISTS idx_obol_messages_user;`,
+    `ALTER TABLE obol_messages DROP COLUMN IF EXISTS user_id;`,
   ];
 
   // Save SQL file for manual fallback
