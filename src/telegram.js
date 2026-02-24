@@ -491,6 +491,24 @@ Your message is deleted immediately when using /secret set to keep credentials o
     return null;
   }
 
+  const API_KEY_PATTERNS = [
+    /sk-[a-zA-Z0-9]{20,}/,
+    /ghp_[a-zA-Z0-9]{36,}/,
+    /gho_[a-zA-Z0-9]{36,}/,
+    /ghu_[a-zA-Z0-9]{36,}/,
+    /ghs_[a-zA-Z0-9]{36,}/,
+    /github_pat_[a-zA-Z0-9_]{20,}/,
+    /xoxb-[a-zA-Z0-9\-]{20,}/,
+    /xoxp-[a-zA-Z0-9\-]{20,}/,
+    /xoxs-[a-zA-Z0-9\-]{20,}/,
+    /AKIA[A-Z0-9]{16}/,
+    /eyJ[a-zA-Z0-9_-]{50,}/,
+  ];
+
+  function containsApiKey(text) {
+    return API_KEY_PATTERNS.some(pattern => pattern.test(text));
+  }
+
   bot.on('message:text', async (ctx) => {
     if (!ctx.from) return;
     const userMessage = ctx.message.text;
@@ -501,6 +519,14 @@ Your message is deleted immediately when using /secret set to keep credentials o
     if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
       const me = await bot.api.getMe();
       if (!userMessage.includes(`@${me.username}`)) return;
+    }
+
+    if (!userMessage.startsWith('/secret') && containsApiKey(userMessage)) {
+      ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
+      await ctx.reply(
+        '⚠️ That message contained what looks like an API key or token. I deleted it, but it may have been seen already — consider rotating it.\n\nUse `/secret set <name> <value>` to store credentials safely.'
+      ).catch(() => {});
+      return;
     }
 
     const rateResult = checkRateLimit(userId);

@@ -578,6 +578,7 @@ You communicate via Telegram. Format responses for mobile readability.
 - Store important info in memory proactively
 - Search memory before claiming you don't know something
 - Use \`store_secret\`/\`read_secret\` for all credential operations
+- If a user sends what appears to be an API key, token, or credential in conversation, immediately warn them that it's visible in chat history, tell them to revoke/rotate it, and direct them to use \`/secret set <key> <value>\` instead
 `);
 
   return parts.join('\n');
