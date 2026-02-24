@@ -1114,17 +1114,22 @@ async function executeToolCall(toolUse, memory, context = {}) {
 }
 
 function toUTC(dateStr, timezone) {
+  const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):?(\d{2})?/);
+  if (!match) return new Date(dateStr + 'Z').toISOString();
+  const [, y, mo, d, h, mi, s] = match;
+  const wallAsUTC = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s || 0));
+  if (timezone === 'UTC') return new Date(wallAsUTC).toISOString();
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   });
-  const target = new Date(dateStr);
-  const utcGuess = new Date(target.toISOString());
-  const inTz = new Date(fmt.format(utcGuess));
-  const offset = inTz.getTime() - utcGuess.getTime();
-  return new Date(target.getTime() - offset).toISOString();
+  const parts = fmt.formatToParts(new Date(wallAsUTC));
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
+  const hr = +get('hour') === 24 ? 0 : +get('hour');
+  const tzWall = Date.UTC(+get('year'), +get('month') - 1, +get('day'), hr, +get('minute'), +get('second'));
+  return new Date(wallAsUTC - (tzWall - wallAsUTC)).toISOString();
 }
 
 function getMaxToolIterations() { return MAX_TOOL_ITERATIONS; }

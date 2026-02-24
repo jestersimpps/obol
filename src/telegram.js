@@ -393,6 +393,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /recent — Last 10 memories
 /today — Today's memories
 /forget <id> — Delete a memory
+/events — Upcoming scheduled events
 /tasks — Running background tasks
 /traits — View/adjust personality traits
 /secret — Manage per-user secrets
@@ -685,6 +686,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
           bg: tenant.bg,
           ctx,
           claude: tenant.claude,
+          scheduler: tenant.scheduler,
           config,
           verbose: tenant.verbose,
           _verboseNotify: tenant.verbose ? (msg) => {
@@ -721,6 +723,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
           bg: tenant.bg,
           ctx,
           claude: tenant.claude,
+          scheduler: tenant.scheduler,
           config,
           verbose: tenant.verbose,
           _verboseNotify: tenant.verbose ? (msg) => {

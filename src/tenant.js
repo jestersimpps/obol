@@ -5,6 +5,7 @@ const { createClaude } = require('./claude');
 const { createMessageLog } = require('./messages');
 const { BackgroundRunner } = require('./background');
 const { isBridgeEnabled } = require('./bridge');
+const { createScheduler } = require('./scheduler');
 const fs = require('fs');
 const path = require('path');
 
@@ -34,6 +35,7 @@ async function createTenant(userId, config) {
   const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
   const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled });
   const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client, userId, userDir) : null;
+  const scheduler = config.supabase ? createScheduler(config.supabase, userId) : null;
   const bg = new BackgroundRunner();
 
   let personalityMtime = 0;
@@ -42,7 +44,7 @@ async function createTenant(userId, config) {
   } catch {}
 
   return {
-    claude, memory, messageLog, personality, bg, userDir, userId,
+    claude, memory, messageLog, personality, scheduler, bg, userDir, userId,
     verbose: false,
     _personalityLoadedAt: Date.now(),
     _personalityMtime: personalityMtime,

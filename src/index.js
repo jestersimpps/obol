@@ -46,7 +46,7 @@ async function main() {
   checkUpgradeNotify(bot).catch(() => {});
 
   if (config.heartbeat !== false) {
-    setupHeartbeat();
+    setupHeartbeat(bot, config.supabase);
   }
 
   if (config.github) {
