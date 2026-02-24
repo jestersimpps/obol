@@ -237,7 +237,11 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
     const verbose = context.verbose || false;
     if (verbose) context.verboseLog = [];
-    const vlog = (msg) => { if (verbose) context.verboseLog.push(msg); };
+    const vlog = (msg) => {
+      if (!verbose) return;
+      context.verboseLog.push(msg);
+      context._verboseNotify?.(msg);
+    };
 
     let memoryContext = '';
     if (memory) {
@@ -1017,7 +1021,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const { bg, ctx: telegramCtx, claude: claudeInstance } = context;
         if (!bg || !telegramCtx) return 'Background tasks not available in this context.';
         if (!claudeInstance) return 'Background tasks not available.';
-        const taskId = bg.spawn(claudeInstance, input.task, telegramCtx, memory);
+        const taskId = bg.spawn(claudeInstance, input.task, telegramCtx, memory, context);
         if (taskId === null) return 'Too many background tasks running. Wait for one to finish.';
         return `Background task #${taskId} spawned. It will send progress updates and the final result to the chat.`;
       }

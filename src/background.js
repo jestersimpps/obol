@@ -20,8 +20,9 @@ class BackgroundRunner {
    * @param {string} task - The task description
    * @param {object} ctx - Telegram context (for sending updates)
    * @param {object} memory - Memory instance
+   * @param {object} parentContext - Parent context for verbose forwarding
    */
-  spawn(claude, task, ctx, memory) {
+  spawn(claude, task, ctx, memory, parentContext) {
     let running = 0;
     for (const t of this.tasks.values()) {
       if (t.status === 'running') running++;
@@ -42,6 +43,9 @@ class BackgroundRunner {
 
     this.tasks.set(taskId, taskState);
 
+    const verbose = parentContext?.verbose || false;
+    const verboseNotify = parentContext?._verboseNotify;
+
     // Start check-in timer before running task to avoid leak if task throws immediately
     taskState.checkInTimer = setInterval(async () => {
       if (taskState.status !== 'running') {
@@ -55,13 +59,13 @@ class BackgroundRunner {
     }, CHECK_IN_INTERVAL);
 
     // Run the task
-    const promise = this._runTask(claude, task, taskState, ctx, memory);
+    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify);
     taskState.promise = promise;
 
     return taskId;
   }
 
-  async _runTask(claude, task, taskState, ctx, memory) {
+  async _runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify) {
     try {
       // Give the background task a system instruction to report progress
       const bgPrompt = `You are working on a background task. Do the work thoroughly.
@@ -73,9 +77,12 @@ This helps track what you're doing. Complete the full task, then give the final 
 
 TASK: ${task}`;
 
+      const bgNotify = verboseNotify ? (msg) => verboseNotify(`[bg#${taskState.id}] ${msg}`) : undefined;
       const result = await claude.chat(bgPrompt, {
         chatId: `bg-${taskState.id}`,
         userName: 'BackgroundTask',
+        verbose,
+        _verboseNotify: bgNotify,
       });
 
       taskState.status = 'done';

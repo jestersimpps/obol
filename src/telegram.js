@@ -505,6 +505,10 @@ Your message is deleted immediately when using /secret set to keep credentials o
         claude: tenant.claude,
         config,
         verbose: tenant.verbose,
+        _verboseNotify: tenant.verbose ? (msg) => {
+          const safe = msg.replace(/`/g, "'");
+          ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
+        } : undefined,
         telegramAsk: (message, options, timeout) => createAsk(ctx, message, options, timeout),
         _notifyFn: (targetUserId, message) => {
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
@@ -515,12 +519,6 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 
-      if (tenant.verbose && chatContext.verboseLog?.length) {
-        const verboseText = '```\n' + chatContext.verboseLog.join('\n') + '\n```';
-        await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() =>
-          ctx.reply(verboseText).catch(() => {})
-        );
-      }
 
       if (tenant.messageLog?._evolutionReady && !_evolutionTimers.has(userId)) {
         tenant.messageLog._evolutionReady = false;
@@ -653,6 +651,10 @@ Your message is deleted immediately when using /secret set to keep credentials o
           claude: tenant.claude,
           config,
           verbose: tenant.verbose,
+          _verboseNotify: tenant.verbose ? (msg) => {
+            const safe = msg.replace(/`/g, "'");
+            ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
+          } : undefined,
           images: [imageBlock],
           _notifyFn: (targetUserId, message) => {
             if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
@@ -663,11 +665,6 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
-
-        if (tenant.verbose && mediaChatCtx.verboseLog?.length) {
-          const verboseText = '```\n' + mediaChatCtx.verboseLog.join('\n') + '\n```';
-          await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() => ctx.reply(verboseText).catch(() => {}));
-        }
 
         stopTyping();
         if (response.length > 4096) {
@@ -688,6 +685,10 @@ Your message is deleted immediately when using /secret set to keep credentials o
           claude: tenant.claude,
           config,
           verbose: tenant.verbose,
+          _verboseNotify: tenant.verbose ? (msg) => {
+            const safe = msg.replace(/`/g, "'");
+            ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
+          } : undefined,
           _notifyFn: (targetUserId, message) => {
             if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
             return bot.api.sendMessage(targetUserId, message);
@@ -697,11 +698,6 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
         tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
-
-        if (tenant.verbose && mediaCaptionCtx.verboseLog?.length) {
-          const verboseText = '```\n' + mediaCaptionCtx.verboseLog.join('\n') + '\n```';
-          await ctx.reply(verboseText, { parse_mode: 'Markdown' }).catch(() => ctx.reply(verboseText).catch(() => {}));
-        }
 
         stopTyping();
         if (response.length > 4096) {
