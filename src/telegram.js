@@ -600,6 +600,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
   bot.command('tools', async (ctx) => {
     if (!ctx.from) return;
+    await clearVoiceFlow(ctx.from.id);
     const tenant = await getTenant(ctx.from.id, config);
     await tenant.reloadToolPrefs();
     const text = buildToolsMessage(tenant.toolPrefs);
@@ -1165,12 +1166,29 @@ Your message is deleted immediately when using /secret set to keep credentials o
     'zh-CN': '你好！这就是我的声音。很高兴认识你。',
   };
 
-  function sendVoiceLanguagePicker(ctx) {
+  const voiceFlowMessages = new Map();
+
+  function trackVoiceMsg(userId, chatId, messageId) {
+    if (!voiceFlowMessages.has(userId)) voiceFlowMessages.set(userId, []);
+    voiceFlowMessages.get(userId).push({ chatId, messageId });
+  }
+
+  async function clearVoiceFlow(userId) {
+    const msgs = voiceFlowMessages.get(userId);
+    if (!msgs) return;
+    voiceFlowMessages.delete(userId);
+    for (const { chatId, messageId } of msgs) {
+      bot.api.deleteMessage(chatId, messageId).catch(() => {});
+    }
+  }
+
+  async function sendVoiceLanguagePicker(ctx) {
     const kb = new InlineKeyboard();
     for (const lang of VOICE_LANGUAGES) {
       kb.text(lang.label, `voice:lang:${lang.code}`).row();
     }
-    ctx.reply('Pick a language:', { reply_markup: kb }).catch(() => {});
+    const msg = await ctx.reply('Pick a language:', { reply_markup: kb });
+    if (ctx.from) trackVoiceMsg(ctx.from.id, msg.chat.id, msg.message_id);
   }
 
   bot.on('callback_query:data', async (ctx) => {
@@ -1181,6 +1199,8 @@ Your message is deleted immediately when using /secret set to keep credentials o
       const featureKey = data.slice(5);
       if (!OPTIONAL_TOOLS[featureKey]) return answer({ text: 'Unknown tool' });
       if (!ctx.from) return answer();
+
+      await clearVoiceFlow(ctx.from.id);
 
       const tenant = await getTenant(ctx.from.id, config);
       if (!tenant.toolPrefsApi) return answer({ text: 'Not available' });
@@ -1247,13 +1267,15 @@ Your message is deleted immediately when using /secret set to keep credentials o
           const sampleText = TTS_SAMPLES[langPrefix] || TTS_SAMPLES['en-US'];
           const filePath = tts.synthesize(sampleText, voiceName);
           const { InputFile } = require('grammy');
-          await ctx.replyWithAudio(new InputFile(filePath));
+          const audioMsg = await ctx.replyWithAudio(new InputFile(filePath));
           try { fs.unlinkSync(filePath); } catch {}
+          if (ctx.from) trackVoiceMsg(ctx.from.id, audioMsg.chat.id, audioMsg.message_id);
 
           const kb = new InlineKeyboard();
           kb.text('✓ Use this voice', `voice:save:${voiceName}`).row();
           kb.text('← Try another', `voice:langs`).row();
-          await ctx.reply(`<b>${voiceName}</b>`, { parse_mode: 'HTML', reply_markup: kb });
+          const confirmMsg = await ctx.reply(`<b>${voiceName}</b>`, { parse_mode: 'HTML', reply_markup: kb });
+          if (ctx.from) trackVoiceMsg(ctx.from.id, confirmMsg.chat.id, confirmMsg.message_id);
         } catch (e) {
           sendHtml(ctx, `Sample failed: ${e.message}`).catch(() => {});
         }
@@ -1270,7 +1292,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
           await tenant.toolPrefsApi.set('text_to_speech', true, newConfig);
           await tenant.reloadToolPrefs();
         }
-        ctx.editMessageText(`<b>✓ ${voiceName}</b>`, { parse_mode: 'HTML' }).catch(() => {});
+        if (ctx.from) await clearVoiceFlow(ctx.from.id);
         return;
       }
 
