@@ -70,7 +70,7 @@ class MessageLog {
 
       const { tickExchange } = require('./evolve');
       tickExchange(this.userDir).then(result => {
-        if (result?.ready) this._evolutionReady = true;
+        if (result?.ready && !this._evolutionReady && !this._evolutionPending) this._evolutionReady = true;
       }).catch(() => {});
     }
   }

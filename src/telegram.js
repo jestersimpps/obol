@@ -13,6 +13,9 @@ const pkg = require('../package.json');
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
 const SPAM_COOLDOWN_MS = 30000;
+const EVOLUTION_IDLE_MS = 15 * 60 * 1000;
+
+const _evolutionTimers = new Map();
 
 function startTyping(ctx) {
   ctx.replyWithChatAction('typing').catch(() => {});
@@ -482,6 +485,12 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
     const tenant = await getTenant(userId, config);
 
+    if (_evolutionTimers.has(userId)) {
+      clearTimeout(_evolutionTimers.get(userId));
+      _evolutionTimers.delete(userId);
+      if (tenant.messageLog) tenant.messageLog._evolutionPending = false;
+    }
+
     const stopTyping = startTyping(ctx);
 
     try {
@@ -513,9 +522,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
         );
       }
 
-      if (tenant.messageLog?._evolutionReady) {
+      if (tenant.messageLog?._evolutionReady && !_evolutionTimers.has(userId)) {
         tenant.messageLog._evolutionReady = false;
-        setImmediate(async () => {
+        tenant.messageLog._evolutionPending = true;
+        const timer = setTimeout(async () => {
+          _evolutionTimers.delete(userId);
           try {
             const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir);
             tenant.claude.reloadPersonality?.();
@@ -555,8 +566,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
             );
           } catch (e) {
             console.error('Evolution failed:', e.message);
+          } finally {
+            tenant.messageLog._evolutionPending = false;
           }
-        });
+        }, EVOLUTION_IDLE_MS);
+        _evolutionTimers.set(userId, timer);
       }
 
       stopTyping();
