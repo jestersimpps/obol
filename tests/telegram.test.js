@@ -318,9 +318,9 @@ describe('telegram', () => {
       expect(tenantModule.getTenant).toHaveBeenCalledWith(123, config);
     });
 
-    it('sends processing placeholder then typing action', async () => {
+    it('sends typing action without processing placeholder', async () => {
       await handlers['message:text'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith('Processing...');
+      expect(ctx.reply).not.toHaveBeenCalledWith('Processing...');
       expect(ctx.replyWithChatAction).toHaveBeenCalledWith('typing');
     });
 
@@ -346,48 +346,39 @@ describe('telegram', () => {
       expect(mockTenant.messageLog.log).toHaveBeenCalledWith(456, 'assistant', 'test response', expect.any(Object));
     });
 
-    it('edits processing message with HTML response', async () => {
+    it('sends response as new HTML message', async () => {
       await handlers['message:text'](ctx);
-      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
-        456, 1,
+      expect(ctx.reply).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ parse_mode: 'HTML' }),
       );
     });
 
-    it('edits first chunk and sends rest for long responses', async () => {
+    it('sends multiple messages for long responses', async () => {
       const longResponse = 'a'.repeat(5000);
       mockTenant.claude.chat.mockResolvedValue({ text: longResponse, usage: {}, model: 'test' });
       await handlers['message:text'](ctx);
-      expect(ctx.api.editMessageText).toHaveBeenCalled();
-      expect(ctx.reply.mock.calls.length).toBeGreaterThan(1);
+      expect(ctx.api.editMessageText).not.toHaveBeenCalled();
+      const htmlCalls = ctx.reply.mock.calls.filter(c => c[1]?.parse_mode === 'HTML');
+      expect(htmlCalls.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('edits processing message on API 401 error', async () => {
+    it('replies with error on API 401 error', async () => {
       mockTenant.claude.chat.mockRejectedValue({ status: 401, message: '401' });
       await handlers['message:text'](ctx);
-      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
-        456, 1,
-        expect.stringContaining('API key invalid'),
-      );
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('API key invalid'));
     });
 
-    it('edits processing message on rate limit error', async () => {
+    it('replies with error on rate limit error', async () => {
       mockTenant.claude.chat.mockRejectedValue({ status: 429, message: 'rate limited' });
       await handlers['message:text'](ctx);
-      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
-        456, 1,
-        expect.stringContaining('Rate limited'),
-      );
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Rate limited'));
     });
 
-    it('edits processing message on generic error', async () => {
+    it('replies with error on generic error', async () => {
       mockTenant.claude.chat.mockRejectedValue(new Error('something broke'));
       await handlers['message:text'](ctx);
-      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
-        456, 1,
-        expect.stringContaining('Something went wrong'),
-      );
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('Something went wrong'));
     });
   });
 
@@ -487,7 +478,7 @@ describe('telegram', () => {
         },
       };
       await handlers['message:voice'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith('Processing...');
+      expect(ctx.reply).not.toHaveBeenCalledWith('Processing...');
       expect(mockTenant.claude.chat).toHaveBeenCalledWith(
         expect.stringContaining('saved'),
         expect.any(Object),

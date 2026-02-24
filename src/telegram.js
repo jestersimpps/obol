@@ -23,6 +23,7 @@ const TEXT_BUFFER_THRESHOLD = 4000;
 const MEDIA_GROUP_DELAY_MS = 500;
 
 const _evolutionTimers = new Map();
+const _toolDescriptionCache = new Map();
 
 function markdownToTelegramHtml(text) {
   const codeBlocks = [];
@@ -82,6 +83,27 @@ function createBot(telegramConfig, config) {
   const textBuffers = new Map();
   const mediaGroups = new Map();
   let askIdCounter = 0;
+
+  function describeToolCall(client, toolName, inputSummary) {
+    const key = `${toolName}:${inputSummary}`;
+    const cached = _toolDescriptionCache.get(key);
+    if (cached) return Promise.resolve(cached);
+
+    return client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 30,
+      system: 'Describe this tool call in 3-8 words from the user\'s perspective. Present participle. No quotes, period, or emoji.',
+      messages: [{ role: 'user', content: `${toolName}: ${inputSummary}` }],
+    }).then(r => {
+      const desc = r.content[0]?.text?.trim() || null;
+      if (desc) _toolDescriptionCache.set(key, desc);
+      if (_toolDescriptionCache.size > 200) {
+        const first = _toolDescriptionCache.keys().next().value;
+        _toolDescriptionCache.delete(first);
+      }
+      return desc;
+    }).catch(() => null);
+  }
 
   function createAsk(ctx, message, options, timeoutSecs = 60) {
     return new Promise((resolve) => {
@@ -595,8 +617,17 @@ Your message is deleted immediately when using /secret set to keep credentials o
     }
 
     const chatMessage = replyContext + fullMessage;
-    const sent = await ctx.reply('Processing...').catch(() => null);
     const stopTyping = startTyping(ctx);
+
+    let statusMsgId = null;
+    let statusText = 'Processing';
+    let statusTimer = null;
+    let statusStart = null;
+
+    const clearStatus = () => {
+      if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+      if (statusMsgId) { ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {}); statusMsgId = null; }
+    };
 
     try {
       tenant.messageLog?.log(ctx.chat.id, 'user', chatMessage);
@@ -619,12 +650,34 @@ Your message is deleted immediately when using /secret set to keep credentials o
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
         },
+        _onToolStart: (toolName, inputSummary) => {
+          statusText = 'Processing';
+          describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
+            if (desc) statusText = desc;
+          });
+          if (statusTimer) return;
+          statusStart = Date.now();
+          ctx.reply('Processing...').then(sent => {
+            if (sent) statusMsgId = sent.message_id;
+          }).catch(() => {});
+          statusTimer = setInterval(() => {
+            if (!statusMsgId) return;
+            const elapsed = Math.round((Date.now() - statusStart) / 1000);
+            ctx.api.editMessageText(ctx.chat.id, statusMsgId, `(${elapsed}s) ${statusText}...`).catch(() => {});
+          }, 1000);
+        },
       };
       const { text: response, usage, model } = await tenant.claude.chat(chatMessage, chatContext);
 
+      if (statusTimer) {
+        clearInterval(statusTimer);
+        statusTimer = null;
+        if (statusMsgId) ctx.api.editMessageText(ctx.chat.id, statusMsgId, 'Formatting output...').catch(() => {});
+      }
+
       if (!response?.trim()) {
         stopTyping();
-        if (sent) ctx.api.deleteMessage(ctx.chat.id, sent.message_id).catch(() => {});
+        clearStatus();
         return;
       }
 
@@ -683,22 +736,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
       if (response.length > 4096) {
         const chunks = splitMessage(response, 4096);
-        if (sent) {
-          await editHtml(ctx, ctx.chat.id, sent.message_id, chunks[0]).catch(() => {});
-          for (let i = 1; i < chunks.length; i++) {
-            await sendHtml(ctx, chunks[i]).catch(() => {});
-          }
-        } else {
-          for (const chunk of chunks) {
-            await sendHtml(ctx, chunk).catch(() => {});
-          }
+        for (const chunk of chunks) {
+          await sendHtml(ctx, chunk).catch(() => {});
         }
-      } else if (sent) {
-        await editHtml(ctx, ctx.chat.id, sent.message_id, response).catch(() => {});
       } else {
         await sendHtml(ctx, response).catch(() => {});
       }
+
+      if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
     } catch (e) {
+      clearStatus();
       stopTyping();
       console.error('Message handling error:', e.message);
       const errMsg = e.isOAuthExpiry
@@ -709,11 +756,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
             ? 'Rate limited. Wait a moment and try again.'
             : 'Something went wrong. Check logs with `obol logs`.';
       if (e.isOAuthExpiry) console.error('[oauth] Full error:', e.stack || e.message);
-      if (sent) {
-        await ctx.api.editMessageText(ctx.chat.id, sent.message_id, errMsg).catch(() => {});
-      } else {
-        await ctx.reply(errMsg).catch(() => {});
-      }
+      await ctx.reply(errMsg).catch(() => {});
     }
   }
 
@@ -801,8 +844,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
   async function processMediaItems(ctx, items) {
     if (!ctx.from) return;
     const userId = ctx.from.id;
-    const sent = await ctx.reply('Processing...').catch(() => null);
     const stopTyping = startTyping(ctx);
+    let statusMsgId = null;
+    let statusText = 'Processing';
+    let statusTimer = null;
+    let statusStart = null;
+
+    const clearStatus = () => {
+      if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+      if (statusMsgId) { ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {}); statusMsgId = null; }
+    };
 
     try {
       const tenant = await getTenant(userId, config);
@@ -855,12 +906,34 @@ Your message is deleted immediately when using /secret set to keep credentials o
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
         },
+        _onToolStart: (toolName, inputSummary) => {
+          statusText = 'Processing';
+          describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
+            if (desc) statusText = desc;
+          });
+          if (statusTimer) return;
+          statusStart = Date.now();
+          ctx.reply('Processing...').then(sent => {
+            if (sent) statusMsgId = sent.message_id;
+          }).catch(() => {});
+          statusTimer = setInterval(() => {
+            if (!statusMsgId) return;
+            const elapsed = Math.round((Date.now() - statusStart) / 1000);
+            ctx.api.editMessageText(ctx.chat.id, statusMsgId, `(${elapsed}s) ${statusText}...`).catch(() => {});
+          }, 1000);
+        },
       };
       const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
 
+      if (statusTimer) {
+        clearInterval(statusTimer);
+        statusTimer = null;
+        if (statusMsgId) ctx.api.editMessageText(ctx.chat.id, statusMsgId, 'Formatting output...').catch(() => {});
+      }
+
       stopTyping();
       if (!response?.trim()) {
-        if (sent) ctx.api.deleteMessage(ctx.chat.id, sent.message_id).catch(() => {});
+        clearStatus();
         return;
       }
 
@@ -880,26 +953,17 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
       if (response.length > 4096) {
         const chunks = splitMessage(response, 4096);
-        if (sent) {
-          await editHtml(ctx, ctx.chat.id, sent.message_id, chunks[0]).catch(() => {});
-          for (let i = 1; i < chunks.length; i++) await sendHtml(ctx, chunks[i]).catch(() => {});
-        } else {
-          for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
-        }
-      } else if (sent) {
-        await editHtml(ctx, ctx.chat.id, sent.message_id, response).catch(() => {});
+        for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
       } else {
         await sendHtml(ctx, response).catch(() => {});
       }
+
+      if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
     } catch (e) {
+      clearStatus();
       stopTyping();
       console.error('Media handling error:', e.message);
-      const errMsg = 'Failed to process that file. Check logs.';
-      if (sent) {
-        await ctx.api.editMessageText(ctx.chat.id, sent.message_id, errMsg).catch(() => {});
-      } else {
-        await ctx.reply(errMsg).catch(() => {});
-      }
+      await ctx.reply('Failed to process that file. Check logs.').catch(() => {});
     }
   }
 

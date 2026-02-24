@@ -877,6 +877,8 @@ function buildRunnableTools(tools, memory, context, vlog) {
         tool.name === 'cancel_event' ? input.event_id :
         JSON.stringify(input).substring(0, 80);
       vlog(`[tool] ${tool.name}: ${inputSummary}`);
+
+      context._onToolStart?.(tool.name, inputSummary);
       return await executeToolCall({ name: tool.name, input }, memory, context);
     },
   }));
