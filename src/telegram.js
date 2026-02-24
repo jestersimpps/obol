@@ -137,6 +137,11 @@ function createBot(telegramConfig, config) {
       if (stats) text += `🧠 Memories: ${stats.total}\n`;
     }
 
+    const ctxStats = tenant.claude.getContextStats(ctx.chat.id);
+    const ctxBar = '█'.repeat(Math.floor(ctxStats.pct / 5)) + '░'.repeat(20 - Math.floor(ctxStats.pct / 5));
+    text += `\n📐 Context: ${ctxBar} ${ctxStats.pct}%\n`;
+    text += `   ${(ctxStats.estimatedTokens / 1000).toFixed(1)}k / ${(ctxStats.maxTokens / 1000).toFixed(0)}k tokens (${ctxStats.messages} msgs)\n`;
+
     const evoState = loadEvolutionState(tenant.userDir);
     const cfg = loadConfig();
     const threshold = cfg?.evolution?.exchanges || 100;
@@ -689,10 +694,10 @@ Your message is deleted immediately when using /secret set to keep credentials o
     const pending = pendingAsks.get(askId);
     if (!pending) return ctx.answerCallbackQuery({ text: 'Expired' });
     const selected = pending.options[optIdx];
+    await ctx.answerCallbackQuery({ text: selected });
     clearTimeout(pending.timer);
     pendingAsks.delete(askId);
-    await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`, { parse_mode: 'Markdown' }).catch(() => {});
-    await ctx.answerCallbackQuery({ text: selected });
+    ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`, { parse_mode: 'Markdown' }).catch(() => {});
     pending.resolve(selected);
   });
 

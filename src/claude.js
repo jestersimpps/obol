@@ -125,19 +125,61 @@ async function ensureFreshToken(anthropicConfig) {
 }
 
 function repairHistory(history) {
+  const allToolUseIds = new Set();
+  for (const msg of history) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (b.type === 'tool_use') allToolUseIds.add(b.id);
+      }
+    }
+  }
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) continue;
+    const toolResults = msg.content.filter(b => b.type === 'tool_result');
+    if (toolResults.length === 0) continue;
+    const orphaned = toolResults.filter(b => !allToolUseIds.has(b.tool_use_id));
+    if (orphaned.length === 0) continue;
+    const remaining = msg.content.filter(b => b.type !== 'tool_result' || allToolUseIds.has(b.tool_use_id));
+    if (remaining.length === 0) {
+      history.splice(i, 1);
+    } else {
+      msg.content = remaining;
+    }
+  }
+
   for (let i = 0; i < history.length; i++) {
     const msg = history[i];
     if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
     const toolUseIds = msg.content.filter(b => b.type === 'tool_use').map(b => b.id);
     if (toolUseIds.length === 0) continue;
     const next = history[i + 1];
-    const hasResults = next?.role === 'user' && Array.isArray(next.content) &&
-      toolUseIds.every(id => next.content.some(b => b.type === 'tool_result' && b.tool_use_id === id));
-    if (!hasResults) {
+    if (next?.role === 'user' && Array.isArray(next.content)) {
+      const existingIds = new Set(next.content.filter(b => b.type === 'tool_result').map(b => b.tool_use_id));
+      const missingIds = toolUseIds.filter(id => !existingIds.has(id));
+      if (missingIds.length > 0) {
+        next.content = [
+          ...next.content,
+          ...missingIds.map(id => ({ type: 'tool_result', tool_use_id: id, content: '[interrupted]' })),
+        ];
+      }
+    } else {
       const fakeResults = toolUseIds.map(id => ({
         type: 'tool_result', tool_use_id: id, content: '[interrupted]',
       }));
       history.splice(i + 1, 0, { role: 'user', content: fakeResults });
+    }
+  }
+
+  for (let i = history.length - 1; i > 0; i--) {
+    if (history[i].role === history[i - 1].role && history[i].role === 'user') {
+      const prev = history[i - 1];
+      const curr = history[i];
+      const prevArr = Array.isArray(prev.content) ? prev.content : [{ type: 'text', text: prev.content }];
+      const currArr = Array.isArray(curr.content) ? curr.content : [{ type: 'text', text: curr.content }];
+      history[i - 1] = { role: 'user', content: [...prevArr, ...currArr] };
+      history.splice(i, 1);
     }
   }
 }
@@ -148,13 +190,41 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
   let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
   const histories = new Map();
+  const chatLocks = new Map();
   const MAX_HISTORY = 50;
 
   const tools = buildTools(memory, { bridgeEnabled });
 
+  function acquireChatLock(chatId) {
+    if (!chatLocks.has(chatId)) chatLocks.set(chatId, { promise: Promise.resolve(), busy: false });
+    const lock = chatLocks.get(chatId);
+    let release;
+    const prev = lock.promise;
+    lock.promise = new Promise(r => { release = r; });
+    return prev.then(() => {
+      lock.busy = true;
+      return () => { lock.busy = false; release(); };
+    });
+  }
+
+  function isChatBusy(chatId) {
+    return chatLocks.get(chatId)?.busy || false;
+  }
+
   async function chat(userMessage, context = {}) {
     context.userDir = userDir;
     const chatId = context.chatId || 'default';
+
+    if (isChatBusy(chatId)) {
+      return 'I\'m still working on the previous request. Give me a moment.';
+    }
+
+    const releaseLock = await acquireChatLock(chatId);
+
+    if (!histories.has(chatId)) histories.set(chatId, []);
+    const history = histories.get(chatId);
+
+    try {
 
     if (anthropicConfig.oauth?.accessToken) {
       await ensureFreshToken(anthropicConfig);
@@ -164,10 +234,6 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         client = createAnthropicClient(anthropicConfig, { useOAuth: true });
       }
     }
-
-    // Get or create history
-    if (!histories.has(chatId)) histories.set(chatId, []);
-    const history = histories.get(chatId);
 
     const verbose = context.verbose || false;
     if (verbose) context.verboseLog = [];
@@ -235,18 +301,24 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     }
 
     while (history.length >= MAX_HISTORY) {
-      history.shift();
-      history.shift();
+      let cut = 0;
+      while (cut < history.length - 1) {
+        const msg = history[cut];
+        cut++;
+        if (msg.role === 'assistant' && Array.isArray(msg.content) &&
+            msg.content.some(b => b.type === 'tool_use')) continue;
+        if (msg.role === 'user' && Array.isArray(msg.content) &&
+            msg.content.some(b => b.type === 'tool_result')) continue;
+        if (msg.role === 'assistant') break;
+      }
+      history.splice(0, cut);
+      if (cut === 0) { history.shift(); history.shift(); break; }
     }
     while (history.length > 0) {
       const first = history[0];
-      if (first.role !== 'user') {
-        history.shift();
-        continue;
-      }
+      if (first.role !== 'user') { history.shift(); continue; }
       if (Array.isArray(first.content) && first.content.some(b => b.type === 'tool_result')) {
-        history.shift();
-        continue;
+        history.shift(); continue;
       }
       break;
     }
@@ -343,6 +415,16 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     history.push({ role: 'assistant', content: response.content });
 
     return replyText;
+
+    } catch (e) {
+      if (e.status === 400 && e.message?.includes('tool_use')) {
+        console.error('[claude] Repairing corrupted history after 400 error');
+        repairHistory(history);
+      }
+      throw e;
+    } finally {
+      releaseLock();
+    }
   }
 
   function reloadPersonality() {
@@ -367,7 +449,28 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
     history.push({ role, content });
   }
 
-  return { chat, client, reloadPersonality, clearHistory, injectHistory };
+  function getContextStats(chatId) {
+    const id = chatId || 'default';
+    const history = histories.get(id) || [];
+    const MAX_CONTEXT = 200000;
+    let chars = baseSystemPrompt.length;
+    for (const msg of history) {
+      if (typeof msg.content === 'string') {
+        chars += msg.content.length;
+      } else if (Array.isArray(msg.content)) {
+        for (const b of msg.content) {
+          if (b.text) chars += b.text.length;
+          else if (b.content) chars += (typeof b.content === 'string' ? b.content.length : JSON.stringify(b.content).length);
+          else if (b.type === 'tool_use') chars += JSON.stringify(b.input || {}).length + (b.name?.length || 0);
+        }
+      }
+    }
+    const estimatedTokens = Math.round(chars / 4);
+    const pct = Math.min(100, Math.round((estimatedTokens / MAX_CONTEXT) * 100));
+    return { messages: history.length, estimatedTokens, maxTokens: MAX_CONTEXT, pct };
+  }
+
+  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats };
 }
 
 function buildSystemPrompt(personality, userDir, opts = {}) {
