@@ -162,6 +162,22 @@ async function migrate(supabaseConfig) {
       SET access_count = access_count + 1, accessed_at = NOW()
       WHERE id = ANY(memory_ids);
     $$;`,
+
+    // Tool preferences table (per-user toggle + config for optional tools)
+    `CREATE TABLE IF NOT EXISTS obol_tool_prefs (
+      user_id BIGINT NOT NULL,
+      tool_name TEXT NOT NULL,
+      enabled BOOLEAN DEFAULT false,
+      config JSONB DEFAULT '{}',
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (user_id, tool_name)
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_tool_prefs_user ON obol_tool_prefs (user_id);`,
+    `ALTER TABLE obol_tool_prefs ENABLE ROW LEVEL SECURITY;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_tool_prefs FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
   ];
 
   // Save SQL file for manual fallback

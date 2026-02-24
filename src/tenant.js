@@ -6,6 +6,7 @@ const { createMessageLog } = require('./messages');
 const { BackgroundRunner } = require('./background');
 const { isBridgeEnabled } = require('./bridge');
 const { createScheduler } = require('./scheduler');
+const { createToolPrefs } = require('./toolprefs');
 const fs = require('fs');
 const path = require('path');
 
@@ -36,7 +37,13 @@ async function createTenant(userId, config) {
   const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled });
   const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client, userId, userDir) : null;
   const scheduler = config.supabase ? createScheduler(config.supabase, userId) : null;
+  const toolPrefsApi = config.supabase ? createToolPrefs(config.supabase, userId) : null;
   const bg = new BackgroundRunner();
+
+  let toolPrefs = new Map();
+  if (toolPrefsApi) {
+    try { toolPrefs = await toolPrefsApi.getAll(); } catch {}
+  }
 
   let personalityMtime = 0;
   try {
@@ -45,6 +52,13 @@ async function createTenant(userId, config) {
 
   return {
     claude, memory, messageLog, personality, scheduler, bg, userDir, userId,
+    toolPrefs,
+    toolPrefsApi,
+    async reloadToolPrefs() {
+      if (toolPrefsApi) {
+        try { this.toolPrefs = await toolPrefsApi.getAll(); } catch {}
+      }
+    },
     verbose: false,
     _personalityLoadedAt: Date.now(),
     _personalityMtime: personalityMtime,

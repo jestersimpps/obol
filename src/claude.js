@@ -10,6 +10,36 @@ const { ChatHistory } = require('./history');
 const MAX_EXEC_TIMEOUT = 120;
 let MAX_TOOL_ITERATIONS = 10;
 
+const OPTIONAL_TOOLS = {
+  text_to_speech: {
+    label: 'Text to Speech',
+    tools: ['text_to_speech', 'tts_voices'],
+    config: {
+      voice: { label: 'Voice', default: 'en-US-JennyNeural' },
+    },
+  },
+  create_pdf: {
+    label: 'PDF Generator',
+    tools: ['create_pdf'],
+    config: {},
+  },
+  vercel: {
+    label: 'Vercel Deploy',
+    tools: ['vercel_deploy', 'vercel_list'],
+    config: {},
+  },
+  scheduler: {
+    label: 'Scheduler',
+    tools: ['schedule_event', 'list_events', 'cancel_event'],
+    config: {},
+  },
+  background: {
+    label: 'Background Tasks',
+    tools: ['background_task'],
+    config: {},
+  },
+};
+
 const BLOCKED_EXEC_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*f|-[a-zA-Z]*r|--force|--recursive)\b/,
   /\bshutdown\b/, /\breboot\b/, /\bpoweroff\b/,
@@ -260,6 +290,7 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
     const model = context._model || 'claude-sonnet-4-6';
     vlog(`[model] ${model} | history=${history.length} msgs`);
     const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
+    context._reloadPersonality = reloadPersonality;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
 
     const runner = client.beta.messages.toolRunner({
@@ -519,6 +550,22 @@ Use these tools instead of \`exec\` for storing/reading secrets — they bypass 
 ### Send File (\`send_file\`)
 Send a file back to the user via Telegram. Use after generating PDFs, images, documents, or any file the user requested.
 
+### Create PDF (\`create_pdf\`)
+Create professional PDF documents from Typst markup. After creating, use \`send_file\` to deliver.
+
+Typst quick reference:
+- Headings: \`= Title\`, \`== Section\`, \`=== Subsection\`
+- Bold: \`*bold*\`, Italic: \`_italic_\`, Code: \`\\\`code\\\`\`
+- Lists: \`- item\` (bullet), \`+ item\` (numbered)
+- Links: \`#link("url")[label]\`
+- Images: \`#image("path.png", width: 50%)\`
+- Tables: \`#table(columns: 3, [Header], [Header], [Header], [A], [B], [C])\`
+- Page setup: \`#set page(paper: "a4", margin: 2cm)\`
+- Text setup: \`#set text(font: "New Computer Modern", size: 11pt)\`
+- Alignment: \`#align(center)[centered text]\`
+- Math: \`$E = m c^2$\` (inline), \`$ sum_(i=0)^n i $\` (block)
+- Line break: \`\\\\\`, Page break: \`#pagebreak()\`
+
 ### Ask User (\`telegram_ask\`)
 Send a message with inline keyboard buttons and wait for the user to tap one. Use for human-in-the-loop decisions before taking action.
 
@@ -536,6 +583,11 @@ Schedule reminders and events. The user gets a Telegram message when the time co
 - \`cancel_event\` — cancel a scheduled event by ID
 
 When scheduling: always search memory first for the user's timezone/location. If no timezone found, ask the user or default to UTC. Parse natural language dates relative to the user's timezone.
+
+### Text to Speech (\`text_to_speech\`, \`tts_voices\`)
+Convert text to voice messages. Use when the user wants something read aloud.
+- \`text_to_speech\` — synthesize text and send as voice message. Voice defaults to user preference.
+- \`tts_voices\` — list available voices, filterable by language and gender
 
 ### Bridge (\`bridge_ask\`, \`bridge_tell\`)
 Only available if bridge is enabled. Communicate with partner's AI agent.
@@ -810,6 +862,19 @@ function buildTools(memory, opts = {}) {
   });
 
   tools.push({
+    name: 'create_pdf',
+    description: 'Create a professional PDF document from Typst markup. Use for reports, letters, invoices, resumes, documentation. The content parameter takes Typst markup. After creating, use send_file to deliver it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'Typst markup content for the document' },
+        filename: { type: 'string', description: 'Output filename without extension (default: document)' },
+      },
+      required: ['content'],
+    },
+  });
+
+  tools.push({
     name: 'telegram_ask',
     description: 'Send a message to the user with inline keyboard buttons and wait for their tap. Use for human-in-the-loop decisions: confirmations, approvals, action selection. Returns the label of the button the user pressed, or "timeout" if they don\'t respond within the timeout.',
     input_schema: {
@@ -861,6 +926,33 @@ function buildTools(memory, opts = {}) {
     },
   });
 
+  tools.push({
+    name: 'text_to_speech',
+    description: 'Convert text to speech and send as a voice message. Use when the user wants something read aloud.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to synthesize into speech' },
+        voice: { type: 'string', description: 'Voice name override (e.g. en-US-GuyNeural). Uses user preference if not specified.' },
+        rate: { type: 'number', description: 'Speech rate adjustment in percent (e.g. -10 for slower, 10 for faster)' },
+        pitch: { type: 'number', description: 'Pitch adjustment in Hz (e.g. -5 for lower, 5 for higher)' },
+      },
+      required: ['text'],
+    },
+  });
+
+  tools.push({
+    name: 'tts_voices',
+    description: 'List available text-to-speech voices. Use to help the user pick a voice.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        language: { type: 'string', description: 'Language filter (e.g. en, en-US, fr, de)' },
+        gender: { type: 'string', enum: ['Male', 'Female'], description: 'Gender filter' },
+      },
+    },
+  });
+
   if (opts.bridgeEnabled) {
     const { buildBridgeTool, buildBridgeTellTool } = require('./bridge');
     tools.push(buildBridgeTool());
@@ -871,25 +963,41 @@ function buildTools(memory, opts = {}) {
 }
 
 function buildRunnableTools(tools, memory, context, vlog) {
-  return tools.map(tool => ({
-    ...tool,
-    run: async (input) => {
-      const inputSummary = tool.name === 'exec' ? input.command :
-        tool.name === 'write_file' ? input.path :
-        tool.name === 'read_file' ? input.path :
-        tool.name === 'memory_search' ? input.query :
-        tool.name === 'memory_add' ? `[${input.category || 'fact'}]` :
-        tool.name === 'web_fetch' ? input.url :
-        tool.name === 'background_task' ? input.task?.substring(0, 60) :
-        tool.name === 'schedule_event' ? `${input.title} @ ${input.due_at}` :
-        tool.name === 'cancel_event' ? input.event_id :
-        JSON.stringify(input).substring(0, 80);
-      vlog(`[tool] ${tool.name}: ${inputSummary}`);
+  const disabledTools = new Set();
+  const toolPrefs = context.toolPrefs;
+  if (toolPrefs) {
+    for (const [featureKey, feature] of Object.entries(OPTIONAL_TOOLS)) {
+      const pref = toolPrefs.get(featureKey);
+      if (!pref || !pref.enabled) {
+        for (const t of feature.tools) disabledTools.add(t);
+      }
+    }
+  }
 
-      context._onToolStart?.(tool.name, inputSummary);
-      return await executeToolCall({ name: tool.name, input }, memory, context);
-    },
-  }));
+  return tools
+    .filter(tool => !disabledTools.has(tool.name))
+    .map(tool => ({
+      ...tool,
+      run: async (input) => {
+        const inputSummary = tool.name === 'exec' ? input.command :
+          tool.name === 'write_file' ? input.path :
+          tool.name === 'read_file' ? input.path :
+          tool.name === 'memory_search' ? input.query :
+          tool.name === 'memory_add' ? `[${input.category || 'fact'}]` :
+          tool.name === 'web_fetch' ? input.url :
+          tool.name === 'background_task' ? input.task?.substring(0, 60) :
+          tool.name === 'schedule_event' ? `${input.title} @ ${input.due_at}` :
+          tool.name === 'cancel_event' ? input.event_id :
+          tool.name === 'create_pdf' ? (input.filename || 'document') :
+          tool.name === 'text_to_speech' ? input.text?.substring(0, 60) :
+          tool.name === 'tts_voices' ? (input.language || 'all') :
+          JSON.stringify(input).substring(0, 80);
+        vlog(`[tool] ${tool.name}: ${inputSummary}`);
+
+        context._onToolStart?.(tool.name, inputSummary);
+        return await executeToolCall({ name: tool.name, input }, memory, context);
+      },
+    }));
 }
 
 function resolveUserPath(inputPath, userDir) {
@@ -1069,6 +1177,9 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, input.content);
+        if (path.basename(filePath) === 'traits.json' || filePath.includes('personality/')) {
+          context._reloadPersonality?.();
+        }
         return `Written: ${filePath}`;
       }
 
@@ -1104,9 +1215,59 @@ async function executeToolCall(toolUse, memory, context = {}) {
         return `Sent: ${path.basename(filePath)}`;
       }
 
+      case 'create_pdf': {
+        const filename = (input.filename || 'document').replace(/[^a-zA-Z0-9_-]/g, '');
+        const tmpDir = path.join(userDir || '/tmp', '.typst');
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const typFile = path.join(tmpDir, `${filename}.typ`);
+        const pdfFile = path.join(userDir || '/tmp', `${filename}.pdf`);
+        fs.writeFileSync(typFile, input.content);
+        try {
+          execFileSync('typst', ['compile', typFile, pdfFile], {
+            encoding: 'utf-8',
+            timeout: 30000,
+          });
+        } catch (e) {
+          return `Typst compilation failed: ${e.stderr || e.message}`;
+        }
+        if (!fs.existsSync(pdfFile)) return 'PDF creation failed — no output file.';
+        return `PDF created: ${pdfFile}`;
+      }
+
       case 'telegram_ask': {
         if (!context.telegramAsk) return 'telegram_ask not available in this context.';
         return await context.telegramAsk(input.message, input.options || [], input.timeout);
+      }
+
+      case 'text_to_speech': {
+        const tts = require('./tts');
+        const telegramCtx = context.ctx;
+        if (!telegramCtx) return 'Cannot send voice messages in this context.';
+        const toolPrefs = context.toolPrefs;
+        const ttsConfig = toolPrefs?.get('text_to_speech')?.config || {};
+        const voice = input.voice || ttsConfig.voice || 'en-US-JennyNeural';
+        const filePath = await tts.synthesize(input.text, voice, {
+          rate: input.rate || ttsConfig.rate,
+          pitch: input.pitch || ttsConfig.pitch,
+        });
+        try {
+          const { InputFile } = require('grammy');
+          if (filePath.endsWith('.ogg')) {
+            await telegramCtx.replyWithVoice(new InputFile(filePath));
+          } else {
+            await telegramCtx.replyWithAudio(new InputFile(filePath));
+          }
+          return `Voice message sent (voice: ${voice})`;
+        } finally {
+          try { fs.unlinkSync(filePath); } catch {}
+        }
+      }
+
+      case 'tts_voices': {
+        const tts = require('./tts');
+        const voices = await tts.getVoices(input.language, input.gender);
+        if (voices.length === 0) return 'No voices found matching that filter.';
+        return JSON.stringify(voices.slice(0, 30));
       }
 
       case 'bridge_ask': {
@@ -1182,4 +1343,4 @@ function toUTC(dateStr, timezone) {
 function getMaxToolIterations() { return MAX_TOOL_ITERATIONS; }
 function setMaxToolIterations(n) { MAX_TOOL_ITERATIONS = n; }
 
-module.exports = { createClaude, createAnthropicClient, getMaxToolIterations, setMaxToolIterations };
+module.exports = { createClaude, createAnthropicClient, getMaxToolIterations, setMaxToolIterations, OPTIONAL_TOOLS };

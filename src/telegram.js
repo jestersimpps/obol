@@ -7,7 +7,8 @@ const { getTenant } = require('./tenant');
 const { loadTraits, saveTraits, DEFAULT_TRAITS } = require('./personality');
 const media = require('./media');
 const credentials = require('./credentials');
-const { getMaxToolIterations, setMaxToolIterations } = require('./claude');
+const { getMaxToolIterations, setMaxToolIterations, OPTIONAL_TOOLS } = require('./claude');
+const { buildStatusHtml, describeToolCall, TERM_WIDTH } = require('./status');
 const pkg = require('../package.json');
 
 const RATE_LIMIT_MS = 3000;
@@ -21,38 +22,13 @@ const TEXT_BUFFER_MAX_PARTS = 12;
 const TEXT_BUFFER_MAX_CHARS = 50000;
 const TEXT_BUFFER_THRESHOLD = 4000;
 const MEDIA_GROUP_DELAY_MS = 500;
-const TERM_WIDTH = 25;
 const TERM_SEP = '━'.repeat(TERM_WIDTH);
 
 const _evolutionTimers = new Map();
-const _toolDescriptionCache = new Map();
 
 function termBar(pct, width = 20) {
   const filled = Math.round((pct / 100) * width);
   return '━'.repeat(filled) + '╌'.repeat(width - filled);
-}
-
-function buildStatusHtml({ route, elapsed, toolStatus }) {
-  const lines = [`◈ OBOL ${'━'.repeat(TERM_WIDTH - 7)}`];
-  if (route) {
-    lines.push(`⬡ ROUTE  ${(route.model || 'sonnet').toUpperCase()}`);
-    if (route.memoryCount > 0) {
-      lines.push(`⬡ MEMORY ${route.memoryCount} recalled`);
-    } else if (route.needMemory) {
-      lines.push(`⬡ MEMORY scanning`);
-    }
-  }
-  if (toolStatus) {
-    lines.push(`▸ ${toolStatus}`);
-  } else {
-    lines.push(`▸ Processing`);
-  }
-  const es = elapsed > 0 ? ` ${elapsed}s ` : '';
-  const padLen = Math.max(0, TERM_WIDTH - es.length);
-  const left = Math.floor(padLen / 2);
-  const right = padLen - left;
-  lines.push(`${'━'.repeat(left)}${es}${'━'.repeat(right)}`);
-  return `<pre>${lines.join('\n')}</pre>`;
 }
 
 function markdownToTelegramHtml(text) {
@@ -113,27 +89,6 @@ function createBot(telegramConfig, config) {
   const textBuffers = new Map();
   const mediaGroups = new Map();
   let askIdCounter = 0;
-
-  function describeToolCall(client, toolName, inputSummary) {
-    const key = `${toolName}:${inputSummary}`;
-    const cached = _toolDescriptionCache.get(key);
-    if (cached) return Promise.resolve(cached);
-
-    return client.messages.create({
-      model: 'claude-haiku-4-5',
-      max_tokens: 30,
-      system: 'Describe this tool call in 3-8 words from the user\'s perspective. Present participle. No quotes, period, or emoji.',
-      messages: [{ role: 'user', content: `${toolName}: ${inputSummary}` }],
-    }).then(r => {
-      const desc = r.content[0]?.text?.trim() || null;
-      if (desc) _toolDescriptionCache.set(key, desc);
-      if (_toolDescriptionCache.size > 200) {
-        const first = _toolDescriptionCache.keys().next().value;
-        _toolDescriptionCache.delete(first);
-      }
-      return desc;
-    }).catch(() => null);
-  }
 
   function createAsk(ctx, message, options, timeoutSecs = 60) {
     return new Promise((resolve) => {
@@ -203,6 +158,7 @@ function createBot(telegramConfig, config) {
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
+    { command: 'tools', description: 'Toggle optional tools on/off' },
     { command: 'stop', description: 'Stop the current request' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },
     { command: 'help', description: 'Show available commands' },
@@ -537,6 +493,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /forget <id> — Delete a memory
 /events — Upcoming scheduled events
 /tasks — Running background tasks
+/tools — Toggle optional tools on/off
 /traits — View/adjust personality traits
 /secret — Manage per-user secrets
 /evolution — Evolution progress
@@ -615,6 +572,39 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
     setMaxToolIterations(value);
     await ctx.reply(`🔧 Max tool iterations set to ${value}`);
+  });
+
+  function buildToolsMessage(toolPrefs) {
+    const lines = [`◈ TOOLS`, TERM_SEP, ``];
+    for (const [key, feature] of Object.entries(OPTIONAL_TOOLS)) {
+      const pref = toolPrefs.get(key);
+      const enabled = pref?.enabled || false;
+      lines.push(`  ${enabled ? '◉' : '○'} ${feature.label}`);
+    }
+    lines.push(``, TERM_SEP);
+    return lines.join('\n');
+  }
+
+  function buildToolsKeyboard(toolPrefs) {
+    const keyboard = new InlineKeyboard();
+    const entries = Object.entries(OPTIONAL_TOOLS);
+    for (let i = 0; i < entries.length; i++) {
+      const [key, feature] = entries[i];
+      const pref = toolPrefs.get(key);
+      const enabled = pref?.enabled || false;
+      keyboard.text(`${enabled ? '◉' : '○'} ${feature.label}`, `tool:${key}`);
+      if ((i + 1) % 2 === 0 && i < entries.length - 1) keyboard.row();
+    }
+    return keyboard;
+  }
+
+  bot.command('tools', async (ctx) => {
+    if (!ctx.from) return;
+    const tenant = await getTenant(ctx.from.id, config);
+    await tenant.reloadToolPrefs();
+    const text = buildToolsMessage(tenant.toolPrefs);
+    const keyboard = buildToolsKeyboard(tenant.toolPrefs);
+    await ctx.reply(`<pre>${text}</pre>`, { parse_mode: 'HTML', reply_markup: keyboard });
   });
 
   function checkRateLimit(userId) {
@@ -717,6 +707,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         ctx,
         claude: tenant.claude,
         scheduler: tenant.scheduler,
+        toolPrefs: tenant.toolPrefs,
         config,
         verbose: tenant.verbose,
         _verboseNotify: tenant.verbose ? (msg) => {
@@ -1001,7 +992,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         userName: ctx.from.first_name || 'User',
         chatId: ctx.chat.id,
         bg: tenant.bg, ctx, claude: tenant.claude,
-        scheduler: tenant.scheduler, config,
+        scheduler: tenant.scheduler, toolPrefs: tenant.toolPrefs, config,
         verbose: tenant.verbose,
         _verboseNotify: tenant.verbose ? (msg) => {
           sendHtml(ctx, `\`${msg}\``).catch(() => {});
@@ -1144,9 +1135,137 @@ Your message is deleted immediately when using /secret set to keep credentials o
   bot.on('message:animation', handleMedia);
   bot.on('message:video_note', handleMedia);
 
+  const VOICE_LANGUAGES = [
+    { code: 'en-US', label: 'English (US)' },
+    { code: 'en-GB', label: 'English (UK)' },
+    { code: 'en-AU', label: 'English (AU)' },
+    { code: 'fr-FR', label: 'French' },
+    { code: 'de-DE', label: 'German' },
+    { code: 'es-ES', label: 'Spanish' },
+    { code: 'it-IT', label: 'Italian' },
+    { code: 'pt-BR', label: 'Portuguese (BR)' },
+    { code: 'nl-NL', label: 'Dutch' },
+    { code: 'ja-JP', label: 'Japanese' },
+    { code: 'ko-KR', label: 'Korean' },
+    { code: 'zh-CN', label: 'Chinese' },
+  ];
+
+  const TTS_SAMPLE = 'Hello! This is what I sound like. Nice to meet you.';
+
+  function sendVoiceLanguagePicker(ctx) {
+    const kb = new InlineKeyboard();
+    for (const lang of VOICE_LANGUAGES) {
+      kb.text(lang.label, `voice:lang:${lang.code}`).row();
+    }
+    ctx.reply('Pick a language:', { reply_markup: kb }).catch(() => {});
+  }
+
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
     const answer = (opts) => ctx.answerCallbackQuery(opts).catch(() => {});
+
+    if (data.startsWith('tool:')) {
+      const featureKey = data.slice(5);
+      if (!OPTIONAL_TOOLS[featureKey]) return answer({ text: 'Unknown tool' });
+      if (!ctx.from) return answer();
+
+      const tenant = await getTenant(ctx.from.id, config);
+      if (!tenant.toolPrefsApi) return answer({ text: 'Not available' });
+
+      const newEnabled = await tenant.toolPrefsApi.toggle(featureKey);
+      await tenant.reloadToolPrefs();
+
+      const feature = OPTIONAL_TOOLS[featureKey];
+      await answer({ text: `${feature.label}: ${newEnabled ? 'ON' : 'OFF'}` });
+
+      const text = buildToolsMessage(tenant.toolPrefs);
+      const keyboard = buildToolsKeyboard(tenant.toolPrefs);
+      ctx.editMessageText(`<pre>${text}</pre>`, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
+
+      if (newEnabled && Object.keys(feature.config).length > 0 && feature.config.voice) {
+        sendVoiceLanguagePicker(ctx);
+      }
+      return;
+    }
+
+    if (data.startsWith('voice:')) {
+      if (!ctx.from) return answer();
+      const parts = data.split(':');
+      const action = parts[1];
+
+      if (action === 'lang') {
+        const langCode = parts[2];
+        await answer({ text: langCode });
+        const tts = require('./tts');
+        try {
+          const voices = await tts.getVoices(langCode);
+          if (voices.length === 0) return sendHtml(ctx, 'No voices found for that language.');
+          const kb = new InlineKeyboard();
+          for (const v of voices) {
+            const glyph = v.gender === 'Female' ? '♀' : '♂';
+            const shortLabel = v.name.replace('Neural', '').replace('Multilingual', 'ML');
+            kb.text(`${glyph} ${shortLabel}`, `voice:pick:${v.name}`).row();
+          }
+          kb.text('← Back', 'voice:langs').row();
+          ctx.editMessageText('Pick a voice:', { reply_markup: kb }).catch(() => {});
+        } catch (e) {
+          sendHtml(ctx, `Failed to load voices: ${e.message}`).catch(() => {});
+        }
+        return;
+      }
+
+      if (action === 'langs') {
+        await answer();
+        const kb = new InlineKeyboard();
+        for (const lang of VOICE_LANGUAGES) {
+          kb.text(lang.label, `voice:lang:${lang.code}`).row();
+        }
+        ctx.editMessageText('Pick a language:', { reply_markup: kb }).catch(() => {});
+        return;
+      }
+
+      if (action === 'pick') {
+        const voiceName = parts[2];
+        await answer({ text: `Sampling ${voiceName}...` });
+        const tts = require('./tts');
+        const fs = require('fs');
+        try {
+          const filePath = await tts.synthesize(TTS_SAMPLE, voiceName);
+          const { InputFile } = require('grammy');
+          if (filePath.endsWith('.ogg')) {
+            await ctx.replyWithVoice(new InputFile(filePath));
+          } else {
+            await ctx.replyWithAudio(new InputFile(filePath));
+          }
+          try { fs.unlinkSync(filePath); } catch {}
+
+          const kb = new InlineKeyboard();
+          kb.text('✓ Use this voice', `voice:save:${voiceName}`).row();
+          kb.text('← Try another', `voice:langs`).row();
+          await ctx.reply(`<b>${voiceName}</b>`, { parse_mode: 'HTML', reply_markup: kb });
+        } catch (e) {
+          sendHtml(ctx, `Sample failed: ${e.message}`).catch(() => {});
+        }
+        return;
+      }
+
+      if (action === 'save') {
+        const voiceName = parts[2];
+        await answer({ text: `Voice set: ${voiceName}` });
+        const tenant = await getTenant(ctx.from.id, config);
+        if (tenant.toolPrefsApi) {
+          const pref = tenant.toolPrefs.get('text_to_speech');
+          const newConfig = { ...(pref?.config || {}), voice: voiceName };
+          await tenant.toolPrefsApi.set('text_to_speech', true, newConfig);
+          await tenant.reloadToolPrefs();
+        }
+        ctx.editMessageText(`<b>✓ ${voiceName}</b>`, { parse_mode: 'HTML' }).catch(() => {});
+        return;
+      }
+
+      return answer();
+    }
+
     if (!data.startsWith('ask:')) return answer();
     const parts = data.split(':');
     const askId = parseInt(parts[1]);
