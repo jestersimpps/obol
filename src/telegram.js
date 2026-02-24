@@ -1150,7 +1150,20 @@ Your message is deleted immediately when using /secret set to keep credentials o
     { code: 'zh-CN', label: 'Chinese' },
   ];
 
-  const TTS_SAMPLE = 'Hello! This is what I sound like. Nice to meet you.';
+  const TTS_SAMPLES = {
+    'en-US': 'Hello! This is what I sound like. Nice to meet you.',
+    'en-GB': 'Hello! This is what I sound like. Lovely to meet you.',
+    'en-AU': 'Hello! This is what I sound like. Good to meet you.',
+    'fr-FR': 'Bonjour! Voici à quoi ressemble ma voix. Ravie de vous rencontrer.',
+    'de-DE': 'Hallo! So klinge ich. Freut mich, Sie kennenzulernen.',
+    'es-ES': 'Hola! Así es como suena mi voz. Encantado de conocerte.',
+    'it-IT': 'Ciao! Ecco come suona la mia voce. Piacere di conoscerti.',
+    'pt-BR': 'Olá! É assim que a minha voz soa. Prazer em conhecê-lo.',
+    'nl-NL': 'Hallo! Zo klink ik. Leuk je te ontmoeten.',
+    'ja-JP': 'こんにちは！これが私の声です。はじめまして、よろしくお願いします。',
+    'ko-KR': '안녕하세요! 제 목소리는 이렇습니다. 만나서 반갑습니다.',
+    'zh-CN': '你好！这就是我的声音。很高兴认识你。',
+  };
 
   function sendVoiceLanguagePicker(ctx) {
     const kb = new InlineKeyboard();
@@ -1230,7 +1243,9 @@ Your message is deleted immediately when using /secret set to keep credentials o
         const tts = require('./tts');
         const fs = require('fs');
         try {
-          const filePath = await tts.synthesize(TTS_SAMPLE, voiceName);
+          const langPrefix = voiceName.split('-').slice(0, 2).join('-');
+          const sampleText = TTS_SAMPLES[langPrefix] || TTS_SAMPLES['en-US'];
+          const filePath = await tts.synthesize(sampleText, voiceName);
           const { InputFile } = require('grammy');
           await ctx.replyWithAudio(new InputFile(filePath));
           try { fs.unlinkSync(filePath); } catch {}
