@@ -167,6 +167,84 @@ async function backupSnapshot(message, userDir) {
   } catch {}
 }
 
+async function deepConsolidateMemory(claudeClient, memory, messages, evolutionNumber) {
+  const transcript = messages.map(m =>
+    `${m.role === 'user' ? 'Human' : 'Bot'}: ${m.content.substring(0, 800)}`
+  ).join('\n');
+
+  const response = await claudeClient.messages.create({
+    model: MODELS.personality,
+    max_tokens: 4096,
+    system: `You are doing a deep memory extraction pass during an AI evolution cycle. Extract ALL valuable information from this full conversation history.
+
+Return JSON:
+{
+  "memories": [
+    {
+      "content": "specific, detailed fact",
+      "category": "fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context",
+      "tags": ["tag1", "tag2"],
+      "importance": 0.5
+    }
+  ]
+}
+
+Extract everything worth remembering long-term:
+- Personal details (identity, demographics, location, family, relationships)
+- Every preference and opinion expressed
+- All projects, goals, tasks and their status
+- Technical details (stack, tools, services, APIs)
+- Plans, intentions, next steps
+- Recurring themes and behavioral patterns across the full history
+- Emotional tone and communication preferences
+- Decisions and their reasoning
+- Resources and services mentioned
+- Events, dates, timelines
+- Lessons or realizations
+
+Tags: 2-5 specific lowercase keywords.
+Importance: 0.3 minor detail, 0.5 useful, 0.7 important, 0.9 critical.
+
+Be thorough — this is a Sonnet deep pass over the full history, not a quick Haiku scan.
+Skip only pure content-free exchanges ("hi", "ok", "bye").`,
+    messages: [{ role: 'user', content: transcript }],
+  });
+
+  const text = response.content[0]?.text || '';
+  const jsonMatch = text.match(/```json?\s*\n?([\s\S]*?)\n?\s*```/) || text.match(/\{[\s\S]*"memories"\s*:\s*\[[\s\S]*?\]\s*\}/);
+  if (!jsonMatch) return 0;
+
+  let extracted;
+  try {
+    extracted = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+  } catch {
+    return 0;
+  }
+
+  if (!extracted.memories?.length) return 0;
+
+  const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
+  let stored = 0;
+  for (const mem of extracted.memories) {
+    if (!mem.content || mem.content.length <= 10) continue;
+    try {
+      const existing = await memory.search(mem.content, { limit: 1, threshold: 0.92 });
+      if (existing.length > 0) continue;
+    } catch {}
+    const category = validCategories.has(mem.category) ? mem.category : 'fact';
+    const tags = Array.isArray(mem.tags) ? mem.tags.slice(0, 5) : [];
+    const importance = typeof mem.importance === 'number' ? Math.min(1, Math.max(0, mem.importance)) : 0.5;
+    await memory.add(mem.content, {
+      category,
+      tags,
+      importance,
+      source: `evolution-${evolutionNumber}`,
+    }).catch(() => {});
+    stored++;
+  }
+  return stored;
+}
+
 async function evolve(claudeClient, messageLog, memory, userDir) {
   const baseDir = userDir || OBOL_DIR;
   const state = loadEvolutionState(userDir);
@@ -255,6 +333,13 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
 
   // ── Step 0: Snapshot before evolution ──
   await backupSnapshot(`pre-evolution #${evolutionNumber}`, userDir);
+
+  // ── Step 0b: Deep memory consolidation with Sonnet ──
+  if (memory && recentMessages.length >= 4) {
+    await deepConsolidateMemory(claudeClient, memory, recentMessages, evolutionNumber).catch(e =>
+      console.error('[evolve] Deep consolidation failed:', e.message)
+    );
+  }
 
   // ── Step 1: Run existing tests as baseline ──
   const baselineResults = runTests(testsDir);
