@@ -75,6 +75,7 @@ function createBot(telegramConfig, config) {
     { command: 'memory', description: 'Search or view memory stats' },
     { command: 'recent', description: 'Last 10 memories' },
     { command: 'today', description: "Today's memories" },
+    { command: 'events', description: 'Show upcoming scheduled events' },
     { command: 'tasks', description: 'Show running background tasks' },
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
@@ -350,6 +351,26 @@ Your message is deleted immediately when using /secret set to keep credentials o
     await ctx.reply(text);
   });
 
+  bot.command('events', async (ctx) => {
+    if (!ctx.from) return;
+    const tenant = await getTenant(ctx.from.id, config);
+    if (!tenant.scheduler) return ctx.reply('Scheduler not configured.');
+    try {
+      const events = await tenant.scheduler.list({ status: 'pending' });
+      if (events.length === 0) return ctx.reply('No upcoming events.');
+      const text = events.map((e, i) => {
+        const tz = e.timezone || 'UTC';
+        const dueLocal = new Date(e.due_at).toLocaleString('en-US', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' });
+        return `${i + 1}. *${e.title}*\n   ${dueLocal} (${tz})\n   \`${e.id}\``;
+      }).join('\n\n');
+      await ctx.reply(`📅 *Upcoming Events*\n\n${text}`, { parse_mode: 'Markdown' }).catch(() =>
+        ctx.reply(`📅 Upcoming Events\n\n${text.replace(/\*/g, '')}`)
+      );
+    } catch (e) {
+      await ctx.reply(`⚠️ ${e.message}`);
+    }
+  });
+
   bot.command('tasks', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
@@ -512,6 +533,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         bg: tenant.bg,
         ctx,
         claude: tenant.claude,
+        scheduler: tenant.scheduler,
         config,
         verbose: tenant.verbose,
         _verboseNotify: tenant.verbose ? (msg) => {
@@ -524,14 +546,14 @@ Your message is deleted immediately when using /secret set to keep credentials o
           return bot.api.sendMessage(targetUserId, message);
         },
       };
-      const response = await tenant.claude.chat(userMessage, chatContext);
+      const { text: response, usage, model } = await tenant.claude.chat(userMessage, chatContext);
 
       if (!response?.trim()) {
         stopTyping();
         return;
       }
 
-      tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+      tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
 
 
       if (tenant.messageLog?._evolutionReady && !_evolutionTimers.has(userId)) {
@@ -675,13 +697,13 @@ Your message is deleted immediately when using /secret set to keep credentials o
             return bot.api.sendMessage(targetUserId, message);
           },
         };
-        const response = await tenant.claude.chat(prompt, mediaChatCtx);
+        const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
 
         stopTyping();
         if (!response?.trim()) return;
 
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
-        tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+        tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
 
         if (response.length > 4096) {
           for (const chunk of splitMessage(response, 4096)) {
@@ -710,13 +732,13 @@ Your message is deleted immediately when using /secret set to keep credentials o
             return bot.api.sendMessage(targetUserId, message);
           },
         };
-        const response = await tenant.claude.chat(contextMsg, mediaCaptionCtx);
+        const { text: response, usage, model } = await tenant.claude.chat(contextMsg, mediaCaptionCtx);
 
         stopTyping();
         if (!response?.trim()) return;
 
         tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
-        tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
+        tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
 
         if (response.length > 4096) {
           for (const chunk of splitMessage(response, 4096)) {

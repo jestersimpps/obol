@@ -78,7 +78,7 @@ This helps track what you're doing. Complete the full task, then give the final 
 TASK: ${task}`;
 
       const bgNotify = verboseNotify ? (msg) => verboseNotify(`[bg#${taskState.id}] ${msg}`) : undefined;
-      const result = await claude.chat(bgPrompt, {
+      const { text: result } = await claude.chat(bgPrompt, {
         chatId: `bg-${taskState.id}`,
         userName: 'BackgroundTask',
         verbose,
@@ -125,7 +125,7 @@ Give a ONE LINE progress update (emoji + what's happening). Be specific about wh
 
       // Use a separate quick call — don't interfere with the main task
       const checkInChatId = `checkin-${taskState.id}`;
-      const update = await claude.chat(checkInPrompt, {
+      const { text: update } = await claude.chat(checkInPrompt, {
         chatId: checkInChatId,
         userName: 'CheckIn',
       });

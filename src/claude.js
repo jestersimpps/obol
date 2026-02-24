@@ -147,7 +147,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     const chatId = context.chatId || 'default';
 
     if (isChatBusy(chatId)) {
-      return 'I\'m still working on the previous request. Give me a moment.';
+      return { text: 'I\'m still working on the previous request. Give me a moment.', usage: null, model: null };
     }
 
     const releaseLock = await acquireChatLock(chatId);
@@ -264,9 +264,12 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
     }, { signal: abortController.signal });
 
     let finalMessage;
+    let totalUsage = { input_tokens: 0, output_tokens: 0 };
     for await (const message of runner) {
       finalMessage = message;
       if (message.usage) {
+        totalUsage.input_tokens += message.usage.input_tokens || 0;
+        totalUsage.output_tokens += message.usage.output_tokens || 0;
         vlog(`[tokens] in=${message.usage.input_tokens} out=${message.usage.output_tokens}`);
       }
     }
@@ -287,14 +290,20 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
         model, max_tokens: 4096, system: systemPrompt, messages: [...histories.get(chatId)],
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, bailoutResponse.content);
-      return bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      if (bailoutResponse.usage) {
+        totalUsage.input_tokens += bailoutResponse.usage.input_tokens || 0;
+        totalUsage.output_tokens += bailoutResponse.usage.output_tokens || 0;
+      }
+      const text = bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      return { text, usage: totalUsage, model };
     }
 
-    return finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const text = finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    return { text, usage: totalUsage, model };
 
     } catch (e) {
       if (e.message === 'Request was aborted.' || e.constructor?.name === 'APIUserAbortError') {
-        return null;
+        return { text: null, usage: null, model: null };
       }
       if (e.status === 400 && e.message?.includes('tool_use')) {
         console.error('[claude] Repairing corrupted history after 400 error');
@@ -496,6 +505,14 @@ Examples:
 - Before an irreversible action: \`telegram_ask({message: "Archive all read emails?", options: ["Yes", "No"]})\`
 
 Returns the tapped button label, or \`"timeout"\` if the user doesn't respond within the timeout (default 60s).
+
+### Scheduling (\`schedule_event\`, \`list_events\`, \`cancel_event\`)
+Schedule reminders and events. The user gets a Telegram message when the time comes.
+- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description
+- \`list_events\` — list pending/sent/cancelled events
+- \`cancel_event\` — cancel a scheduled event by ID
+
+When scheduling: always search memory first for the user's timezone/location. If no timezone found, ask the user or default to UTC. Parse natural language dates relative to the user's timezone.
 
 ### Bridge (\`bridge_ask\`, \`bridge_tell\`)
 Only available if bridge is enabled. Communicate with partner's AI agent.
@@ -768,6 +785,44 @@ function buildTools(memory, opts = {}) {
     },
   });
 
+  tools.push({
+    name: 'schedule_event',
+    description: 'Schedule a reminder or event. The user will receive a Telegram message when the time comes. Always search memory first for the user\'s timezone/location. If no timezone found, ask the user or default to UTC.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short title for the reminder/event' },
+        due_at: { type: 'string', description: 'ISO 8601 datetime string for when the event is due (e.g. 2026-02-25T15:00:00)' },
+        timezone: { type: 'string', description: 'IANA timezone (e.g. Europe/Brussels, America/New_York). Default: UTC' },
+        description: { type: 'string', description: 'Optional longer description' },
+      },
+      required: ['title', 'due_at'],
+    },
+  });
+
+  tools.push({
+    name: 'list_events',
+    description: 'List scheduled events/reminders for the user.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['pending', 'sent', 'cancelled'], description: 'Filter by status (default: pending)' },
+      },
+    },
+  });
+
+  tools.push({
+    name: 'cancel_event',
+    description: 'Cancel a scheduled event/reminder by its ID.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'UUID of the event to cancel' },
+      },
+      required: ['event_id'],
+    },
+  });
+
   if (opts.bridgeEnabled) {
     const { buildBridgeTool, buildBridgeTellTool } = require('./bridge');
     tools.push(buildBridgeTool());
@@ -788,6 +843,8 @@ function buildRunnableTools(tools, memory, context, vlog) {
         tool.name === 'memory_add' ? `[${input.category || 'fact'}]` :
         tool.name === 'web_fetch' ? input.url :
         tool.name === 'background_task' ? input.task?.substring(0, 60) :
+        tool.name === 'schedule_event' ? `${input.title} @ ${input.due_at}` :
+        tool.name === 'cancel_event' ? input.event_id :
         JSON.stringify(input).substring(0, 80);
       vlog(`[tool] ${tool.name}: ${inputSummary}`);
       return await executeToolCall({ name: tool.name, input }, memory, context);
@@ -1015,12 +1072,59 @@ async function executeToolCall(toolUse, memory, context = {}) {
         return await bridgeTell(input.message, context.userId, context.config, context._notifyFn, input.partner_id);
       }
 
+      case 'schedule_event': {
+        if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
+        const tz = input.timezone || 'UTC';
+        const localDate = new Date(input.due_at);
+        if (isNaN(localDate.getTime())) return `Invalid date: ${input.due_at}`;
+        const utcDate = toUTC(input.due_at, tz);
+        const event = await context.scheduler.add(context.chatId, input.title, utcDate, tz, input.description || null);
+        const displayTime = new Date(utcDate).toLocaleString('en-US', { timeZone: tz });
+        return `Scheduled: "${input.title}" for ${displayTime} (${tz}) — ID: ${event.id}`;
+      }
+
+      case 'list_events': {
+        if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
+        const events = await context.scheduler.list({ status: input.status });
+        if (events.length === 0) return `No ${input.status || 'pending'} events.`;
+        return JSON.stringify(events.map(e => ({
+          id: e.id,
+          title: e.title,
+          description: e.description,
+          due_at: e.due_at,
+          timezone: e.timezone,
+          due_local: new Date(e.due_at).toLocaleString('en-US', { timeZone: e.timezone }),
+          status: e.status,
+        })));
+      }
+
+      case 'cancel_event': {
+        if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
+        const cancelled = await context.scheduler.cancel(input.event_id);
+        if (!cancelled) return `Event not found or not yours: ${input.event_id}`;
+        return `Cancelled: "${cancelled.title}"`;
+      }
+
       default:
         return `Unknown tool: ${name}`;
     }
   } catch (e) {
     return `Error: ${e.message}`;
   }
+}
+
+function toUTC(dateStr, timezone) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const target = new Date(dateStr);
+  const utcGuess = new Date(target.toISOString());
+  const inTz = new Date(fmt.format(utcGuess));
+  const offset = inTz.getTime() - utcGuess.getTime();
+  return new Date(target.getTime() - offset).toISOString();
 }
 
 function getMaxToolIterations() { return MAX_TOOL_ITERATIONS; }
