@@ -14,8 +14,56 @@ const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
 const SPAM_COOLDOWN_MS = 30000;
 const EVOLUTION_IDLE_MS = 15 * 60 * 1000;
+const DEDUP_TTL_MS = 5 * 60 * 1000;
+const DEDUP_MAX_SIZE = 2000;
+const TEXT_BUFFER_GAP_MS = 1500;
+const TEXT_BUFFER_MAX_PARTS = 12;
+const TEXT_BUFFER_MAX_CHARS = 50000;
+const TEXT_BUFFER_THRESHOLD = 4000;
+const MEDIA_GROUP_DELAY_MS = 500;
 
 const _evolutionTimers = new Map();
+
+function markdownToTelegramHtml(text) {
+  const codeBlocks = [];
+  let result = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    codeBlocks.push(`<pre>${escaped}</pre>`);
+    return `\x00CB${idx}\x00`;
+  });
+
+  const inlineCode = [];
+  result = result.replace(/`([^`\n]+)`/g, (_, code) => {
+    const idx = inlineCode.length;
+    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    inlineCode.push(`<code>${escaped}</code>`);
+    return `\x00IC${idx}\x00`;
+  });
+
+  result = result.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  result = result.replace(/~~(.+?)~~/g, '<s>$1</s>');
+  result = result.replace(/(?<!\w)\*([^\s*](?:.*?[^\s*])?)\*(?!\w)/g, '<i>$1</i>');
+  result = result.replace(/(?<!\w)_([^\s_](?:.*?[^\s_])?)_(?!\w)/g, '<i>$1</i>');
+
+  result = result.replace(/\x00CB(\d+)\x00/g, (_, idx) => codeBlocks[parseInt(idx)]);
+  result = result.replace(/\x00IC(\d+)\x00/g, (_, idx) => inlineCode[parseInt(idx)]);
+
+  return result;
+}
+
+function sendHtml(ctx, text, extra = {}) {
+  const html = markdownToTelegramHtml(text);
+  return ctx.reply(html, { parse_mode: 'HTML', ...extra }).catch(() => ctx.reply(text, extra));
+}
+
+function editHtml(ctx, chatId, messageId, text, extra = {}) {
+  const html = markdownToTelegramHtml(text);
+  return ctx.api.editMessageText(chatId, messageId, html, { parse_mode: 'HTML', ...extra })
+    .catch(() => ctx.api.editMessageText(chatId, messageId, text, extra));
+}
 
 function startTyping(ctx) {
   ctx.replyWithChatAction('typing').catch(() => {});
@@ -30,6 +78,9 @@ function createBot(telegramConfig, config) {
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const rateLimits = new Map();
   const pendingAsks = new Map();
+  const processedUpdates = new Map();
+  const textBuffers = new Map();
+  const mediaGroups = new Map();
   let askIdCounter = 0;
 
   function createAsk(ctx, message, options, timeoutSecs = 60) {
@@ -47,7 +98,7 @@ function createBot(telegramConfig, config) {
         }
       }, timeoutSecs * 1000);
       pendingAsks.set(askId, { resolve, options, timer });
-      ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard }).catch(() => {
+      sendHtml(ctx, message, { reply_markup: keyboard }).catch(() => {
         clearTimeout(timer);
         pendingAsks.delete(askId);
         resolve('error');
@@ -62,6 +113,21 @@ function createBot(telegramConfig, config) {
     }
   }, 600000);
   _rateLimitCleanup.unref();
+
+  bot.use(async (ctx, next) => {
+    const updateId = ctx.update?.update_id;
+    if (updateId != null) {
+      if (processedUpdates.has(updateId)) return;
+      processedUpdates.set(updateId, Date.now());
+      if (processedUpdates.size > DEDUP_MAX_SIZE) {
+        const now = Date.now();
+        for (const [id, ts] of processedUpdates) {
+          if (now - ts > DEDUP_TTL_MS) processedUpdates.delete(id);
+        }
+      }
+    }
+    await next();
+  });
 
   bot.use(async (ctx, next) => {
     if (allowedUsers.size > 0 && !allowedUsers.has(ctx.from?.id)) {
@@ -363,9 +429,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         const dueLocal = new Date(e.due_at).toLocaleString('en-US', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' });
         return `${i + 1}. *${e.title}*\n   ${dueLocal} (${tz})\n   \`${e.id}\``;
       }).join('\n\n');
-      await ctx.reply(`📅 *Upcoming Events*\n\n${text}`, { parse_mode: 'Markdown' }).catch(() =>
-        ctx.reply(`📅 Upcoming Events\n\n${text.replace(/\*/g, '')}`)
-      );
+      await sendHtml(ctx, `📅 **Upcoming Events**\n\n${text}`);
     } catch (e) {
       await ctx.reply(`⚠️ ${e.message}`);
     }
@@ -509,37 +573,9 @@ Your message is deleted immediately when using /secret set to keep credentials o
     return API_KEY_PATTERNS.some(pattern => pattern.test(text));
   }
 
-  bot.on('message:text', async (ctx) => {
-    if (!ctx.from) return;
-    const userMessage = ctx.message.text;
-    if (!userMessage || !userMessage.trim()) return;
+  async function processTextMessage(ctx, fullMessage) {
     const userId = ctx.from.id;
     const userName = ctx.from.first_name || 'User';
-
-    if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
-      const me = await bot.api.getMe();
-      if (!userMessage.includes(`@${me.username}`)) return;
-    }
-
-    if (!userMessage.startsWith('/secret') && containsApiKey(userMessage)) {
-      ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
-      await ctx.reply(
-        '⚠️ That message contained what looks like an API key or token. I deleted it, but it may have been seen already — consider rotating it.\n\nUse `/secret set <name> <value>` to store credentials safely.'
-      ).catch(() => {});
-      return;
-    }
-
-    const rateResult = checkRateLimit(userId);
-    if (rateResult === 'cooldown' || rateResult === 'skip') return;
-    if (rateResult === 'spam') {
-      await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
-      return;
-    }
-    if (rateResult === 'slow') {
-      await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
-      return;
-    }
-
     const tenant = await getTenant(userId, config);
 
     if (_evolutionTimers.has(userId)) {
@@ -548,10 +584,22 @@ Your message is deleted immediately when using /secret set to keep credentials o
       if (tenant.messageLog) tenant.messageLog._evolutionPending = false;
     }
 
+    let replyContext = '';
+    const reply = ctx.message?.reply_to_message;
+    if (reply) {
+      const quote = (reply.text || reply.caption || '').substring(0, 500);
+      const sender = reply.from
+        ? (reply.from.first_name || '') + (reply.from.last_name ? ` ${reply.from.last_name}` : '')
+        : reply.forward_origin?.sender_user?.first_name || 'someone';
+      if (quote) replyContext = `[Replying to "${quote}" from ${sender}]\n\n`;
+    }
+
+    const chatMessage = replyContext + fullMessage;
+    const sent = await ctx.reply('Processing...').catch(() => null);
     const stopTyping = startTyping(ctx);
 
     try {
-      tenant.messageLog?.log(ctx.chat.id, 'user', userMessage);
+      tenant.messageLog?.log(ctx.chat.id, 'user', chatMessage);
 
       const chatContext = {
         userId,
@@ -564,8 +612,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         config,
         verbose: tenant.verbose,
         _verboseNotify: tenant.verbose ? (msg) => {
-          const safe = msg.replace(/`/g, "'");
-          ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
+          sendHtml(ctx, `\`${msg}\``).catch(() => {});
         } : undefined,
         telegramAsk: (message, options, timeout) => createAsk(ctx, message, options, timeout),
         _notifyFn: (targetUserId, message) => {
@@ -573,15 +620,15 @@ Your message is deleted immediately when using /secret set to keep credentials o
           return bot.api.sendMessage(targetUserId, message);
         },
       };
-      const { text: response, usage, model } = await tenant.claude.chat(userMessage, chatContext);
+      const { text: response, usage, model } = await tenant.claude.chat(chatMessage, chatContext);
 
       if (!response?.trim()) {
         stopTyping();
+        if (sent) ctx.api.deleteMessage(ctx.chat.id, sent.message_id).catch(() => {});
         return;
       }
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
-
 
       if (tenant.messageLog?._evolutionReady && !_evolutionTimers.has(userId)) {
         tenant.messageLog._evolutionReady = false;
@@ -622,9 +669,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
               msg += `\n\n_${result.changelog}_`;
             }
 
-            await ctx.reply(msg, { parse_mode: 'Markdown' }).catch(() =>
-              ctx.reply(msg).catch(() => {})
-            );
+            await sendHtml(ctx, msg).catch(() => {});
           } catch (e) {
             console.error('Evolution failed:', e.message);
           } finally {
@@ -638,33 +683,225 @@ Your message is deleted immediately when using /secret set to keep credentials o
 
       if (response.length > 4096) {
         const chunks = splitMessage(response, 4096);
-        for (const chunk of chunks) {
-          await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() =>
-            ctx.reply(chunk)
-          );
+        if (sent) {
+          await editHtml(ctx, ctx.chat.id, sent.message_id, chunks[0]).catch(() => {});
+          for (let i = 1; i < chunks.length; i++) {
+            await sendHtml(ctx, chunks[i]).catch(() => {});
+          }
+        } else {
+          for (const chunk of chunks) {
+            await sendHtml(ctx, chunk).catch(() => {});
+          }
         }
+      } else if (sent) {
+        await editHtml(ctx, ctx.chat.id, sent.message_id, response).catch(() => {});
       } else {
-        await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() =>
-          ctx.reply(response)
-        );
+        await sendHtml(ctx, response).catch(() => {});
       }
     } catch (e) {
       stopTyping();
       console.error('Message handling error:', e.message);
-      if (e.isOAuthExpiry) {
-        console.error('[oauth] Full error:', e.stack || e.message);
-        await ctx.reply(`OAuth error: ${e.message}\n\nRun \`obol config\` → Anthropic → re-authenticate OAuth.`).catch(() => {});
-      } else if (e.status === 401 || e.message?.includes('401')) {
-        await ctx.reply('API key invalid or expired. Run `obol config` to update.').catch(() => {});
-      } else if (e.status === 429 || e.message?.includes('rate')) {
-        await ctx.reply('Rate limited. Wait a moment and try again.').catch(() => {});
+      const errMsg = e.isOAuthExpiry
+        ? `OAuth error: ${e.message}\n\nRun \`obol config\` → Anthropic → re-authenticate OAuth.`
+        : (e.status === 401 || e.message?.includes('401'))
+          ? 'API key invalid or expired. Run `obol config` to update.'
+          : (e.status === 429 || e.message?.includes('rate'))
+            ? 'Rate limited. Wait a moment and try again.'
+            : 'Something went wrong. Check logs with `obol logs`.';
+      if (e.isOAuthExpiry) console.error('[oauth] Full error:', e.stack || e.message);
+      if (sent) {
+        await ctx.api.editMessageText(ctx.chat.id, sent.message_id, errMsg).catch(() => {});
       } else {
-        await ctx.reply('Something went wrong. Check logs with `obol logs`.').catch(() => {});
+        await ctx.reply(errMsg).catch(() => {});
       }
     }
+  }
+
+  function flushTextBuffer(chatId, ctx) {
+    const buf = textBuffers.get(chatId);
+    if (!buf) return;
+    clearTimeout(buf.timer);
+    textBuffers.delete(chatId);
+    const combined = buf.parts.join('');
+    processTextMessage(ctx, combined).catch(e => console.error('Buffer flush error:', e.message));
+  }
+
+  bot.on('message:text', async (ctx) => {
+    if (!ctx.from) return;
+    const userMessage = ctx.message.text;
+    if (!userMessage || !userMessage.trim()) return;
+    const userId = ctx.from.id;
+
+    if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+      const me = await bot.api.getMe();
+      if (!userMessage.includes(`@${me.username}`)) return;
+    }
+
+    if (!userMessage.startsWith('/secret') && containsApiKey(userMessage)) {
+      ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
+      await ctx.reply(
+        '⚠️ That message contained what looks like an API key or token. I deleted it, but it may have been seen already — consider rotating it.\n\nUse `/secret set <name> <value>` to store credentials safely.'
+      ).catch(() => {});
+      return;
+    }
+
+    const rateResult = checkRateLimit(userId);
+    if (rateResult === 'cooldown' || rateResult === 'skip') return;
+    if (rateResult === 'spam') {
+      await ctx.reply('Spam detected. Cooling down for 30 seconds.').catch(() => {});
+      return;
+    }
+    if (rateResult === 'slow') {
+      await ctx.reply('Slow down a bit — I\'m still processing.').catch(() => {});
+      return;
+    }
+
+    const chatId = ctx.chat.id;
+    const existingBuf = textBuffers.get(chatId);
+
+    if (userMessage.length >= TEXT_BUFFER_THRESHOLD) {
+      if (existingBuf) {
+        clearTimeout(existingBuf.timer);
+        if (existingBuf.parts.length < TEXT_BUFFER_MAX_PARTS &&
+            existingBuf.totalLength + userMessage.length <= TEXT_BUFFER_MAX_CHARS) {
+          existingBuf.parts.push(userMessage);
+          existingBuf.totalLength += userMessage.length;
+          existingBuf.ctx = ctx;
+          existingBuf.timer = setTimeout(() => flushTextBuffer(chatId, ctx), TEXT_BUFFER_GAP_MS);
+          return;
+        }
+        flushTextBuffer(chatId, ctx);
+      }
+      const buf = {
+        parts: [userMessage],
+        totalLength: userMessage.length,
+        ctx,
+        timer: setTimeout(() => flushTextBuffer(chatId, ctx), TEXT_BUFFER_GAP_MS),
+      };
+      textBuffers.set(chatId, buf);
+      return;
+    }
+
+    if (existingBuf) {
+      flushTextBuffer(chatId, existingBuf.ctx);
+    }
+
+    await processTextMessage(ctx, userMessage);
   });
 
-  const MAX_MEDIA_SIZE = 50 * 1024 * 1024; // 50MB
+  const MAX_MEDIA_SIZE = 50 * 1024 * 1024;
+
+  async function downloadMediaItem(ctx, fileInfo) {
+    const file = await ctx.getFile();
+    const buffer = await media.downloadFile(telegramConfig.token, file.file_path);
+    const filename = media.generateFilename(fileInfo, file.file_path);
+    return { buffer, filename, fileInfo, caption: ctx.message.caption || '' };
+  }
+
+  async function processMediaItems(ctx, items) {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const sent = await ctx.reply('Processing...').catch(() => null);
+    const stopTyping = startTyping(ctx);
+
+    try {
+      const tenant = await getTenant(userId, config);
+      const assetsDir = path.join(tenant.userDir, 'assets');
+      const imageBlocks = [];
+      const nonImageParts = [];
+      const caption = items.map(i => i.caption).filter(Boolean).join('\n') || '';
+
+      for (const item of items) {
+        const savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
+
+        if (tenant.memory && !media.isImage(item.fileInfo)) {
+          const memContent = media.buildMemoryContent(item.fileInfo, item.filename, savedPath, item.caption);
+          await tenant.memory.add(memContent, {
+            category: 'resource', importance: 0.6,
+            source: 'telegram-media', tags: [item.fileInfo.mediaType],
+          }).catch(() => {});
+        }
+
+        if (media.isImage(item.fileInfo)) {
+          imageBlocks.push(media.bufferToImageBlock(item.buffer, item.fileInfo.mimeType));
+        } else {
+          nonImageParts.push(item.caption
+            ? `[User sent a ${item.fileInfo.mediaType}: ${item.filename}, saved at ${savedPath}] ${item.caption}`
+            : `[User sent a ${item.fileInfo.mediaType}: ${item.filename}, saved at ${savedPath}. Use read_file to read its contents if needed.]`);
+        }
+      }
+
+      let prompt, chatImages;
+      if (imageBlocks.length > 0) {
+        prompt = caption || `The user sent ${imageBlocks.length} image(s). Describe what you see and respond naturally.`;
+        if (nonImageParts.length > 0) prompt += '\n\n' + nonImageParts.join('\n');
+        chatImages = imageBlocks;
+      } else {
+        prompt = nonImageParts.join('\n');
+      }
+
+      const mediaChatCtx = {
+        userId,
+        userName: ctx.from.first_name || 'User',
+        chatId: ctx.chat.id,
+        bg: tenant.bg, ctx, claude: tenant.claude,
+        scheduler: tenant.scheduler, config,
+        verbose: tenant.verbose,
+        _verboseNotify: tenant.verbose ? (msg) => {
+          sendHtml(ctx, `\`${msg}\``).catch(() => {});
+        } : undefined,
+        ...(chatImages ? { images: chatImages } : {}),
+        _notifyFn: (targetUserId, message) => {
+          if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
+          return bot.api.sendMessage(targetUserId, message);
+        },
+      };
+      const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
+
+      stopTyping();
+      if (!response?.trim()) {
+        if (sent) ctx.api.deleteMessage(ctx.chat.id, sent.message_id).catch(() => {});
+        return;
+      }
+
+      const logLabel = items.map(i => `[${i.fileInfo.mediaType}] ${i.caption || i.filename}`).join(', ');
+      tenant.messageLog?.log(ctx.chat.id, 'user', logLabel);
+      tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
+
+      if (tenant.memory && imageBlocks.length > 0) {
+        const filenames = items.filter(i => media.isImage(i.fileInfo)).map(i => i.filename).join(', ');
+        const analysisMemory = `Images: ${filenames}${caption ? `. Caption: "${caption}"` : ''}. Analysis: ${response.substring(0, 1500)}`;
+        await tenant.memory.add(analysisMemory, {
+          category: 'resource', importance: 0.7,
+          source: 'image-analysis',
+          tags: ['image', ...(caption ? caption.toLowerCase().split(/\s+/).slice(0, 3) : [])],
+        }).catch(() => {});
+      }
+
+      if (response.length > 4096) {
+        const chunks = splitMessage(response, 4096);
+        if (sent) {
+          await editHtml(ctx, ctx.chat.id, sent.message_id, chunks[0]).catch(() => {});
+          for (let i = 1; i < chunks.length; i++) await sendHtml(ctx, chunks[i]).catch(() => {});
+        } else {
+          for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
+        }
+      } else if (sent) {
+        await editHtml(ctx, ctx.chat.id, sent.message_id, response).catch(() => {});
+      } else {
+        await sendHtml(ctx, response).catch(() => {});
+      }
+    } catch (e) {
+      stopTyping();
+      console.error('Media handling error:', e.message);
+      const errMsg = 'Failed to process that file. Check logs.';
+      if (sent) {
+        await ctx.api.editMessageText(ctx.chat.id, sent.message_id, errMsg).catch(() => {});
+      } else {
+        await ctx.reply(errMsg).catch(() => {});
+      }
+    }
+  }
 
   async function handleMedia(ctx) {
     if (!ctx.from) return;
@@ -679,121 +916,42 @@ Your message is deleted immediately when using /secret set to keep credentials o
       return;
     }
 
-    const stopTyping = startTyping(ctx);
+    const item = await downloadMediaItem(ctx, fileInfo).catch(e => {
+      console.error('Media download error:', e.message);
+      return null;
+    });
+    if (!item) return;
 
-    try {
-      const tenant = await getTenant(userId, config);
-      const file = await ctx.getFile();
-      const buffer = await media.downloadFile(telegramConfig.token, file.file_path);
-
-      const filename = media.generateFilename(fileInfo, file.file_path);
-      const assetsDir = path.join(tenant.userDir, 'assets');
-      const savedPath = media.saveFile(buffer, assetsDir, filename);
-
-      const caption = ctx.message.caption || '';
-
-      if (tenant.memory && !media.isImage(fileInfo)) {
-        const memContent = media.buildMemoryContent(fileInfo, filename, savedPath, caption);
-        await tenant.memory.add(memContent, {
-          category: 'resource',
-          importance: 0.6,
-          source: 'telegram-media',
-          tags: [fileInfo.mediaType],
-        }).catch(() => {});
-      }
-
-      if (media.isImage(fileInfo)) {
-        const imageBlock = media.bufferToImageBlock(buffer, fileInfo.mimeType);
-        const prompt = caption || 'The user sent this image. Describe what you see and respond naturally.';
-        const mediaChatCtx = {
-          userId,
-          userName: ctx.from.first_name || 'User',
-          chatId: ctx.chat.id,
-          bg: tenant.bg,
-          ctx,
-          claude: tenant.claude,
-          scheduler: tenant.scheduler,
-          config,
-          verbose: tenant.verbose,
-          _verboseNotify: tenant.verbose ? (msg) => {
-            const safe = msg.replace(/`/g, "'");
-            ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
-          } : undefined,
-          images: [imageBlock],
-          _notifyFn: (targetUserId, message) => {
-            if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
-            return bot.api.sendMessage(targetUserId, message);
-          },
-        };
-        const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
-
-        stopTyping();
-        if (!response?.trim()) return;
-
-        tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
-        tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
-
-        if (tenant.memory) {
-          const analysisMemory = `Image: ${filename} (saved at ${savedPath})${caption ? `. Caption: "${caption}"` : ''}. Analysis: ${response.substring(0, 1500)}`;
-          await tenant.memory.add(analysisMemory, {
-            category: 'resource',
-            importance: 0.7,
-            source: 'image-analysis',
-            tags: ['image', ...(caption ? caption.toLowerCase().split(/\s+/).slice(0, 3) : [])],
-          }).catch(() => {});
-        }
-
-        if (response.length > 4096) {
-          for (const chunk of splitMessage(response, 4096)) {
-            await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));
-          }
-        } else {
-          await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
-        }
+    const groupId = ctx.message.media_group_id;
+    if (groupId) {
+      const existing = mediaGroups.get(groupId);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.items.push(item);
+        existing.ctx = ctx;
+        existing.timer = setTimeout(() => {
+          mediaGroups.delete(groupId);
+          processMediaItems(existing.ctx, existing.items).catch(e =>
+            console.error('Media group error:', e.message)
+          );
+        }, MEDIA_GROUP_DELAY_MS);
       } else {
-        const contextMsg = caption
-          ? `[User sent a ${fileInfo.mediaType}: ${filename}, saved at ${savedPath}] ${caption}`
-          : `[User sent a ${fileInfo.mediaType}: ${filename}, saved at ${savedPath}. Use read_file to read its contents if needed.]`;
-        const mediaChatCtx = {
-          userId,
-          userName: ctx.from.first_name || 'User',
-          chatId: ctx.chat.id,
-          bg: tenant.bg,
+        const group = {
+          items: [item],
           ctx,
-          claude: tenant.claude,
-          scheduler: tenant.scheduler,
-          config,
-          verbose: tenant.verbose,
-          _verboseNotify: tenant.verbose ? (msg) => {
-            const safe = msg.replace(/`/g, "'");
-            ctx.reply(`\`${safe}\``, { parse_mode: 'Markdown' }).catch(() => {});
-          } : undefined,
-          _notifyFn: (targetUserId, message) => {
-            if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
-            return bot.api.sendMessage(targetUserId, message);
-          },
+          timer: setTimeout(() => {
+            mediaGroups.delete(groupId);
+            processMediaItems(ctx, [item]).catch(e =>
+              console.error('Media group error:', e.message)
+            );
+          }, MEDIA_GROUP_DELAY_MS),
         };
-        const { text: response, usage, model } = await tenant.claude.chat(contextMsg, mediaChatCtx);
-
-        stopTyping();
-        if (!response?.trim()) return;
-
-        tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${filename}${caption ? `: ${caption}` : ''}`);
-        tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
-
-        if (response.length > 4096) {
-          for (const chunk of splitMessage(response, 4096)) {
-            await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));
-          }
-        } else {
-          await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
-        }
+        mediaGroups.set(groupId, group);
       }
-    } catch (e) {
-      stopTyping();
-      console.error('Media handling error:', e.message);
-      await ctx.reply('Failed to process that file. Check logs.').catch(() => {});
+      return;
     }
+
+    await processMediaItems(ctx, [item]);
   }
 
   bot.on('message:photo', handleMedia);
@@ -818,7 +976,8 @@ Your message is deleted immediately when using /secret set to keep credentials o
     await answer({ text: selected });
     clearTimeout(pending.timer);
     pendingAsks.delete(askId);
-    ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`, { parse_mode: 'Markdown' }).catch(() => {});
+    const confirmHtml = markdownToTelegramHtml(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`);
+    ctx.editMessageText(confirmHtml, { parse_mode: 'HTML' }).catch(() => {});
     pending.resolve(selected);
   });
 

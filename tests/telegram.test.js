@@ -43,7 +43,7 @@ vi.spyOn(evolveModule, 'evolve').mockResolvedValue({});
 
 const mockTenant = {
   claude: {
-    chat: vi.fn().mockResolvedValue('test response'),
+    chat: vi.fn().mockResolvedValue({ text: 'test response', usage: {}, model: 'test' }),
     client: { messages: { create: vi.fn() } },
     clearHistory: vi.fn(),
     reloadPersonality: vi.fn(),
@@ -106,7 +106,7 @@ describe('telegram', () => {
     mockBotInstance.api.sendMessage = vi.fn();
     mockBotInstance.catch = vi.fn();
     mockBotInstance.start = vi.fn();
-    mockTenant.claude.chat.mockResolvedValue('test response');
+    mockTenant.claude.chat.mockResolvedValue({ text: 'test response', usage: {}, model: 'test' });
     tenantModule.getTenant.mockResolvedValue(mockTenant);
     evolveModule.shouldEvolve.mockResolvedValue(false);
   });
@@ -122,10 +122,11 @@ describe('telegram', () => {
       expect(MockBot).toHaveBeenCalledWith('test-token-123');
     });
 
-    it('registers auth middleware via bot.use', () => {
+    it('registers dedup and auth middleware via bot.use', () => {
       createBot(telegramConfig, config);
-      expect(mockBotInstance.use).toHaveBeenCalledTimes(1);
+      expect(mockBotInstance.use).toHaveBeenCalledTimes(2);
       expect(typeof mockBotInstance.use.mock.calls[0][0]).toBe('function');
+      expect(typeof mockBotInstance.use.mock.calls[1][0]).toBe('function');
     });
 
     it('sets bot commands via api', () => {
@@ -225,7 +226,7 @@ describe('telegram', () => {
   describe('auth middleware', () => {
     it('blocks unauthorized users', async () => {
       createBot(telegramConfig, config);
-      const middleware = mockBotInstance.use.mock.calls[0][0];
+      const middleware = mockBotInstance.use.mock.calls[1][0];
       const ctx = { from: { id: 999 } };
       const next = vi.fn();
       await middleware(ctx, next);
@@ -234,7 +235,7 @@ describe('telegram', () => {
 
     it('allows authorized users', async () => {
       createBot(telegramConfig, config);
-      const middleware = mockBotInstance.use.mock.calls[0][0];
+      const middleware = mockBotInstance.use.mock.calls[1][0];
       const ctx = { from: { id: 123 } };
       const next = vi.fn();
       await middleware(ctx, next);
@@ -243,7 +244,7 @@ describe('telegram', () => {
 
     it('allows all users when allowedUsers is empty', async () => {
       createBot({ token: 'test', allowedUsers: [] }, config);
-      const middleware = mockBotInstance.use.mock.calls[0][0];
+      const middleware = mockBotInstance.use.mock.calls[1][0];
       const ctx = { from: { id: 999 } };
       const next = vi.fn();
       await middleware(ctx, next);
@@ -303,8 +304,12 @@ describe('telegram', () => {
         message: { text: 'hello' },
         from: { id: 123, first_name: 'Test' },
         chat: { id: 456 },
-        reply: vi.fn().mockResolvedValue(undefined),
+        reply: vi.fn().mockResolvedValue({ message_id: 1 }),
         replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        api: {
+          editMessageText: vi.fn().mockResolvedValue(undefined),
+          deleteMessage: vi.fn().mockResolvedValue(undefined),
+        },
       };
     });
 
@@ -313,8 +318,9 @@ describe('telegram', () => {
       expect(tenantModule.getTenant).toHaveBeenCalledWith(123, config);
     });
 
-    it('sends typing action', async () => {
+    it('sends processing placeholder then typing action', async () => {
       await handlers['message:text'](ctx);
+      expect(ctx.reply).toHaveBeenCalledWith('Processing...');
       expect(ctx.replyWithChatAction).toHaveBeenCalledWith('typing');
     });
 
@@ -337,47 +343,57 @@ describe('telegram', () => {
 
     it('logs assistant response to messageLog', async () => {
       await handlers['message:text'](ctx);
-      expect(mockTenant.messageLog.log).toHaveBeenCalledWith(456, 'assistant', 'test response');
+      expect(mockTenant.messageLog.log).toHaveBeenCalledWith(456, 'assistant', 'test response', expect.any(Object));
     });
 
-    it('replies with claude response', async () => {
+    it('edits processing message with HTML response', async () => {
       await handlers['message:text'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith('test response', { parse_mode: 'Markdown' });
+      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+        456, 1,
+        expect.any(String),
+        expect.objectContaining({ parse_mode: 'HTML' }),
+      );
     });
 
-    it('splits long responses into multiple messages', async () => {
+    it('edits first chunk and sends rest for long responses', async () => {
       const longResponse = 'a'.repeat(5000);
-      mockTenant.claude.chat.mockResolvedValue(longResponse);
+      mockTenant.claude.chat.mockResolvedValue({ text: longResponse, usage: {}, model: 'test' });
       await handlers['message:text'](ctx);
+      expect(ctx.api.editMessageText).toHaveBeenCalled();
       expect(ctx.reply.mock.calls.length).toBeGreaterThan(1);
     });
 
-    it('handles API 401 error', async () => {
+    it('edits processing message on API 401 error', async () => {
       mockTenant.claude.chat.mockRejectedValue({ status: 401, message: '401' });
       await handlers['message:text'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith(
+      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+        456, 1,
         expect.stringContaining('API key invalid'),
       );
     });
 
-    it('handles rate limit error', async () => {
+    it('edits processing message on rate limit error', async () => {
       mockTenant.claude.chat.mockRejectedValue({ status: 429, message: 'rate limited' });
       await handlers['message:text'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith(
+      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+        456, 1,
         expect.stringContaining('Rate limited'),
       );
     });
 
-    it('handles generic error', async () => {
+    it('edits processing message on generic error', async () => {
       mockTenant.claude.chat.mockRejectedValue(new Error('something broke'));
       await handlers['message:text'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith(
+      expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+        456, 1,
         expect.stringContaining('Something went wrong'),
       );
     });
   });
 
   describe('media handler', () => {
+    let mediaCtx;
+
     beforeEach(() => {
       mediaModule.getFileInfo.mockReturnValue({
         fileId: 'file-123',
@@ -393,52 +409,42 @@ describe('telegram', () => {
       mediaModule.bufferToImageBlock.mockReturnValue({ type: 'image', source: {} });
       mediaModule.buildMemoryContent.mockReturnValue('File received: photo');
       mockTenant.memory.add.mockResolvedValue({ id: 'mem-1' });
+
+      mediaCtx = {
+        from: { id: 123, first_name: 'Test' },
+        chat: { id: 456 },
+        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: '' },
+        reply: vi.fn().mockResolvedValue({ message_id: 2 }),
+        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
+        api: {
+          editMessageText: vi.fn().mockResolvedValue(undefined),
+          deleteMessage: vi.fn().mockResolvedValue(undefined),
+        },
+      };
     });
 
     it('downloads and saves photo to assets', async () => {
       createBot(telegramConfig, config);
-      const ctx = {
-        from: { id: 123, first_name: 'Test' },
-        chat: { id: 456 },
-        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: '' },
-        reply: vi.fn().mockResolvedValue(undefined),
-        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
-        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
-      };
-      await handlers['message:photo'](ctx);
+      await handlers['message:photo'](mediaCtx);
       expect(mediaModule.downloadFile).toHaveBeenCalledWith('test-token-123', 'photos/file_0.jpg');
       expect(mediaModule.saveFile).toHaveBeenCalled();
-      expect(ctx.reply).toHaveBeenCalled();
+      expect(mediaCtx.reply).toHaveBeenCalled();
     });
 
-    it('stores memory entry for media', async () => {
+    it('stores image analysis memory for photos', async () => {
       createBot(telegramConfig, config);
-      const ctx = {
-        from: { id: 123, first_name: 'Test' },
-        chat: { id: 456 },
-        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: '' },
-        reply: vi.fn().mockResolvedValue(undefined),
-        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
-        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
-      };
-      await handlers['message:photo'](ctx);
+      await handlers['message:photo'](mediaCtx);
       expect(mockTenant.memory.add).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ category: 'resource', source: 'telegram-media' }),
+        expect.objectContaining({ category: 'resource', source: 'image-analysis' }),
       );
     });
 
     it('sends image to Claude for vision when photo', async () => {
       createBot(telegramConfig, config);
-      const ctx = {
-        from: { id: 123, first_name: 'Test' },
-        chat: { id: 456 },
-        message: { photo: [{ file_id: 'f1', file_size: 24500 }], caption: 'look at this' },
-        reply: vi.fn().mockResolvedValue(undefined),
-        replyWithChatAction: vi.fn().mockResolvedValue(undefined),
-        getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
-      };
-      await handlers['message:photo'](ctx);
+      mediaCtx.message.caption = 'look at this';
+      await handlers['message:photo'](mediaCtx);
       expect(mockTenant.claude.chat).toHaveBeenCalledWith(
         'look at this',
         expect.objectContaining({ images: expect.any(Array) }),
@@ -458,7 +464,7 @@ describe('telegram', () => {
       expect(ctx.reply).not.toHaveBeenCalled();
     });
 
-    it('acknowledges non-image without caption', async () => {
+    it('sends non-image to claude.chat with file context', async () => {
       mediaModule.isImage.mockReturnValue(false);
       mediaModule.getFileInfo.mockReturnValue({
         fileId: 'file-123',
@@ -472,13 +478,20 @@ describe('telegram', () => {
         from: { id: 123, first_name: 'Test' },
         chat: { id: 456 },
         message: { voice: { file_id: 'f1', file_size: 10000 }, caption: undefined },
-        reply: vi.fn().mockResolvedValue(undefined),
+        reply: vi.fn().mockResolvedValue({ message_id: 3 }),
         replyWithChatAction: vi.fn().mockResolvedValue(undefined),
         getFile: vi.fn().mockResolvedValue({ file_path: 'voice/file_0.ogg' }),
+        api: {
+          editMessageText: vi.fn().mockResolvedValue(undefined),
+          deleteMessage: vi.fn().mockResolvedValue(undefined),
+        },
       };
       await handlers['message:voice'](ctx);
-      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('saved'));
-      expect(mockTenant.claude.chat).not.toHaveBeenCalled();
+      expect(ctx.reply).toHaveBeenCalledWith('Processing...');
+      expect(mockTenant.claude.chat).toHaveBeenCalledWith(
+        expect.stringContaining('saved'),
+        expect.any(Object),
+      );
     });
   });
 
