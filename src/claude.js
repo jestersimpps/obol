@@ -255,7 +255,7 @@ Reply with ONLY a JSON object:
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true with optimized search query.
 
-Model: Use "haiku" for: casual chat, greetings, simple factual questions, short replies, trivial tasks. Use "sonnet" for most things (general questions, quick tasks, single-step work, moderate reasoning). Use "opus" ONLY for: complex multi-step research, architecture/design decisions, long-form writing, deep analysis, debugging complex code, tasks requiring exceptional reasoning.`,
+Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, simple factual questions with short answers, quick yes/no questions, and short single-turn exchanges that don't need deep reasoning. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.`,
           messages: [{ role: 'user', content: userMessage }],
         });
 
