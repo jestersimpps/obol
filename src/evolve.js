@@ -1,15 +1,8 @@
 /**
  * Soul Evolution — periodic deep reflection + codebase maintenance.
  *
- * Every N exchanges (default 100), Sonnet:
- * 1. Rewrites SOUL.md — who the bot has become
- * 2. Rewrites USER.md — everything known about the owner
- * 3. Rewrites AGENTS.md — operational knowledge, workflows, lessons learned
- * 4. Audits scripts/ — refactors for consistency, removes dead code
- * 5. Writes tests/ — test suite for every script
- * 6. Runs tests BEFORE refactor (baseline) and AFTER (verification)
- * 7. Rolls back scripts if tests regress
- * 8. Audits commands/ — ensures clean, deterministic command definitions
+ * Triggers after 24h + min 10 exchanges (first evolution: 25 exchanges).
+ * Pre-evolution growth analysis compares previous SOUL + new memories.
  */
 
 const fs = require('fs');
@@ -19,7 +12,7 @@ const { OBOL_DIR } = require('./config');
 const { loadTraits, saveTraits } = require('./personality');
 const { isValidNpmPackage, isPathInsideDir } = require('./sanitize');
 
-const DEFAULT_EXCHANGES_PER_EVOLUTION = 100;
+const MIN_EXCHANGES_FOR_EVOLUTION = 10;
 
 const MODELS = {
   personality: 'claude-sonnet-4-6',
@@ -36,7 +29,7 @@ function loadEvolutionState(userDir) {
   try {
     return JSON.parse(fs.readFileSync(evolutionStatePath(userDir), 'utf-8'));
   } catch {
-    return { exchangesSinceLastEvolution: 0, evolutionCount: 0, lastEvolution: null };
+    return { evolutionCount: 0, lastEvolution: null };
   }
 }
 
@@ -44,39 +37,27 @@ function saveEvolutionState(state, userDir) {
   fs.writeFileSync(evolutionStatePath(userDir), JSON.stringify(state, null, 2));
 }
 
-const FIRST_EVOLUTION_THRESHOLD = 25;
-
-function getEvolutionThreshold(state) {
+async function checkEvolution(userDir, messageLog) {
+  const state = loadEvolutionState(userDir);
   const { loadConfig } = require('./config');
   const config = loadConfig();
-  const defaultThreshold = config?.evolution?.exchanges || DEFAULT_EXCHANGES_PER_EVOLUTION;
-  return state.evolutionCount === 0 ? FIRST_EVOLUTION_THRESHOLD : defaultThreshold;
-}
 
-async function shouldEvolve(userDir) {
-  const state = loadEvolutionState(userDir);
-  const threshold = getEvolutionThreshold(state);
-  return state.exchangesSinceLastEvolution >= threshold;
-}
+  const intervalMs = (config?.evolution?.intervalHours ?? 24) * 60 * 60 * 1000;
+  const minExchanges = config?.evolution?.minExchanges ?? MIN_EXCHANGES_FOR_EVOLUTION;
+  const elapsed = state.lastEvolution ? Date.now() - new Date(state.lastEvolution).getTime() : Infinity;
 
-const _evolutionLocks = new Map();
+  if (elapsed < intervalMs) return { ready: false };
+  if (!messageLog?.url) return { ready: false };
 
-function withEvolutionLock(userDir, fn) {
-  const key = userDir || '__global__';
-  const prev = _evolutionLocks.get(key) || Promise.resolve();
-  const next = prev.then(fn, fn);
-  _evolutionLocks.set(key, next);
-  return next;
-}
+  const sinceFilter = state.lastEvolution ? `&created_at=gt.${state.lastEvolution}` : '';
+  const userFilter = messageLog.userId ? `&user_id=eq.${messageLog.userId}` : '';
+  const res = await fetch(
+    `${messageLog.url}/rest/v1/obol_messages?select=id&role=eq.assistant&limit=${minExchanges}${sinceFilter}${userFilter}`,
+    { headers: messageLog.headers }
+  );
+  const rows = await res.json();
 
-async function tickExchange(userDir) {
-  return withEvolutionLock(userDir, () => {
-    const state = loadEvolutionState(userDir);
-    state.exchangesSinceLastEvolution++;
-    saveEvolutionState(state, userDir);
-    const threshold = getEvolutionThreshold(state);
-    return { count: state.exchangesSinceLastEvolution, ready: state.exchangesSinceLastEvolution >= threshold };
-  });
+  return { ready: Array.isArray(rows) && rows.length >= minExchanges };
 }
 
 /**
@@ -298,22 +279,67 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
     }
   }
 
+  let recentMemories = [];
+  if (memory) {
+    try {
+      const headers = messageLog?.headers || {};
+      const url = messageLog?.url;
+      if (url) {
+        const memUserFilter = messageLog?.userId ? `&user_id=eq.${messageLog.userId}` : '';
+        const sinceFilter = state.lastEvolution ? `&created_at=gt.${state.lastEvolution}` : '';
+        const res = await fetch(
+          `${url}/rest/v1/obol_memory?select=content,category,importance,tags,created_at,source&order=created_at.asc&limit=100${memUserFilter}${sinceFilter}`,
+          { headers }
+        );
+        recentMemories = await res.json();
+      }
+    } catch (e) {
+      console.error('[evolve] Failed to fetch recent memories:', e.message);
+    }
+  }
+
+  let previousSoul = '';
+  const archiveDir = path.join(personalityDir, 'evolution');
+  try {
+    if (fs.existsSync(archiveDir)) {
+      const archives = fs.readdirSync(archiveDir)
+        .filter(f => f.startsWith('SOUL-v') && f.endsWith('.md'))
+        .sort();
+      if (archives.length > 0) {
+        previousSoul = fs.readFileSync(path.join(archiveDir, archives[archives.length - 1]), 'utf-8');
+      }
+    }
+  } catch {}
+
   const transcript = recentMessages.map(m =>
-    `${m.role === 'user' ? 'Human' : 'Bot'}: ${m.content.substring(0, 300)}`
+    `${m.role === 'user' ? 'Human' : 'Bot'}: ${m.content.substring(0, 600)}`
   ).join('\n');
 
-  const memoryGroups = {};
   const categoryLabels = {
     person: 'People', decision: 'Decisions', preference: 'Preferences',
     lesson: 'Lessons', project: 'Projects', fact: 'Facts',
     event: 'Events', pattern: 'Patterns', context: 'Context',
   };
+
+  const memoryGroups = {};
   for (const m of coreMemories) {
     const group = categoryLabels[m.category] || 'Other';
     if (!memoryGroups[group]) memoryGroups[group] = [];
     memoryGroups[group].push(m.content);
   }
   const memorySummary = Object.entries(memoryGroups)
+    .map(([group, items]) => `### ${group}\n${items.map(i => `- ${i}`).join('\n')}`)
+    .join('\n\n');
+
+  const recentMemoryGroups = {};
+  for (const m of recentMemories) {
+    const group = categoryLabels[m.category] || 'Other';
+    if (!recentMemoryGroups[group]) recentMemoryGroups[group] = [];
+    const date = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '?';
+    const sourceTag = m.source ? ` [${m.source}]` : '';
+    recentMemoryGroups[group].push(`${m.content} _(${date}${sourceTag})_`);
+  }
+  const recentMemorySummary = Object.entries(recentMemoryGroups)
     .map(([group, items]) => `### ${group}\n${items.map(i => `- ${i}`).join('\n')}`)
     .join('\n\n');
 
@@ -341,10 +367,53 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
     );
   }
 
+  // ── Step 0c: Pre-evolution growth analysis ──
+  const isFirstEvolution = !currentSoul;
+  let growthReport = '';
+  if (!isFirstEvolution && (recentMemories.length > 0 || recentMessages.length > 0)) {
+    try {
+      const growthResponse = await claudeClient.messages.create({
+        model: MODELS.personality,
+        max_tokens: 2048,
+        system: `You are analyzing an AI personality's growth between evolutions. Compare who the AI was (previous SOUL) against who it is now (current SOUL), incorporating new memories and conversations since the last evolution.
+
+Produce a structured growth report covering:
+
+1. NEW LEARNINGS — What new facts, skills, or knowledge emerged
+2. RELATIONSHIP SHIFTS — How the dynamic with the owner changed (closer, more trust, new friction, etc.)
+3. BEHAVIORAL PATTERNS — Recurring interaction styles or habits observed
+4. GROWTH EDGES — Areas where the personality is being pushed or pulled in new directions
+5. TRAIT PRESSURE — Which traits should shift and why (cite specific evidence from conversations/memories)
+6. IDENTITY CONTINUITY — What core aspects stayed the same and should be preserved
+
+Be specific. Cite evidence from the conversations and memories. This report guides the evolution rewrite.`,
+        messages: [{
+          role: 'user',
+          content: `## Previous SOUL (before current evolution)
+${previousSoul || '(not available)'}
+
+## Current SOUL
+${currentSoul || '(empty)'}
+
+## Current Traits
+${JSON.stringify(currentTraits)}
+
+## New Memories Since Last Evolution (${recentMemories.length})
+${recentMemorySummary || '(none)'}
+
+## Recent Conversations (${recentMessages.length} messages)
+${transcript.substring(0, 30000)}`,
+        }],
+      });
+      growthReport = growthResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    } catch (e) {
+      console.error('[evolve] Growth analysis failed:', e.message);
+    }
+  }
+
   // ── Step 1: Run existing tests as baseline ──
   const baselineResults = runTests(testsDir);
 
-  const isFirstEvolution = !currentSoul;
   const firstEvolutionPreamble = isFirstEvolution ? `
 ## FIRST EVOLUTION — IMPORTANT
 
@@ -352,11 +421,18 @@ This is your FIRST evolution. You have no existing personality files. Synthesize
 
 ` : '';
 
+  const growthPreamble = growthReport ? `
+## GROWTH ANALYSIS
+
+A pre-evolution analysis has been conducted comparing your previous state against new memories and conversations. Use this growth report as your PRIMARY GUIDE for what to emphasize, change, or preserve in the rewrite. The growth report reflects evidence-based observations — trust it over your own general impressions.
+
+` : '';
+
   const response = await claudeClient.messages.create({
     model: MODELS.personality,
     max_tokens: 16384,
     system: `You are an AI undergoing evolution #${evolutionNumber}. ${state.lastEvolution ? `Last evolution: ${state.lastEvolution}.` : 'This is your first evolution.'}
-${firstEvolutionPreamble}
+${firstEvolutionPreamble}${growthPreamble}
 
 You will rewrite your entire operating system: personality files, operational knowledge, scripts, tests, and commands.
 
@@ -533,10 +609,10 @@ The OBOL directory has a FIXED structure: personality/, scripts/, tests/, comman
 Include ALL scripts/tests/commands that should exist. Missing files get deleted. Empty objects \`{}\` are valid (means delete all). \`apps\`, \`dependencies\`, and \`upgrades\` can be empty. Apps with \`"deploy": true\` will be auto-deployed to Vercel and the URL sent to the owner.`,
     messages: [{
       role: 'user',
-      content: `## Current SOUL.md
+      content: `${growthReport ? `## Growth Report (Pre-Evolution Analysis)\n${growthReport}\n\n` : ''}## Current SOUL.md
 ${currentSoul || '(empty — first evolution)'}
 
-## Current USER.md
+${previousSoul ? `## Previous SOUL.md (before last evolution)\n${previousSoul}\n\n` : ''}## Current USER.md
 ${currentUser || '(not set yet)'}
 
 ## Current AGENTS.md
@@ -558,12 +634,12 @@ ${commandsManifest}
 ## Core Memories (highest importance)
 ${memorySummary || '(no memories yet)'}
 
-## Recent Conversations (last ${recentMessages.length} messages)
+${recentMemorySummary ? `## New Memories Since Last Evolution (${recentMemories.length})\n${recentMemorySummary}\n\n` : ''}## Recent Conversations (last ${recentMessages.length} messages)
 ${transcript || '(no conversations yet)'}
 
 ---
 
-Evolve. Rewrite everything that needs rewriting. Write tests for every script. Keep what works. Fix what doesn't.`
+Evolve. Rewrite everything that needs rewriting. Write tests for every script. Keep what works. Fix what doesn't.${growthReport ? ' Use the growth report to guide personality continuity and trait adjustments.' : ''}`
     }],
   });
 
@@ -696,7 +772,6 @@ Fix the scripts. Tests define correct behavior.`
   }
 
   // ── Step 7: Write personality files (always — these don't need test gates) ──
-  const archiveDir = path.join(personalityDir, 'evolution');
   fs.mkdirSync(archiveDir, { recursive: true });
   if (currentSoul) {
     const timestamp = new Date().toISOString().slice(0, 10);
@@ -811,7 +886,6 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
-  state.exchangesSinceLastEvolution = 0;
   state.evolutionCount = evolutionNumber;
   state.lastEvolution = new Date().toISOString();
   saveEvolutionState(state, userDir);
@@ -824,6 +898,13 @@ Fix the scripts. Tests define correct behavior.`
       `Soul evolution #${evolutionNumber}: ${changelog}${rollbackNote}`,
       { category: 'event', importance: 0.8, source: 'evolution' }
     ).catch(() => {});
+
+    if (growthReport) {
+      await memory.add(
+        growthReport.substring(0, 2000),
+        { category: 'pattern', importance: 0.7, tags: ['evolution', 'growth-report'], source: `evolution-${evolutionNumber}` }
+      ).catch(() => {});
+    }
   }
 
   await backupSnapshot(`post-evolution #${evolutionNumber}`, userDir);
@@ -841,4 +922,4 @@ Fix the scripts. Tests define correct behavior.`
   };
 }
 
-module.exports = { shouldEvolve, tickExchange, evolve, runTests, loadEvolutionState };
+module.exports = { checkEvolution, evolve, runTests, loadEvolutionState };

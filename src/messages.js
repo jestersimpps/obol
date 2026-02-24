@@ -67,8 +67,8 @@ class MessageLog {
         this.consolidate(chatId).catch(e => console.error('[consolidate] Failed:', e.message));
       }
 
-      const { tickExchange } = require('./evolve');
-      tickExchange(this.userDir).then(result => {
+      const { checkEvolution } = require('./evolve');
+      checkEvolution(this.userDir, this).then(result => {
         if (result?.ready && !this._evolutionReady && !this._evolutionPending) this._evolutionReady = true;
       }).catch(() => {});
     }

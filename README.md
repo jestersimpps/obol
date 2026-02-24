@@ -8,7 +8,7 @@ One process. Multiple users. Each brain grows independently.
 
 ---
 
-🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md every N exchanges (configurable, default 100).
+🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md after 24h + minimum exchanges (configurable). Pre-evolution growth analysis guides personality continuity.
 
 🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
 
@@ -28,7 +28,7 @@ One process. Multiple users. Each brain grows independently.
 
 OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from Telegram on your VPS.
 
-It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 100 exchanges it reflects on who it's becoming, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
+It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 24 hours (with enough conversation), it runs a growth analysis comparing who it was against who it's becoming, then rewrites its personality, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
 
 One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, and workspace. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
 
@@ -72,13 +72,14 @@ Today's top 3   Sonnet (default)
            ↓
    ┌───────┴────────┐
    ↓                ↓
-Every 5 msgs     Every 100 msgs
+Every 5 msgs     24h + 10 exchanges
    ↓                ↓
 Haiku              Sonnet
 consolidation      evolution cycle
    ↓                ↓
-Extract facts      Rewrite personality,
-→ obol_memory      scripts, tests, commands.
+Extract facts      Growth analysis →
+→ obol_memory      rewrite personality,
+                   scripts, tests, commands.
                    Build new tools.
                    Deploy apps.
                    Git snapshot before + after.
@@ -97,9 +98,15 @@ Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
 ### Layer 2: The Evolution Cycle
 
-Every N exchanges (configurable, default 100), the evolution cycle kicks in. It reads everything — personality files, the last 100 messages, top 20 memories, all scripts, tests, and commands — then rebuilds.
+Evolution triggers after a configurable time interval (default 24h) AND a minimum number of exchanges (default 10). The first evolution triggers earlier — just 10 exchanges with no time gate. The bot checks readiness by querying the DB for assistant messages since the last evolution, so the count survives restarts.
 
-**Cost-conscious model selection:** Evolution uses Sonnet for all phases — personality rewrites, code refactoring, and fix attempts. Opus-level reasoning isn't needed for reflection and refactoring, and Sonnet keeps evolution costs negligible (~$0.02 per cycle vs ~$0.30 with Opus).
+**Pre-evolution growth analysis:** Before rewriting anything, Sonnet compares the previous SOUL against the current one, incorporating all new memories and conversations since the last evolution. It produces a structured growth report covering new learnings, relationship shifts, behavioral patterns, growth edges, trait pressure, and identity continuity. This report becomes the primary guide for the rewrite — evidence-based personality evolution instead of blind overwriting.
+
+**Deep memory consolidation:** A Sonnet pass extracts every valuable fact from the full conversation history into vector memory, deduplicating against existing memories (threshold 0.92). This ensures nothing is lost between evolutions.
+
+**Personality traits** (humor, honesty, directness, curiosity, empathy, creativity) are scored 0-100 and adjusted ±5-15 each evolution based on conversation evidence. The growth report recommends specific trait shifts.
+
+**Cost-conscious model selection:** Evolution uses Sonnet for all phases — growth analysis, personality rewrites, code refactoring, and fix attempts. Sonnet keeps evolution costs negligible (~$0.02 per cycle).
 
 **Git snapshot before.** Full commit + push so you can always diff what changed.
 
@@ -110,6 +117,7 @@ Every N exchanges (configurable, default 100), the evolution cycle kicks in. It 
 | **SOUL.md** | First-person journal — who the bot has become, relationship dynamic, opinions, quirks |
 | **USER.md** | Third-person owner profile — facts, preferences, projects, people, communication style |
 | **AGENTS.md** | Operational manual — tools, workflows, lessons learned, patterns, rules |
+| **Traits** | Personality trait scores adjusted based on conversation evidence |
 | **scripts/** | Refactored, dead code removed, strict standards enforced |
 | **tests/** | Test for every script, run before and after refactor |
 | **commands/** | Cleaned up, new commands for new tools |
@@ -159,17 +167,18 @@ Day 1:   obol init → obol start → first conversation
          → OBOL responds naturally from message one
          → post-setup hardens your VPS automatically
 
-Day 2:   Every 5 messages → Haiku extracts facts to vector memory
+Day 1:   Every 5 messages → Haiku extracts facts to vector memory
 
-Week 2:  Evolution #1 → Sonnet rewrites everything
+Day 2:   Evolution #1 → growth analysis + Sonnet rewrites everything
          → voice shifts from generic to personal
          → old soul archived in evolution/
+         → traits calibrated to your communication style
 
-Month 2: Evolution #4 → notices you check crypto daily
+Month 2: Evolution #30 → notices you check crypto daily
          → builds a dashboard, deploys to Vercel
          → adds /pdf because you kept asking for PDFs
 
-Month 6: evolution/ has 12 archived souls
+Month 6: evolution/ has 180+ archived souls
          → a readable timeline of how your bot evolved from
          blank slate to something with real opinions, quirks,
          and a dynamic unique to you
@@ -439,7 +448,8 @@ Or edit `~/.obol/config.json` directly:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `evolution.exchanges` | 100 | Messages between evolution cycles |
+| `evolution.intervalHours` | 24 | Hours between evolution cycles |
+| `evolution.minExchanges` | 10 | Minimum exchanges before evolution can trigger |
 | `heartbeat` | false | Enable proactive check-ins |
 | `bridge.enabled` | false | Let user agents query each other (requires 2+ users) |
 

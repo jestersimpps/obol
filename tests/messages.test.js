@@ -13,13 +13,13 @@ vi.mock('../src/config', () => ({
   OBOL_DIR: '/mock/.obol',
 }));
 
-const mockTickExchange = vi.fn(() => Promise.resolve());
+const mockCheckEvolution = vi.fn(() => Promise.resolve({ ready: false }));
 const evolvePath = require.resolve('../src/evolve');
 require.cache[evolvePath] = {
   id: evolvePath,
   filename: evolvePath,
   loaded: true,
-  exports: { tickExchange: mockTickExchange },
+  exports: { checkEvolution: mockCheckEvolution },
 };
 
 const mockFetch = vi.fn();
@@ -95,22 +95,21 @@ describe('messages', () => {
       expect(body.user_id).toBe(42);
     });
 
-    it('increments exchange count on assistant role', async () => {
+    it('checks evolution on assistant messages', async () => {
       mockFetchOk({});
       await messageLog.log('chat-1', 'assistant', 'response 1');
 
       mockFetchOk({});
       await messageLog.log('chat-1', 'assistant', 'response 2');
 
-      expect(mockTickExchange).toHaveBeenCalledTimes(2);
-      expect(mockTickExchange).toHaveBeenCalledWith('/mock/userdir');
+      expect(mockCheckEvolution).toHaveBeenCalledTimes(2);
     });
 
-    it('does not increment exchange count on user role', async () => {
+    it('does not check evolution on user messages', async () => {
       mockFetchOk({});
       await messageLog.log('chat-1', 'user', 'hello');
 
-      expect(mockTickExchange).not.toHaveBeenCalled();
+      expect(mockCheckEvolution).not.toHaveBeenCalled();
     });
 
     it('triggers consolidation after 5 assistant messages', async () => {

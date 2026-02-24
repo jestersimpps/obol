@@ -5,7 +5,7 @@ const os = require('os');
 
 const configModule = require('../src/config');
 
-const { loadEvolutionState, shouldEvolve, tickExchange, runTests } = require('../src/evolve');
+const { loadEvolutionState, checkEvolution, runTests } = require('../src/evolve');
 
 describe('evolve', () => {
   let tmpDir;
@@ -24,7 +24,6 @@ describe('evolve', () => {
     it('returns defaults when no file exists', () => {
       const state = loadEvolutionState(tmpDir);
       expect(state).toEqual({
-        exchangesSinceLastEvolution: 0,
         evolutionCount: 0,
         lastEvolution: null,
       });
@@ -32,7 +31,6 @@ describe('evolve', () => {
 
     it('parses existing state file', () => {
       const saved = {
-        exchangesSinceLastEvolution: 42,
         evolutionCount: 3,
         lastEvolution: '2025-01-01T00:00:00.000Z',
       };
@@ -53,124 +51,97 @@ describe('evolve', () => {
 
       const state = loadEvolutionState(tmpDir);
       expect(state).toEqual({
-        exchangesSinceLastEvolution: 0,
         evolutionCount: 0,
         lastEvolution: null,
       });
     });
   });
 
-  describe('tickExchange', () => {
-    it('increments counter from zero', async () => {
-      const result = await tickExchange(tmpDir);
-      expect(result.count).toBe(1);
+  describe('checkEvolution', () => {
+    const mockMessageLog = (rows) => ({
+      url: 'https://test.supabase.co',
+      headers: { apikey: 'test', Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      userId: 123,
+      _fetch: rows,
+    });
+
+    beforeEach(() => {
+      global._originalFetch = global.fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = global._originalFetch;
+    });
+
+    it('returns false when time not elapsed', async () => {
+      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
+      fs.writeFileSync(
+        path.join(tmpDir, '.evolution-state.json'),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: new Date().toISOString() }),
+      );
+
+      const result = await checkEvolution(tmpDir, mockMessageLog([]));
       expect(result.ready).toBe(false);
     });
 
-    it('returns the new count', async () => {
-      await tickExchange(tmpDir);
-      const result = await tickExchange(tmpDir);
-      expect(result.count).toBe(2);
+    it('returns false when no messageLog provided', async () => {
+      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
+      fs.writeFileSync(
+        path.join(tmpDir, '.evolution-state.json'),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
+      );
+
+      const result = await checkEvolution(tmpDir, null);
       expect(result.ready).toBe(false);
     });
 
-    it('persists state to disk', async () => {
-      await tickExchange(tmpDir);
-      await tickExchange(tmpDir);
-      await tickExchange(tmpDir);
-
-      const raw = fs.readFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        'utf-8',
-      );
-      const state = JSON.parse(raw);
-      expect(state.exchangesSinceLastEvolution).toBe(3);
-    });
-
-    it('preserves other state fields', async () => {
-      const initial = {
-        exchangesSinceLastEvolution: 10,
-        evolutionCount: 5,
-        lastEvolution: '2025-06-01T00:00:00.000Z',
-      };
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify(initial),
-      );
-
-      await tickExchange(tmpDir);
-
-      const raw = fs.readFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        'utf-8',
-      );
-      const state = JSON.parse(raw);
-      expect(state.exchangesSinceLastEvolution).toBe(11);
-      expect(state.evolutionCount).toBe(5);
-      expect(state.lastEvolution).toBe('2025-06-01T00:00:00.000Z');
-    });
-  });
-
-  describe('shouldEvolve', () => {
-    it('returns false when under default threshold', async () => {
+    it('returns true when time elapsed and DB has enough messages', async () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 99, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
       );
 
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(false);
+      const rows = Array.from({ length: 10 }, (_, i) => ({ id: i }));
+      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(rows) });
+
+      const result = await checkEvolution(tmpDir, mockMessageLog(rows));
+      expect(result.ready).toBe(true);
     });
 
-    it('returns true when at default threshold', async () => {
+    it('returns false when time elapsed but not enough messages in DB', async () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 100, evolutionCount: 0, lastEvolution: null }),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
       );
 
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(true);
+      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve([{ id: 1 }]) });
+
+      const result = await checkEvolution(tmpDir, mockMessageLog([{ id: 1 }]));
+      expect(result.ready).toBe(false);
     });
 
-    it('returns true when above default threshold', async () => {
+    it('returns true on first run (no lastEvolution) with enough messages', async () => {
       vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 150, evolutionCount: 0, lastEvolution: null }),
-      );
 
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(true);
+      const rows = Array.from({ length: 10 }, (_, i) => ({ id: i }));
+      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(rows) });
+
+      const result = await checkEvolution(tmpDir, mockMessageLog(rows));
+      expect(result.ready).toBe(true);
     });
 
-    it('uses custom threshold from config', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { exchanges: 10 } });
+    it('uses custom intervalHours from config', async () => {
+      vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { intervalHours: 48 } });
+      const recentTime = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 10, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: recentTime }),
       );
 
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(true);
-    });
-
-    it('returns false when under custom threshold', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { exchanges: 50 } });
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ exchangesSinceLastEvolution: 49, evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
-      );
-
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(false);
-    });
-
-    it('returns false when no state file exists (0 exchanges)', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
-      const result = await shouldEvolve(tmpDir);
-      expect(result).toBe(false);
+      const result = await checkEvolution(tmpDir, mockMessageLog([]));
+      expect(result.ready).toBe(false);
     });
   });
 
