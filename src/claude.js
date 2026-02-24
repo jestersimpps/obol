@@ -5,6 +5,7 @@ const { execSync, execFileSync } = require('child_process');
 const { refreshTokens, isExpired, isOAuthToken } = require('./oauth');
 const { saveConfig, loadConfig, OBOL_DIR } = require('./config');
 const { execAsync, isAllowedUrl } = require('./sanitize');
+const { ChatHistory } = require('./history');
 
 const MAX_EXEC_TIMEOUT = 120;
 let MAX_TOOL_ITERATIONS = 100;
@@ -114,74 +115,14 @@ async function ensureFreshToken(anthropicConfig) {
   }
 }
 
-function repairHistory(history) {
-  const allToolUseIds = new Set();
-  for (const msg of history) {
-    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-      for (const b of msg.content) {
-        if (b.type === 'tool_use') allToolUseIds.add(b.id);
-      }
-    }
-  }
-
-  for (let i = history.length - 1; i >= 0; i--) {
-    const msg = history[i];
-    if (msg.role !== 'user' || !Array.isArray(msg.content)) continue;
-    const toolResults = msg.content.filter(b => b.type === 'tool_result');
-    if (toolResults.length === 0) continue;
-    const orphaned = toolResults.filter(b => !allToolUseIds.has(b.tool_use_id));
-    if (orphaned.length === 0) continue;
-    const remaining = msg.content.filter(b => b.type !== 'tool_result' || allToolUseIds.has(b.tool_use_id));
-    if (remaining.length === 0) {
-      history.splice(i, 1);
-    } else {
-      msg.content = remaining;
-    }
-  }
-
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i];
-    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
-    const toolUseIds = msg.content.filter(b => b.type === 'tool_use').map(b => b.id);
-    if (toolUseIds.length === 0) continue;
-    const next = history[i + 1];
-    if (next?.role === 'user' && Array.isArray(next.content)) {
-      const existingIds = new Set(next.content.filter(b => b.type === 'tool_result').map(b => b.tool_use_id));
-      const missingIds = toolUseIds.filter(id => !existingIds.has(id));
-      if (missingIds.length > 0) {
-        next.content = [
-          ...next.content,
-          ...missingIds.map(id => ({ type: 'tool_result', tool_use_id: id, content: '[interrupted]' })),
-        ];
-      }
-    } else {
-      const fakeResults = toolUseIds.map(id => ({
-        type: 'tool_result', tool_use_id: id, content: '[interrupted]',
-      }));
-      history.splice(i + 1, 0, { role: 'user', content: fakeResults });
-    }
-  }
-
-  for (let i = history.length - 1; i > 0; i--) {
-    if (history[i].role === history[i - 1].role && history[i].role === 'user') {
-      const prev = history[i - 1];
-      const curr = history[i];
-      const prevArr = Array.isArray(prev.content) ? prev.content : [{ type: 'text', text: prev.content }];
-      const currArr = Array.isArray(curr.content) ? curr.content : [{ type: 'text', text: curr.content }];
-      history[i - 1] = { role: 'user', content: [...prevArr, ...currArr] };
-      history.splice(i, 1);
-    }
-  }
-}
-
 function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled }) {
   let client = createAnthropicClient(anthropicConfig);
 
   let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
 
-  const histories = new Map();
+  const histories = new ChatHistory(50);
   const chatLocks = new Map();
-  const MAX_HISTORY = 50;
+  const chatAbortControllers = new Map();
 
   const tools = buildTools(memory, { bridgeEnabled });
 
@@ -210,8 +151,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     }
 
     const releaseLock = await acquireChatLock(chatId);
+    const abortController = new AbortController();
+    chatAbortControllers.set(chatId, abortController);
 
-    if (!histories.has(chatId)) histories.set(chatId, []);
     const history = histories.get(chatId);
 
     try {
@@ -296,41 +238,15 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
       }
     }
 
-    while (history.length >= MAX_HISTORY) {
-      let cut = 0;
-      while (cut < history.length - 1) {
-        const msg = history[cut];
-        cut++;
-        if (msg.role === 'assistant' && Array.isArray(msg.content) &&
-            msg.content.some(b => b.type === 'tool_use')) continue;
-        if (msg.role === 'user' && Array.isArray(msg.content) &&
-            msg.content.some(b => b.type === 'tool_result')) continue;
-        if (msg.role === 'assistant') break;
-      }
-      history.splice(0, cut);
-      if (cut === 0) { history.shift(); history.shift(); break; }
-    }
-    while (history.length > 0) {
-      const first = history[0];
-      if (first.role !== 'user') { history.shift(); continue; }
-      if (Array.isArray(first.content) && first.content.some(b => b.type === 'tool_result')) {
-        history.shift(); continue;
-      }
-      break;
-    }
-    repairHistory(history);
+    histories.prune(chatId);
 
-    // Add user message with memory context
     const enrichedMessage = memoryContext
       ? userMessage + memoryContext
       : userMessage;
     if (context.images?.length) {
-      history.push({
-        role: 'user',
-        content: [...context.images, { type: 'text', text: enrichedMessage }],
-      });
+      histories.pushUser(chatId, [...context.images, { type: 'text', text: enrichedMessage }]);
     } else {
-      history.push({ role: 'user', content: enrichedMessage });
+      histories.pushUser(chatId, enrichedMessage);
     }
 
     const model = context._model || 'claude-sonnet-4-6';
@@ -345,7 +261,7 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
       messages: [...history],
       tools: runnableTools.length > 0 ? runnableTools : undefined,
       max_iterations: MAX_TOOL_ITERATIONS,
-    });
+    }, { signal: abortController.signal });
 
     let finalMessage;
     for await (const message of runner) {
@@ -357,36 +273,47 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
 
     const runnerMessages = runner.params.messages;
     const newMessages = runnerMessages.slice(history.length);
-    for (const msg of newMessages) {
-      history.push(msg);
-    }
+    histories.pushMessages(chatId, newMessages);
 
     if (finalMessage.stop_reason === 'tool_use') {
       const bailoutResults = finalMessage.content
         .filter(b => b.type === 'tool_use')
         .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '[max tool iterations reached]' }));
-      history.push({ role: 'user', content: [
+      histories.pushUser(chatId, [
         ...bailoutResults,
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
-      ] });
+      ]);
       const bailoutResponse = await client.messages.create({
-        model, max_tokens: 4096, system: systemPrompt, messages: history,
-      });
-      history.push({ role: 'assistant', content: bailoutResponse.content });
+        model, max_tokens: 4096, system: systemPrompt, messages: [...histories.get(chatId)],
+      }, { signal: abortController.signal });
+      histories.pushAssistant(chatId, bailoutResponse.content);
       return bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     }
 
     return finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
 
     } catch (e) {
+      if (e.message === 'Request was aborted.' || e.constructor?.name === 'APIUserAbortError') {
+        return null;
+      }
       if (e.status === 400 && e.message?.includes('tool_use')) {
         console.error('[claude] Repairing corrupted history after 400 error');
-        repairHistory(history);
+        histories.repair(chatId);
       }
       throw e;
     } finally {
+      chatAbortControllers.delete(chatId);
       releaseLock();
     }
+  }
+
+  function stopChat(chatId) {
+    const controller = chatAbortControllers.get(chatId);
+    if (controller) {
+      controller.abort();
+      return true;
+    }
+    return false;
   }
 
   function reloadPersonality() {
@@ -406,33 +333,15 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
   }
 
   function injectHistory(chatId, role, content) {
-    if (!histories.has(chatId)) histories.set(chatId, []);
-    const history = histories.get(chatId);
-    history.push({ role, content });
+    histories.inject(chatId, role, content);
   }
 
   function getContextStats(chatId) {
     const id = chatId || 'default';
-    const history = histories.get(id) || [];
-    const MAX_CONTEXT = 200000;
-    let chars = baseSystemPrompt.length;
-    for (const msg of history) {
-      if (typeof msg.content === 'string') {
-        chars += msg.content.length;
-      } else if (Array.isArray(msg.content)) {
-        for (const b of msg.content) {
-          if (b.text) chars += b.text.length;
-          else if (b.content) chars += (typeof b.content === 'string' ? b.content.length : JSON.stringify(b.content).length);
-          else if (b.type === 'tool_use') chars += JSON.stringify(b.input || {}).length + (b.name?.length || 0);
-        }
-      }
-    }
-    const estimatedTokens = Math.round(chars / 4);
-    const pct = Math.min(100, Math.round((estimatedTokens / MAX_CONTEXT) * 100));
-    return { messages: history.length, estimatedTokens, maxTokens: MAX_CONTEXT, pct };
+    return histories.estimateTokens(id, baseSystemPrompt.length);
   }
 
-  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats };
+  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats, stopChat };
 }
 
 function buildSystemPrompt(personality, userDir, opts = {}) {

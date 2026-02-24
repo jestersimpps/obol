@@ -106,7 +106,8 @@ function syncDir(dir, files) {
   }
   for (const f of fs.readdirSync(dir)) {
     if (!(f in files)) {
-      fs.unlinkSync(path.join(dir, f));
+      const full = path.join(dir, f);
+      fs.rmSync(full, { recursive: true, force: true });
     }
   }
 }

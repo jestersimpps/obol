@@ -84,6 +84,7 @@ function createBot(telegramConfig, config) {
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
+    { command: 'stop', description: 'Stop the current request' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});
@@ -380,8 +381,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
 /clean — Audit workspace
 /verbose — Toggle verbose mode on/off
 /toolimit — View or set max tool iterations
+/stop — Stop the current request
 /upgrade — Check for updates and upgrade
 /help — This message`);
+  });
+
+  bot.command('stop', async (ctx) => {
+    if (!ctx.from) return;
+    const tenant = await getTenant(ctx.from.id, config);
+    const stopped = tenant.claude.stopChat(ctx.chat.id);
+    await ctx.reply(stopped ? '⏹ Stopped.' : 'Nothing running to stop.');
   });
 
   bot.command('verbose', async (ctx) => {
@@ -516,6 +525,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
         },
       };
       const response = await tenant.claude.chat(userMessage, chatContext);
+
+      if (!response?.trim()) {
+        stopTyping();
+        return;
+      }
 
       tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 
@@ -663,10 +677,12 @@ Your message is deleted immediately when using /secret set to keep credentials o
         };
         const response = await tenant.claude.chat(prompt, mediaChatCtx);
 
+        stopTyping();
+        if (!response?.trim()) return;
+
         tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${caption || filename}`);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 
-        stopTyping();
         if (response.length > 4096) {
           for (const chunk of splitMessage(response, 4096)) {
             await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));
@@ -696,10 +712,12 @@ Your message is deleted immediately when using /secret set to keep credentials o
         };
         const response = await tenant.claude.chat(contextMsg, mediaCaptionCtx);
 
+        stopTyping();
+        if (!response?.trim()) return;
+
         tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response);
 
-        stopTyping();
         if (response.length > 4096) {
           for (const chunk of splitMessage(response, 4096)) {
             await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(() => ctx.reply(chunk));

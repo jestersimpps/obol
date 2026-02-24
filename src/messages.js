@@ -149,8 +149,10 @@ Return empty array if nothing worth storing.`,
               const existing = await this.memory.search(mem.content, { limit: 1, threshold: 0.85 });
               if (existing.length > 0) continue;
             } catch {}
+            const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
+            const category = validCategories.has(mem.category) ? mem.category : 'conversation';
             await this.memory.add(mem.content, {
-              category: mem.category || 'conversation',
+              category,
               importance: 0.5,
               source: 'auto-consolidation',
             });

@@ -177,6 +177,7 @@ function formatDuration(seconds) {
 }
 
 async function sendLong(ctx, text) {
+  if (!text?.trim()) return;
   if (text.length <= 4096) {
     await ctx.reply(text, { parse_mode: 'Markdown' }).catch(() =>
       ctx.reply(text)
