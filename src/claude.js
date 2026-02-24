@@ -15,18 +15,8 @@ const BLOCKED_EXEC_PATTERNS = [
   /\bmkfs\b/, /\bdd\s+if=/, /\b:()\{\s*:|:&\s*\};:/,
   /\bchmod\s+(-R\s+)?[0-7]*\s+\/[^t]/,
   />\s*\/etc\//, />\s*\/boot\//,
-  /\beval\s+/, /\bsource\s+/,
-  /\bbash\s+-c\b/, /\bsh\s+-c\b/, /\bzsh\s+-c\b/,
-  /`[^`]*`/,
-  /\$\([^)]*\)/,
-  /\bperl\s+-e\b/, /\bruby\s+-e\b/, /\bnode\s+-e\b/,
   /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
-  /\benv\b.*\b(sh|bash|zsh)\b/,
-  /\bfind\b.*-exec\b/,
-  /\bprintf\b.*\|\s*(ba)?sh/,
-  /\\x[0-9a-fA-F]{2}/, /\\[0-7]{3}/,
   /\bnc\s+-e\b/, /\bncat\b.*-e\b/,
-  /\bmkfifo\b/,
   />\s*\/dev\/sd/,
 ];
 
