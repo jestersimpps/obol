@@ -204,6 +204,12 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
 
         vlog(`[router] model=${decision.model || 'sonnet'} memory=${decision.need_memory || false}${decision.search_query ? ` query="${decision.search_query}"` : ''}`);
 
+        context._onRouteDecision?.({
+          model: decision.model || 'sonnet',
+          needMemory: decision.need_memory || false,
+          memoryCount: 0,
+        });
+
         if (decision.model === 'opus') {
           context._model = 'claude-opus-4-6';
         } else if (decision.model === 'haiku') {
@@ -226,6 +232,8 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
           }
 
           vlog(`[memory] ${combined.length} memories found (${todayMemories.length} today, ${semanticMemories.length} semantic)`);
+
+          context._onRouteUpdate?.({ memoryCount: combined.length });
 
           if (combined.length > 0) {
             memoryContext = '\n\n[Relevant memories]\n' +

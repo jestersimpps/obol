@@ -21,9 +21,39 @@ const TEXT_BUFFER_MAX_PARTS = 12;
 const TEXT_BUFFER_MAX_CHARS = 50000;
 const TEXT_BUFFER_THRESHOLD = 4000;
 const MEDIA_GROUP_DELAY_MS = 500;
+const TERM_WIDTH = 25;
+const TERM_SEP = '━'.repeat(TERM_WIDTH);
 
 const _evolutionTimers = new Map();
 const _toolDescriptionCache = new Map();
+
+function termBar(pct, width = 20) {
+  const filled = Math.round((pct / 100) * width);
+  return '━'.repeat(filled) + '╌'.repeat(width - filled);
+}
+
+function buildStatusHtml({ route, elapsed, toolStatus }) {
+  const lines = [`◈ OBOL ${'━'.repeat(TERM_WIDTH - 7)}`];
+  if (route) {
+    lines.push(`⬡ ROUTE  ${(route.model || 'sonnet').toUpperCase()}`);
+    if (route.memoryCount > 0) {
+      lines.push(`⬡ MEMORY ${route.memoryCount} recalled`);
+    } else if (route.needMemory) {
+      lines.push(`⬡ MEMORY scanning`);
+    }
+  }
+  if (toolStatus) {
+    lines.push(`▸ ${toolStatus}`);
+  } else {
+    lines.push(`▸ Processing`);
+  }
+  const es = elapsed > 0 ? ` ${elapsed}s ` : '';
+  const padLen = Math.max(0, TERM_WIDTH - es.length);
+  const left = Math.floor(padLen / 2);
+  const right = padLen - left;
+  lines.push(`${'━'.repeat(left)}${es}${'━'.repeat(right)}`);
+  return `<pre>${lines.join('\n')}</pre>`;
+}
 
 function markdownToTelegramHtml(text) {
   const codeBlocks = [];
@@ -179,7 +209,7 @@ function createBot(telegramConfig, config) {
   ]).catch(() => {});
 
   bot.command('start', async (ctx) => {
-    await ctx.reply('🪙 OBOL is ready. Just send me a message.');
+    await ctx.reply(`<pre>◈ OBOL v${pkg.version}\n${TERM_SEP}\nSYSTEM ONLINE\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('memory', async (ctx) => {
@@ -210,7 +240,7 @@ function createBot(telegramConfig, config) {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     tenant.claude.clearHistory(ctx.chat.id);
-    await ctx.reply('🪙 Fresh start. What\'s up?');
+    await ctx.reply(`<pre>◈ CONTEXT CLEARED\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('status', async (ctx) => {
@@ -222,35 +252,49 @@ function createBot(telegramConfig, config) {
     const m = Math.floor((uptime % 3600) / 60);
     const running = tenant.bg.getStatus();
 
-    let text = `🪙 OBOL Status\n\n`;
-    text += `⏱️ Uptime: ${h}h ${m}m\n`;
-    text += `💾 Memory: ${mem}MB\n`;
-    text += `⚡ Tasks: ${running.length} running\n`;
-    text += `🔧 Tool limit: ${getMaxToolIterations()}\n`;
+    const lines = [
+      `◈ OBOL SYSTEM STATUS`,
+      TERM_SEP,
+      ``,
+      `RUNTIME`,
+      `  uptime   ${h}h ${m}m`,
+      `  memory   ${mem}MB`,
+      `  tasks    ${running.length} active`,
+      `  tools    ${getMaxToolIterations()} max iter`,
+    ];
 
     if (tenant.memory) {
       const stats = await tenant.memory.stats().catch(() => null);
-      if (stats) text += `🧠 Memories: ${stats.total}\n`;
+      lines.push(``, `MEMORY BANK`);
+      lines.push(`  stored   ${stats ? stats.total : '?'} memories`);
     }
 
     const ctxStats = tenant.claude.getContextStats(ctx.chat.id);
-    const ctxBar = '█'.repeat(Math.floor(ctxStats.pct / 5)) + '░'.repeat(20 - Math.floor(ctxStats.pct / 5));
-    text += `\n📐 Context: ${ctxBar} ${ctxStats.pct}%\n`;
-    text += `   ${(ctxStats.estimatedTokens / 1000).toFixed(1)}k / ${(ctxStats.maxTokens / 1000).toFixed(0)}k tokens (${ctxStats.messages} msgs)\n`;
+    lines.push(
+      ``, `CONTEXT`,
+      `  ${termBar(ctxStats.pct)} ${ctxStats.pct}%`,
+      `  ${(ctxStats.estimatedTokens / 1000).toFixed(1)}k / ${(ctxStats.maxTokens / 1000).toFixed(0)}k tokens`,
+      `  ${ctxStats.messages} messages`,
+    );
 
     const evoState = loadEvolutionState(tenant.userDir);
     const cfg = loadConfig();
     const threshold = cfg?.evolution?.exchanges || 100;
     const evoCount = evoState.exchangesSinceLastEvolution || 0;
     const evoPct = Math.min(100, Math.round((evoCount / threshold) * 100));
-    const evoBar = '█'.repeat(Math.floor(evoPct / 5)) + '░'.repeat(20 - Math.floor(evoPct / 5));
-    text += `\n🧬 Evolution: ${evoBar} ${evoPct}% (${evoState.evolutionCount || 0} completed)\n`;
+    lines.push(
+      ``, `EVOLUTION`,
+      `  ${termBar(evoPct)} ${evoPct}%`,
+      `  ${evoCount}/${threshold} exchanges ▪ ${evoState.evolutionCount || 0} completed`,
+    );
 
     const personalityDir = path.join(tenant.userDir, 'personality');
     const traits = loadTraits(personalityDir);
-    text += `\n🎛 Traits\n${formatTraits(traits)}`;
+    lines.push(``, `TRAITS`);
+    lines.push(formatTraits(traits));
+    lines.push(TERM_SEP);
 
-    await ctx.reply(text);
+    await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('backup', async (ctx) => {
@@ -338,7 +382,8 @@ function createBot(telegramConfig, config) {
       saveTraits(personalityDir, { ...DEFAULT_TRAITS });
       tenant.claude.reloadPersonality();
       const traits = { ...DEFAULT_TRAITS };
-      await ctx.reply(`🎛 Traits reset to defaults\n\n${formatTraits(traits)}`);
+      const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, `RESET TO DEFAULTS`, ``, formatTraits(traits), TERM_SEP];
+      await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
       return;
     }
 
@@ -357,12 +402,14 @@ function createBot(telegramConfig, config) {
       traits[traitName] = value;
       saveTraits(personalityDir, traits);
       tenant.claude.reloadPersonality();
-      await ctx.reply(`🎛 Updated ${traitName} → ${value}\n\n${formatTraits(traits)}`);
+      const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, `UPDATED ${traitName} → ${value}`, ``, formatTraits(traits), TERM_SEP];
+      await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
       return;
     }
 
     const traits = loadTraits(personalityDir);
-    await ctx.reply(`🎛 Personality Traits\n\n${formatTraits(traits)}\n\nAdjust: /traits <name> <0-100>\nReset: /traits reset`);
+    const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, ``, formatTraits(traits), ``, `/traits &lt;name&gt; &lt;0-100&gt;`, `/traits reset`, TERM_SEP];
+    await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('secret', async (ctx) => {
@@ -427,16 +474,20 @@ Your message is deleted immediately when using /secret set to keep credentials o
     const threshold = cfg?.evolution?.exchanges || 100;
     const count = state.exchangesSinceLastEvolution || 0;
     const pct = Math.min(100, Math.round((count / threshold) * 100));
-    const bar = '█'.repeat(Math.floor(pct / 5)) + '░'.repeat(20 - Math.floor(pct / 5));
 
-    let text = `🧬 Evolution Progress\n\n`;
-    text += `${bar} ${pct}%\n`;
-    text += `${count}/${threshold} exchanges\n`;
-    text += `Evolutions completed: ${state.evolutionCount || 0}\n`;
+    const lines = [
+      `◈ OBOL EVOLUTION CYCLE`,
+      TERM_SEP,
+      ``,
+      `  ${termBar(pct)} ${pct}%`,
+      `  ${count}/${threshold} exchanges`,
+      `  ${state.evolutionCount || 0} completed`,
+    ];
     if (state.lastEvolution) {
-      text += `Last evolution: ${new Date(state.lastEvolution).toLocaleDateString()}`;
+      lines.push(`  last ${new Date(state.lastEvolution).toLocaleDateString()}`);
     }
-    await ctx.reply(text);
+    lines.push(TERM_SEP);
+    await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('events', async (ctx) => {
@@ -461,13 +512,18 @@ Your message is deleted immediately when using /secret set to keep credentials o
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const running = tenant.bg.getStatus();
+    const lines = [`◈ OBOL ACTIVE TASKS`, TERM_SEP];
     if (running.length === 0) {
-      return ctx.reply('No background tasks running.');
+      lines.push(``, `  (none)`);
+    } else {
+      lines.push(``);
+      for (const t of running) {
+        lines.push(`  ▸ #${t.id} ${t.task}`);
+        lines.push(`    ${t.elapsed}`);
+      }
     }
-    const text = running.map(t =>
-      `⏳ #${t.id}: ${t.task}... (${t.elapsed})`
-    ).join('\n');
-    return ctx.reply(`Running tasks:\n\n${text}`);
+    lines.push(TERM_SEP);
+    return ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('help', async (ctx) => {
@@ -498,14 +554,19 @@ Your message is deleted immediately when using /secret set to keep credentials o
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const stopped = tenant.claude.stopChat(ctx.chat.id);
-    await ctx.reply(stopped ? '⏹ Stopped.' : 'Nothing running to stop.');
+    if (stopped) {
+      await ctx.reply(`<pre>◈ PROCESS TERMINATED\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
+    } else {
+      await ctx.reply('Nothing running to stop.');
+    }
   });
 
   bot.command('verbose', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     tenant.verbose = !tenant.verbose;
-    await ctx.reply(tenant.verbose ? '🔍 Verbose mode ON' : '🔇 Verbose mode OFF');
+    const state = tenant.verbose ? '◉ ACTIVE' : '○ INACTIVE';
+    await ctx.reply(`<pre>◈ VERBOSE ${state}\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('upgrade', async (ctx) => {
@@ -623,10 +684,26 @@ Your message is deleted immediately when using /secret set to keep credentials o
     let statusText = 'Processing';
     let statusTimer = null;
     let statusStart = null;
+    let routeInfo = null;
 
     const clearStatus = () => {
       if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
       if (statusMsgId) { ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {}); statusMsgId = null; }
+    };
+
+    const startStatusTimer = () => {
+      if (statusTimer) return;
+      statusStart = Date.now();
+      const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText });
+      ctx.reply(html, { parse_mode: 'HTML' }).then(sent => {
+        if (sent) statusMsgId = sent.message_id;
+      }).catch(() => {});
+      statusTimer = setInterval(() => {
+        if (!statusMsgId) return;
+        const elapsed = Math.round((Date.now() - statusStart) / 1000);
+        const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText });
+        ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
+      }, 1000);
     };
 
     try {
@@ -650,21 +727,19 @@ Your message is deleted immediately when using /secret set to keep credentials o
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
         },
+        _onRouteDecision: (info) => {
+          routeInfo = info;
+          startStatusTimer();
+        },
+        _onRouteUpdate: (update) => {
+          if (routeInfo) routeInfo.memoryCount = update.memoryCount;
+        },
         _onToolStart: (toolName, inputSummary) => {
           statusText = 'Processing';
           describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
             if (desc) statusText = desc;
           });
-          if (statusTimer) return;
-          statusStart = Date.now();
-          ctx.reply('Processing...').then(sent => {
-            if (sent) statusMsgId = sent.message_id;
-          }).catch(() => {});
-          statusTimer = setInterval(() => {
-            if (!statusMsgId) return;
-            const elapsed = Math.round((Date.now() - statusStart) / 1000);
-            ctx.api.editMessageText(ctx.chat.id, statusMsgId, `(${elapsed}s) ${statusText}...`).catch(() => {});
-          }, 1000);
+          startStatusTimer();
         },
       };
       const { text: response, usage, model } = await tenant.claude.chat(chatMessage, chatContext);
@@ -672,7 +747,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
       if (statusTimer) {
         clearInterval(statusTimer);
         statusTimer = null;
-        if (statusMsgId) ctx.api.editMessageText(ctx.chat.id, statusMsgId, 'Formatting output...').catch(() => {});
+        if (statusMsgId) {
+          const elapsed = statusStart ? Math.round((Date.now() - statusStart) / 1000) : 0;
+          const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: 'Formatting output' });
+          ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
+        }
       }
 
       if (!response?.trim()) {
@@ -741,6 +820,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
         }
       } else {
         await sendHtml(ctx, response).catch(() => {});
+      }
+
+      if (usage && model) {
+        const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+        const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens/1000).toFixed(1)}k` : usage.input_tokens;
+        const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens/1000).toFixed(1)}k` : usage.output_tokens;
+        const dur = statusStart ? ((Date.now() - statusStart)/1000).toFixed(1) : null;
+        const parts = [`◈ ${tag}`, `${tokIn} in`, `${tokOut} out`];
+        if (dur) parts.push(`${dur}s`);
+        await ctx.reply(`<code>${parts.join(' ▪ ')}</code>`, { parse_mode: 'HTML' }).catch(() => {});
       }
 
       if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
@@ -849,10 +938,26 @@ Your message is deleted immediately when using /secret set to keep credentials o
     let statusText = 'Processing';
     let statusTimer = null;
     let statusStart = null;
+    let routeInfo = null;
 
     const clearStatus = () => {
       if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
       if (statusMsgId) { ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {}); statusMsgId = null; }
+    };
+
+    const startStatusTimer = () => {
+      if (statusTimer) return;
+      statusStart = Date.now();
+      const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText });
+      ctx.reply(html, { parse_mode: 'HTML' }).then(sent => {
+        if (sent) statusMsgId = sent.message_id;
+      }).catch(() => {});
+      statusTimer = setInterval(() => {
+        if (!statusMsgId) return;
+        const elapsed = Math.round((Date.now() - statusStart) / 1000);
+        const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText });
+        ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
+      }, 1000);
     };
 
     try {
@@ -906,21 +1011,19 @@ Your message is deleted immediately when using /secret set to keep credentials o
           if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
           return bot.api.sendMessage(targetUserId, message);
         },
+        _onRouteDecision: (info) => {
+          routeInfo = info;
+          startStatusTimer();
+        },
+        _onRouteUpdate: (update) => {
+          if (routeInfo) routeInfo.memoryCount = update.memoryCount;
+        },
         _onToolStart: (toolName, inputSummary) => {
           statusText = 'Processing';
           describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
             if (desc) statusText = desc;
           });
-          if (statusTimer) return;
-          statusStart = Date.now();
-          ctx.reply('Processing...').then(sent => {
-            if (sent) statusMsgId = sent.message_id;
-          }).catch(() => {});
-          statusTimer = setInterval(() => {
-            if (!statusMsgId) return;
-            const elapsed = Math.round((Date.now() - statusStart) / 1000);
-            ctx.api.editMessageText(ctx.chat.id, statusMsgId, `(${elapsed}s) ${statusText}...`).catch(() => {});
-          }, 1000);
+          startStatusTimer();
         },
       };
       const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
@@ -928,7 +1031,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
       if (statusTimer) {
         clearInterval(statusTimer);
         statusTimer = null;
-        if (statusMsgId) ctx.api.editMessageText(ctx.chat.id, statusMsgId, 'Formatting output...').catch(() => {});
+        if (statusMsgId) {
+          const elapsed = statusStart ? Math.round((Date.now() - statusStart) / 1000) : 0;
+          const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: 'Formatting output' });
+          ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
+        }
       }
 
       stopTyping();
@@ -956,6 +1063,16 @@ Your message is deleted immediately when using /secret set to keep credentials o
         for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
       } else {
         await sendHtml(ctx, response).catch(() => {});
+      }
+
+      if (usage && model) {
+        const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+        const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens/1000).toFixed(1)}k` : usage.input_tokens;
+        const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens/1000).toFixed(1)}k` : usage.output_tokens;
+        const dur = statusStart ? ((Date.now() - statusStart)/1000).toFixed(1) : null;
+        const parts = [`◈ ${tag}`, `${tokIn} in`, `${tokOut} out`];
+        if (dur) parts.push(`${dur}s`);
+        await ctx.reply(`<code>${parts.join(' ▪ ')}</code>`, { parse_mode: 'HTML' }).catch(() => {});
       }
 
       if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
@@ -1100,9 +1217,8 @@ Your message is deleted immediately when using /secret set to keep credentials o
 function formatTraits(traits) {
   const maxLen = Math.max(...Object.keys(traits).map(k => k.length));
   return Object.entries(traits).map(([name, val]) => {
-    const filled = Math.round(val / 5);
-    const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
-    return `${name.charAt(0).toUpperCase() + name.slice(1).padEnd(maxLen)} ${bar} ${val}`;
+    const label = (name.charAt(0).toUpperCase() + name.slice(1)).padEnd(maxLen + 1);
+    return `  ${label}${termBar(val)} ${val}`;
   }).join('\n');
 }
 
