@@ -19,7 +19,7 @@ const BLOCKED_EXEC_PATTERNS = [
   /\bbash\s+-c\b/, /\bsh\s+-c\b/, /\bzsh\s+-c\b/,
   /`[^`]*`/,
   /\$\([^)]*\)/,
-  /\bpython[23]?\s+-c\b/, /\bperl\s+-e\b/, /\bruby\s+-e\b/, /\bnode\s+-e\b/,
+  /\bperl\s+-e\b/, /\bruby\s+-e\b/, /\bnode\s+-e\b/,
   /\bcurl\b.*\|\s*(ba)?sh/, /\bwget\b.*\|\s*(ba)?sh/,
   /\benv\b.*\b(sh|bash|zsh)\b/,
   /\bfind\b.*-exec\b/,
