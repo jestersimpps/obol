@@ -9,15 +9,21 @@ async function getEdgeTTS() {
 }
 
 async function synthesize(text, voice = 'en-US-JennyNeural', options = {}) {
-  const tts = await getEdgeTTS();
-
   const synthOpts = {};
   if (options.rate) synthOpts.rate = `${options.rate > 0 ? '+' : ''}${options.rate}%`;
   if (options.pitch) synthOpts.pitch = `${options.pitch > 0 ? '+' : ''}${options.pitch}Hz`;
 
-  await tts.synthesize(text, voice, synthOpts);
-  const mp3Path = await tts.toFile(`/tmp/tts-${Date.now()}`);
-  return mp3Path;
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const tts = await getEdgeTTS();
+      await tts.synthesize(text, voice, synthOpts);
+      return await tts.toFile(`/tmp/tts-${Date.now()}`);
+    } catch (e) {
+      if (attempt === maxRetries) throw e;
+      await new Promise(r => setTimeout(r, 500 * attempt));
+    }
+  }
 }
 
 async function getVoices(language, gender) {
