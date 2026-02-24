@@ -1,47 +1,59 @@
-let _EdgeTTS = null;
+const { execSync } = require('child_process');
 
-async function getEdgeTTS() {
-  if (!_EdgeTTS) {
-    const mod = await import('@andresaya/edge-tts');
-    _EdgeTTS = mod.EdgeTTS;
-  }
-  return new _EdgeTTS();
-}
+let _installed = null;
 
-async function synthesize(text, voice = 'en-US-JennyNeural', options = {}) {
-  const synthOpts = {};
-  if (options.rate) synthOpts.rate = `${options.rate > 0 ? '+' : ''}${options.rate}%`;
-  if (options.pitch) synthOpts.pitch = `${options.pitch > 0 ? '+' : ''}${options.pitch}Hz`;
-
-  const maxRetries = 3;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const tts = await getEdgeTTS();
-      await tts.synthesize(text, voice, synthOpts);
-      return await tts.toFile(`/tmp/tts-${Date.now()}`);
-    } catch (e) {
-      if (attempt === maxRetries) throw e;
-      await new Promise(r => setTimeout(r, 500 * attempt));
-    }
+function ensureInstalled() {
+  if (_installed) return;
+  try {
+    execSync('edge-tts --version', { stdio: 'pipe', timeout: 5000 });
+    _installed = true;
+  } catch {
+    console.log('[tts] Installing edge-tts...');
+    execSync('pip3 install edge-tts', { stdio: 'pipe', timeout: 60000 });
+    _installed = true;
   }
 }
 
-async function getVoices(language, gender) {
-  const tts = await getEdgeTTS();
+function synthesize(text, voice = 'en-US-JennyNeural', options = {}) {
+  ensureInstalled();
 
-  let voices;
+  const outPath = `/tmp/tts-${Date.now()}.mp3`;
+  const args = ['edge-tts', '--voice', voice, '--write-media', outPath];
+
+  if (options.rate) args.push('--rate', `${options.rate > 0 ? '+' : ''}${options.rate}%`);
+  if (options.pitch) args.push('--pitch', `${options.pitch > 0 ? '+' : ''}${options.pitch}Hz`);
+
+  args.push('--text', text);
+
+  execSync(args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' '), {
+    stdio: 'pipe',
+    timeout: 30000,
+  });
+
+  return outPath;
+}
+
+function getVoices(language, gender) {
+  ensureInstalled();
+
+  const raw = execSync('edge-tts --list-voices', { encoding: 'utf-8', timeout: 15000 });
+  const lines = raw.trim().split('\n').slice(2);
+
+  let voices = lines.map(line => {
+    const cols = line.split(/\s{2,}/);
+    return { name: cols[0], gender: cols[1], locale: cols[0]?.split('-').slice(0, 2).join('-') };
+  }).filter(v => v.name);
+
   if (language) {
-    voices = await tts.getVoicesByLanguage(language);
-  } else {
-    voices = await tts.getVoices();
+    const lang = language.toLowerCase();
+    voices = voices.filter(v => v.name.toLowerCase().startsWith(lang));
   }
-
   if (gender) {
     const g = gender.toLowerCase();
-    voices = voices.filter(v => v.Gender?.toLowerCase() === g);
+    voices = voices.filter(v => v.gender?.toLowerCase() === g);
   }
 
-  return voices.map(v => ({ name: v.ShortName, locale: v.Locale, gender: v.Gender }));
+  return voices;
 }
 
 module.exports = { synthesize, getVoices };

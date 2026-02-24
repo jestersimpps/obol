@@ -1211,7 +1211,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         await answer({ text: langCode });
         const tts = require('./tts');
         try {
-          const voices = await tts.getVoices(langCode);
+          const voices = tts.getVoices(langCode);
           if (voices.length === 0) return sendHtml(ctx, 'No voices found for that language.');
           const kb = new InlineKeyboard();
           for (const v of voices) {
@@ -1245,7 +1245,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         try {
           const langPrefix = voiceName.split('-').slice(0, 2).join('-');
           const sampleText = TTS_SAMPLES[langPrefix] || TTS_SAMPLES['en-US'];
-          const filePath = await tts.synthesize(sampleText, voiceName);
+          const filePath = tts.synthesize(sampleText, voiceName);
           const { InputFile } = require('grammy');
           await ctx.replyWithAudio(new InputFile(filePath));
           try { fs.unlinkSync(filePath); } catch {}

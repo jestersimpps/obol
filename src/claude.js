@@ -1246,7 +1246,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
         const toolPrefs = context.toolPrefs;
         const ttsConfig = toolPrefs?.get('text_to_speech')?.config || {};
         const voice = input.voice || ttsConfig.voice || 'en-US-JennyNeural';
-        const filePath = await tts.synthesize(input.text, voice, {
+        const filePath = tts.synthesize(input.text, voice, {
           rate: input.rate || ttsConfig.rate,
           pitch: input.pitch || ttsConfig.pitch,
         });
@@ -1261,7 +1261,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
 
       case 'tts_voices': {
         const tts = require('./tts');
-        const voices = await tts.getVoices(input.language, input.gender);
+        const voices = tts.getVoices(input.language, input.gender);
         if (voices.length === 0) return 'No voices found matching that filter.';
         return JSON.stringify(voices.slice(0, 30));
       }
