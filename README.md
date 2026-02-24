@@ -556,6 +556,20 @@ obol start -d
 | **Cron** | Basic node-cron | Full scheduler |
 | **Cost** | ~$9/mo | ~$9/mo+ |
 
+### Performance
+
+| | **OBOL** | **OpenClaw** (estimated) |
+|---|---|---|
+| **Cold start** | ~400ms | ~3-8s |
+| **Per-message overhead** | ~400-650ms | ~500-1100ms |
+| **Heap usage** | ~16 MB | ~80-200 MB |
+| **RSS** | ~109 MB | ~300-600 MB |
+| **node_modules** | 354 MB / 9 deps | ~1-2 GB / 50-100+ deps |
+| **Source code** | ~5,100 lines (plain JS) | Tens of thousands (TypeScript monorepo) |
+| **Native apps** | None | Swift (macOS/iOS), Kotlin (Android) |
+
+The Claude API call dominates response time at 1-5s for both — that's ~85-90% of total latency. User-perceived speed difference is ~10-20%. Where OBOL wins is cold start (10-20x), memory footprint (5-10x), and operational simplicity. On a $5/mo VPS, that matters.
+
 Different tools, different philosophies. Pick what fits.
 
 ## License
