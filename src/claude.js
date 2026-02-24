@@ -210,16 +210,18 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       try {
         const memoryDecision = await client.messages.create({
           model: 'claude-haiku-4-5',
-          max_tokens: 100,
-          system: `You are a router. Analyze this user message and decide two things:
+          max_tokens: 200,
+          system: `You are a router. Analyze this user message and decide:
 
 1. Does it need memory context? (past conversations, facts, preferences, people, events)
 2. What model complexity does it need?
 
 Reply with ONLY a JSON object:
-{"need_memory": true/false, "search_query": "optimized search query", "model": "haiku|sonnet|opus"}
+{"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "haiku|sonnet|opus"}
 
-Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true with optimized search query.
+search_queries: 1-3 optimized search queries covering different topics in the message. One query per distinct topic/entity. Single-topic messages need just one query.
+
+Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
 Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, simple factual questions with short answers, quick yes/no questions, and short single-turn exchanges that don't need deep reasoning. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.`,
           messages: [{ role: 'user', content: userMessage }],
@@ -228,11 +230,15 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
         const decisionText = memoryDecision.content[0]?.text || '';
         let decision = {};
         try {
-          const jsonStr = decisionText.match(/\{[^{}]*\}/)?.[0];
+          const jsonStr = decisionText.match(/\{[\s\S]*\}/)?.[0];
           if (jsonStr) decision = JSON.parse(jsonStr);
         } catch {}
 
-        vlog(`[router] model=${decision.model || 'sonnet'} memory=${decision.need_memory || false}${decision.search_query ? ` query="${decision.search_query}"` : ''}`);
+        const queries = Array.isArray(decision.search_queries) && decision.search_queries.length > 0
+          ? decision.search_queries.slice(0, 3)
+          : decision.search_query ? [decision.search_query] : [];
+
+        vlog(`[router] model=${decision.model || 'sonnet'} memory=${decision.need_memory || false}${queries.length ? ` queries=${JSON.stringify(queries)}` : ''}`);
 
         context._onRouteDecision?.({
           model: decision.model || 'sonnet',
@@ -247,27 +253,37 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
         }
 
         if (decision.need_memory) {
-          const query = decision.search_query || userMessage;
+          const memoryBudget = decision.model === 'opus' ? 12 : decision.model === 'haiku' ? 4 : 8;
+          const searchQueries = queries.length > 0 ? queries : [userMessage];
 
-          const todayMemories = await memory.byDate('today', { limit: 3 });
-          const semanticMemories = await memory.search(query, { limit: 3, threshold: 0.5 });
+          const recentMemories = await memory.byDate('2d', { limit: Math.ceil(memoryBudget / 3) });
+
+          const semanticResults = await Promise.all(
+            searchQueries.map(q => memory.search(q, { limit: Math.ceil(memoryBudget / searchQueries.length), threshold: 0.4 }))
+          );
+          const semanticMemories = semanticResults.flat();
 
           const seen = new Set();
           const combined = [];
-          for (const m of [...todayMemories, ...semanticMemories]) {
+          for (const m of [...recentMemories, ...semanticMemories]) {
             if (!seen.has(m.id)) {
               seen.add(m.id);
+              const recencyBonus = m.created_at ? Math.max(0, 1 - (Date.now() - new Date(m.created_at).getTime()) / (7 * 86400000)) * 0.15 : 0;
+              m._score = (m.similarity || 0.5) * 0.6 + (m.importance || 0.5) * 0.25 + recencyBonus;
               combined.push(m);
             }
           }
 
-          vlog(`[memory] ${combined.length} memories found (${todayMemories.length} today, ${semanticMemories.length} semantic)`);
+          combined.sort((a, b) => b._score - a._score);
+          const topMemories = combined.slice(0, memoryBudget);
 
-          context._onRouteUpdate?.({ memoryCount: combined.length });
+          vlog(`[memory] ${topMemories.length}/${combined.length} memories (${recentMemories.length} recent, ${semanticMemories.length} semantic, budget=${memoryBudget})`);
 
-          if (combined.length > 0) {
+          context._onRouteUpdate?.({ memoryCount: topMemories.length });
+
+          if (topMemories.length > 0) {
             memoryContext = '\n\n[Relevant memories]\n' +
-              combined.map(m => `- [${m.category}] ${m.content}`).join('\n');
+              topMemories.map(m => `- [${m.category}] ${m.content}`).join('\n');
           }
         }
       } catch (e) {

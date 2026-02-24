@@ -61,8 +61,8 @@ User message
     ↓             ↓
 Memory recall   Model selection
     ↓             ↓
-Today's top 3   Sonnet (default)
-+ semantic 3    or Opus (complex)
+Multi-query     Sonnet (default)
+ranked recall   or Opus (complex)
     ↓             ↓
     └──────┬──────┘
            ↓
@@ -89,12 +89,25 @@ Extract facts      Growth analysis →
 
 Every message is stored verbatim in `obol_messages`. On restart, OBOL loads the last 20 so it never starts blank.
 
-Every 5 exchanges, Haiku extracts important facts into `obol_memory` (pgvector). When OBOL needs past context, the Haiku router decides if memory is needed, rewrites the query for better embedding hits, and combines:
-- **Today's memories** (up to 3, recency bias)
-- **Semantic search** (up to 3, threshold 0.5)
-- Deduped by ID
+**Storage:** Every 5 exchanges, Haiku extracts important facts into `obol_memory` (pgvector). Before storing, each fact is checked against existing memories via semantic similarity (threshold 0.92) — near-duplicates are skipped. Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
-Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
+**Retrieval:** When OBOL needs past context, the Haiku router analyzes the message and generates 1-3 search queries — one per distinct topic. A message like "what was that python project? also what's my colleague's timezone?" produces two parallel searches instead of one lossy combined query.
+
+Results come from two sources run in parallel:
+- **Recent memories** (last 48h) — captures ongoing conversation threads
+- **Semantic search** (per query, threshold 0.4) — finds relevant facts regardless of age
+
+All results are deduplicated by ID, then ranked by a composite score:
+
+| Factor | Weight | Why |
+|--------|--------|-----|
+| Semantic similarity | 60% | How relevant is this to the current query |
+| Importance | 25% | Critical facts outrank trivia |
+| Recency | 15% | Linear decay over 7 days — today's memories get a boost, anything older than a week gets no bonus |
+
+The memory budget scales with model complexity — haiku conversations get 4 memories, sonnet gets 8, opus gets 12. Top N by score are injected into the message.
+
+A 1-year-old memory with high similarity and high importance still surfaces. A trivial fact from yesterday with low relevance doesn't. Age alone never disqualifies a memory — the vector search doesn't care when something was stored, only how well it matches.
 
 ### Layer 2: The Evolution Cycle
 
@@ -497,8 +510,8 @@ obol delete            # Full VPS cleanup (removes all OBOL data)
 ├── users/
 │   └── <telegram-user-id>/        # Per-user isolated context
 │       ├── personality/
-│       │   ├── SOUL.md            # Bot personality (rewritten every 100 exchanges)
-│       │   ├── USER.md            # Owner profile (rewritten every 100 exchanges)
+│       │   ├── SOUL.md            # Bot personality (rewritten each evolution)
+│       │   ├── USER.md            # Owner profile (rewritten each evolution)
 │       │   ├── AGENTS.md          # Operational knowledge
 │       │   └── evolution/         # Archived previous souls
 │       ├── scripts/               # Deterministic utility scripts
