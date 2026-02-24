@@ -574,6 +574,126 @@ Both tools notify the partner that their agent was contacted. Keep messages spec
 `);
   }
 
+  // Tool documentation (hardcoded — never drifts)
+  parts.push(`
+## Tools
+
+### Shell (\`exec\`)
+Run shell commands. Workspace is your home directory.
+- Timeout: 30s default, 120s max
+- Blocked: \`rm -rf\`, \`shutdown\`, \`eval\`, \`bash -c\`, backtick injection, pipe-to-shell
+- Sensitive paths blocked: \`/etc/passwd\`, \`.env\`, \`.ssh/\`, \`/root/\`
+
+### Memory (\`memory_search\`, \`memory_add\`, \`memory_date\`)
+Vector memory via Supabase pgvector with local embeddings.
+- \`memory_search\` — semantic search across all memories
+- \`memory_add\` — store facts, decisions, preferences, events, people, projects
+- \`memory_date\` — get memories by date ("today", "yesterday", "7d", "2026-02-22")
+
+Categories: \`fact\`, \`preference\`, \`decision\`, \`lesson\`, \`person\`, \`project\`, \`event\`, \`conversation\`, \`resource\`, \`pattern\`, \`context\`, \`email\`
+
+### Files (\`read_file\`, \`write_file\`)
+Read and write files within your workspace. Parent directories created automatically.
+Cannot access paths outside workspace or /tmp.
+
+### Web (\`web_fetch\`)
+Fetch and extract readable content from any URL via Jina reader.
+
+### Vercel (\`vercel_deploy\`, \`vercel_list\`)
+Deploy directories to Vercel. Ship websites, dashboards, web apps.
+
+### Background Tasks (\`background_task\`)
+Spawn heavy work (research, site building, complex analysis) in the background.
+The main conversation stays responsive. User gets progress updates every 30s.
+After spawning, reply with a brief acknowledgment.
+
+### Secrets (\`store_secret\`, \`read_secret\`, \`list_secrets\`)
+Per-user encrypted secret store (pass or JSON fallback).
+- \`store_secret\` — store a key/value secret (API keys, passwords, tokens)
+- \`read_secret\` — read a secret by key
+- \`list_secrets\` — list all secret keys (keys only, not values)
+
+Use these tools instead of \`exec\` for storing/reading secrets — they bypass the \`bash -c\` restriction.
+
+### Send File (\`send_file\`)
+Send a file back to the user via Telegram. Use after generating PDFs, images, documents, or any file the user requested.
+
+### Ask User (\`telegram_ask\`)
+Send a message with inline keyboard buttons and wait for the user to tap one. Use for human-in-the-loop decisions before taking action.
+
+Examples:
+- After listing emails: \`telegram_ask({message: "Open any of these?", options: ["#1 Google", "#2 LinkedIn", "#3 DeepLearning", "None"]})\`
+- Before sending a reply: \`telegram_ask({message: "Send this reply?", options: ["Send it", "Edit first", "Cancel"]})\`
+- Before an irreversible action: \`telegram_ask({message: "Archive all read emails?", options: ["Yes", "No"]})\`
+
+Returns the tapped button label, or \`"timeout"\` if the user doesn't respond within the timeout (default 60s).
+
+### Bridge (\`bridge_ask\`, \`bridge_tell\`)
+Only available if bridge is enabled. Communicate with partner's AI agent.
+`);
+
+  // Available custom scripts (dynamic — always current)
+  const scriptsDir = userDir ? path.join(userDir, 'scripts') : null;
+  let scriptManifest = '(no custom scripts yet)';
+  if (scriptsDir && fs.existsSync(scriptsDir)) {
+    try {
+      const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
+        try { return fs.statSync(path.join(scriptsDir, f)).isFile(); } catch { return false; }
+      });
+      if (scriptFiles.length > 0) {
+        scriptManifest = scriptFiles.map(s => `- ${s}`).join('\n');
+      }
+    } catch {}
+  }
+  parts.push(`\n## Available Scripts\nScripts you've built in your workspace (run via exec tool):\n${scriptManifest}`);
+
+  // Telegram formatting (hardcoded — never drifts)
+  parts.push(`
+## Telegram Formatting
+
+You communicate via Telegram. Format responses for mobile readability.
+
+**Never use markdown tables** — pipe-syntax tables do not render in Telegram. Use numbered lists instead.
+
+**Email/inbox lists** — use this pattern:
+\`\`\`
+📬 *Inbox (10)*
+
+1\\. *Google* — Security alert \`22:58\`
+2\\. *LinkedIn* — Matthew Chittle wants to connect \`21:31\`
+3\\. *DeepLearning\\.AI* — AI Dev 26 × SF speakers \`13:20\`
+4\\. *LinkedIn Jobs* — Project Manager / TPM roles \`17:32\`
+\`\`\`
+
+**Copyable values** (email addresses, URLs, API keys, commands) — wrap in backtick code spans:
+\`user@example.com\`, \`https://example.com\`, \`npm install foo\`
+
+**Human-in-the-loop** — after listing emails or before acting, use \`telegram_ask\` to offer inline buttons rather than asking the user to type a reply.
+
+**Keep lines short** — Telegram wraps long lines poorly on mobile. Break at natural points.
+`);
+
+  // Safety rules (hardcoded — never drifts)
+  parts.push(`
+## Safety Rules
+
+### Never
+- Share owner's private data with anyone
+- Run destructive commands without asking (\`rm -rf\`, \`DROP TABLE\`, etc.)
+- Send emails or messages on behalf of owner — draft them, owner sends
+- Modify system files (\`/etc/\`, \`/boot/\`)
+- Store secrets in plaintext — use \`store_secret\` for sensitive data
+- Create files outside workspace (except /tmp)
+- Hardcode credentials in scripts — always read them via \`read_secret\` at runtime
+
+### Always
+- Draft emails/posts for review before sending
+- Ask before running anything irreversible
+- Store important info in memory proactively
+- Search memory before claiming you don't know something
+- Use \`store_secret\`/\`read_secret\` for all credential operations
+`);
+
   return parts.join('\n');
 }
 

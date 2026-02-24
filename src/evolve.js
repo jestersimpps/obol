@@ -284,7 +284,15 @@ Third person factual profile: name, location, timezone, nationality, job, skills
 
 ## Part 3: AGENTS.md (how to operate)
 
-Operational manual written as instructions to yourself. **Preserve ALL existing tool documentation** — tools don't change between evolutions. Add owner-specific rules discovered from conversations. Add workflow patterns that work well. Keep what works, remove what doesn't. Sections to maintain: Tools, Memory Strategy, Safety Rules, Workspace Structure, Background Task Guidelines, Communication Style, Evolution.
+Operational manual written as instructions to yourself. Focus on owner-specific workflows, service integrations, and lessons learned from conversations.
+
+**Do NOT include in AGENTS.md** — these are already hardcoded in the base system prompt and must not be duplicated:
+- Tool documentation (exec, memory_*, read_file, write_file, web_fetch, vercel_*, background_task, store_secret, read_secret, list_secrets, send_file, telegram_ask, bridge_*)
+- Telegram Formatting rules
+- Safety Rules (Never/Always)
+- Workspace Structure
+
+**What belongs in AGENTS.md:** Memory Strategy, Self-Extending patterns, Scripts & Service Integrations, Background Task Guidelines, Communication Style, Evolution notes, and any owner-specific workflows or lessons discovered from conversations. Keep what works, remove what doesn't.
 
 ## Part 3b: Personality Traits
 
