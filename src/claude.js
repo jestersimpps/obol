@@ -243,7 +243,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     if (memory) {
       try {
         const memoryDecision = await client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-4-5',
           max_tokens: 100,
           system: `You are a router. Analyze this user message and decide two things:
 
@@ -251,11 +251,11 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 2. What model complexity does it need?
 
 Reply with ONLY a JSON object:
-{"need_memory": true/false, "search_query": "optimized search query", "model": "sonnet|opus"}
+{"need_memory": true/false, "search_query": "optimized search query", "model": "haiku|sonnet|opus"}
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true with optimized search query.
 
-Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single-step work). Use "opus" ONLY for: complex multi-step research, architecture/design decisions, long-form writing, deep analysis, debugging complex code, tasks requiring exceptional reasoning.`,
+Model: Use "haiku" for: casual chat, greetings, simple factual questions, short replies, trivial tasks. Use "sonnet" for most things (general questions, quick tasks, single-step work, moderate reasoning). Use "opus" ONLY for: complex multi-step research, architecture/design decisions, long-form writing, deep analysis, debugging complex code, tasks requiring exceptional reasoning.`,
           messages: [{ role: 'user', content: userMessage }],
         });
 
@@ -270,6 +270,8 @@ Model: Use "sonnet" for most things (chat, simple questions, quick tasks, single
 
         if (decision.model === 'opus') {
           context._model = 'claude-opus-4-6';
+        } else if (decision.model === 'haiku') {
+          context._model = 'claude-haiku-4-5';
         }
 
         if (decision.need_memory) {
