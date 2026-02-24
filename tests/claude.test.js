@@ -29,18 +29,26 @@ vi.mock('../src/bridge', () => ({
   })),
 }));
 
-const Anthropic = require('@anthropic-ai/sdk');
 const { createAnthropicClient, createClaude } = require('../src/claude');
 
-function stubClient(client, mockFn) {
-  client.messages.create = mockFn;
+function mockRunnerResult(finalMessage) {
+  return (params) => ({
+    params: {
+      messages: [...params.messages, { role: 'assistant', content: finalMessage.content }],
+    },
+    [Symbol.asyncIterator]: async function*() { yield finalMessage; },
+  });
+}
+
+function stubToolRunner(client, mockFn) {
+  client.beta.messages.toolRunner = mockFn;
 }
 
 describe('createAnthropicClient', () => {
   it('creates client with apiKey when no oauth configured', () => {
     const client = createAnthropicClient({ apiKey: 'sk-test-key-123' });
 
-    expect(client).toBeInstanceOf(Anthropic);
+    expect(client.messages?.create).toBeTypeOf('function');
     expect(client.apiKey).toBe('sk-test-key-123');
   });
 
@@ -49,7 +57,7 @@ describe('createAnthropicClient', () => {
       oauth: { accessToken: 'oauth-access-token-abc' },
     });
 
-    expect(client).toBeInstanceOf(Anthropic);
+    expect(client.messages?.create).toBeTypeOf('function');
     expect(client.authToken).toBe('oauth-access-token-abc');
   });
 
@@ -115,91 +123,104 @@ describe('createClaude', () => {
       { personality: {}, memory: null, userDir: '/tmp/obol-test' },
     );
 
-    expect(client).toBeInstanceOf(Anthropic);
-    expect(client.messages.create).toBeTypeOf('function');
+    expect(client.messages?.create).toBeTypeOf('function');
+    expect(client.beta?.messages?.toolRunner).toBeTypeOf('function');
   });
 
   it('chat calls the API and returns text response', async () => {
-    const createSpy = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'Hello from Claude' }],
-      stop_reason: 'end_turn',
-    });
+    const runnerSpy = vi.fn().mockImplementation(
+      mockRunnerResult({
+        content: [{ type: 'text', text: 'Hello from Claude' }],
+        stop_reason: 'end_turn',
+      }),
+    );
 
     const { chat, client } = createClaude(
       { apiKey: 'sk-test' },
       { personality: {}, memory: null, userDir: '/tmp/obol-test' },
     );
-    stubClient(client, createSpy);
+    stubToolRunner(client, runnerSpy);
 
     const reply = await chat('Hi there');
 
-    expect(createSpy).toHaveBeenCalled();
+    expect(runnerSpy).toHaveBeenCalled();
     expect(reply).toBe('Hello from Claude');
   });
 
   it('chat accumulates history across calls', async () => {
-    const createSpy = vi.fn()
-      .mockResolvedValueOnce({
-        content: [{ type: 'text', text: 'First reply' }],
-        stop_reason: 'end_turn',
-      })
-      .mockResolvedValueOnce({
-        content: [{ type: 'text', text: 'Second reply' }],
-        stop_reason: 'end_turn',
-      });
+    const runnerSpy = vi.fn()
+      .mockImplementationOnce(
+        mockRunnerResult({
+          content: [{ type: 'text', text: 'First reply' }],
+          stop_reason: 'end_turn',
+        }),
+      )
+      .mockImplementationOnce(
+        mockRunnerResult({
+          content: [{ type: 'text', text: 'Second reply' }],
+          stop_reason: 'end_turn',
+        }),
+      );
 
     const { chat, client } = createClaude(
       { apiKey: 'sk-test' },
       { personality: {}, memory: null, userDir: '/tmp/obol-test' },
     );
-    stubClient(client, createSpy);
+    stubToolRunner(client, runnerSpy);
 
     await chat('First message');
     await chat('Second message');
 
-    const lastCall = createSpy.mock.calls.at(-1)[0];
-    expect(lastCall.messages.length).toBe(4);
+    const lastCall = runnerSpy.mock.calls.at(-1)[0];
+    expect(lastCall.messages.length).toBe(3);
+    expect(lastCall.messages[0].content).toBe('First message');
+    expect(lastCall.messages[1].role).toBe('assistant');
+    expect(lastCall.messages[2].content).toBe('Second message');
   });
 
   it('clearHistory resets conversation for a specific chatId', async () => {
-    const createSpy = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'reply' }],
-      stop_reason: 'end_turn',
-    });
+    const runnerSpy = vi.fn().mockImplementation(
+      mockRunnerResult({
+        content: [{ type: 'text', text: 'reply' }],
+        stop_reason: 'end_turn',
+      }),
+    );
 
     const { chat, client, clearHistory } = createClaude(
       { apiKey: 'sk-test' },
       { personality: {}, memory: null, userDir: '/tmp/obol-test' },
     );
-    stubClient(client, createSpy);
+    stubToolRunner(client, runnerSpy);
 
     await chat('msg', { chatId: 'session-1' });
     clearHistory('session-1');
     await chat('fresh start', { chatId: 'session-1' });
 
-    const lastCall = createSpy.mock.calls.at(-1)[0];
+    const lastCall = runnerSpy.mock.calls.at(-1)[0];
     expect(lastCall.messages[0].content).toBe('fresh start');
     expect(lastCall.messages[0].role).toBe('user');
   });
 
   it('clearHistory with no chatId clears all histories', async () => {
-    const createSpy = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'reply' }],
-      stop_reason: 'end_turn',
-    });
+    const runnerSpy = vi.fn().mockImplementation(
+      mockRunnerResult({
+        content: [{ type: 'text', text: 'reply' }],
+        stop_reason: 'end_turn',
+      }),
+    );
 
     const { chat, client, clearHistory } = createClaude(
       { apiKey: 'sk-test' },
       { personality: {}, memory: null, userDir: '/tmp/obol-test' },
     );
-    stubClient(client, createSpy);
+    stubToolRunner(client, runnerSpy);
 
     await chat('msg1', { chatId: 'a' });
     await chat('msg2', { chatId: 'b' });
     clearHistory();
     await chat('fresh', { chatId: 'a' });
 
-    const lastCall = createSpy.mock.calls.at(-1)[0];
+    const lastCall = runnerSpy.mock.calls.at(-1)[0];
     expect(lastCall.messages[0].content).toBe('fresh');
     expect(lastCall.messages[0].role).toBe('user');
   });

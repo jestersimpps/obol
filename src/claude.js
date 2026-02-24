@@ -336,81 +336,47 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
     const model = context._model || 'claude-sonnet-4-6';
     vlog(`[model] ${model} | history=${history.length} msgs`);
     const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
-    let response = await client.messages.create({
+    const runnableTools = buildRunnableTools(tools, memory, context, vlog);
+
+    const runner = client.beta.messages.toolRunner({
       model,
       max_tokens: 4096,
       system: systemPrompt,
-      messages: history,
-      tools: tools.length > 0 ? tools : undefined,
+      messages: [...history],
+      tools: runnableTools.length > 0 ? runnableTools : undefined,
+      max_iterations: MAX_TOOL_ITERATIONS,
     });
 
-    let toolIterations = 0;
-    while (response.stop_reason === 'tool_use') {
-      toolIterations++;
-      if (toolIterations > MAX_TOOL_ITERATIONS) {
-        const bailoutContent = response.content;
-        history.push({ role: 'assistant', content: bailoutContent });
-        const bailoutResults = bailoutContent
-          .filter(b => b.type === 'tool_use')
-          .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '[max tool iterations reached]' }));
-        history.push({ role: 'user', content: [
-          ...bailoutResults,
-          { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
-        ] });
-        response = await client.messages.create({
-          model,
-          max_tokens: 4096,
-          system: systemPrompt,
-          messages: history,
-        });
-        break;
+    let finalMessage;
+    for await (const message of runner) {
+      finalMessage = message;
+      if (message.usage) {
+        vlog(`[tokens] in=${message.usage.input_tokens} out=${message.usage.output_tokens}`);
       }
+    }
 
-      const assistantContent = response.content;
-      history.push({ role: 'assistant', content: assistantContent });
+    const runnerMessages = runner.params.messages;
+    const newMessages = runnerMessages.slice(history.length);
+    for (const msg of newMessages) {
+      history.push(msg);
+    }
 
-      const toolResults = [];
-      for (const block of assistantContent) {
-        if (block.type === 'tool_use') {
-          const inputSummary = block.name === 'exec' ? block.input.command :
-            block.name === 'write_file' ? block.input.path :
-            block.name === 'read_file' ? block.input.path :
-            block.name === 'memory_search' ? block.input.query :
-            block.name === 'memory_add' ? `[${block.input.category || 'fact'}]` :
-            block.name === 'web_fetch' ? block.input.url :
-            block.name === 'background_task' ? block.input.task?.substring(0, 60) :
-            JSON.stringify(block.input).substring(0, 80);
-          vlog(`[tool] ${block.name}: ${inputSummary}`);
-          const result = await executeToolCall(block, memory, context);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: result,
-          });
-        }
-      }
-
-      history.push({ role: 'user', content: toolResults });
-
-      response = await client.messages.create({
-        model,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: history,
-        tools,
+    if (finalMessage.stop_reason === 'tool_use') {
+      const bailoutResults = finalMessage.content
+        .filter(b => b.type === 'tool_use')
+        .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: '[max tool iterations reached]' }));
+      history.push({ role: 'user', content: [
+        ...bailoutResults,
+        { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
+      ] });
+      const bailoutResponse = await client.messages.create({
+        model, max_tokens: 4096, system: systemPrompt, messages: history,
       });
+      history.push({ role: 'assistant', content: bailoutResponse.content });
+      return bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     }
 
-    const textBlocks = response.content.filter(b => b.type === 'text');
-    const replyText = textBlocks.map(b => b.text).join('\n');
-
-    if (response.usage) {
-      vlog(`[tokens] in=${response.usage.input_tokens} out=${response.usage.output_tokens}`);
-    }
-
-    history.push({ role: 'assistant', content: response.content });
-
-    return replyText;
+    return finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
 
     } catch (e) {
       if (e.status === 400 && e.message?.includes('tool_use')) {
@@ -900,6 +866,24 @@ function buildTools(memory, opts = {}) {
   }
 
   return tools;
+}
+
+function buildRunnableTools(tools, memory, context, vlog) {
+  return tools.map(tool => ({
+    ...tool,
+    run: async (input) => {
+      const inputSummary = tool.name === 'exec' ? input.command :
+        tool.name === 'write_file' ? input.path :
+        tool.name === 'read_file' ? input.path :
+        tool.name === 'memory_search' ? input.query :
+        tool.name === 'memory_add' ? `[${input.category || 'fact'}]` :
+        tool.name === 'web_fetch' ? input.url :
+        tool.name === 'background_task' ? input.task?.substring(0, 60) :
+        JSON.stringify(input).substring(0, 80);
+      vlog(`[tool] ${tool.name}: ${inputSummary}`);
+      return await executeToolCall({ name: tool.name, input }, memory, context);
+    },
+  }));
 }
 
 function resolveUserPath(inputPath, userDir) {
