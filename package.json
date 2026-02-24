@@ -30,6 +30,7 @@
     "inquirer": "^8.2.6",
     "node-cron": "^3.0.3",
     "open": "^8.4.2",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.17.2"
   },
   "engines": {

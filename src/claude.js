@@ -731,7 +731,7 @@ function buildTools(memory, opts = {}) {
   // Read/write files
   tools.push({
     name: 'read_file',
-    description: 'Read contents of a file.',
+    description: 'Read contents of a file. Supports text files and PDFs (extracts text from PDF automatically).',
     input_schema: {
       type: 'object',
       properties: {
@@ -1043,6 +1043,13 @@ async function executeToolCall(toolUse, memory, context = {}) {
 
       case 'read_file': {
         const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+        if (filePath.toLowerCase().endsWith('.pdf')) {
+          const pdfParse = require('pdf-parse');
+          const pdfBuffer = fs.readFileSync(filePath);
+          const { text } = await pdfParse(pdfBuffer);
+          const truncatedPdf = text.substring(0, 50000);
+          return text.length > 50000 ? truncatedPdf + '\n...(truncated)' : truncatedPdf;
+        }
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const truncatedFile = fileContent.substring(0, 50000);
         return fileContent.length > 50000 ? truncatedFile + '\n...(truncated)' : truncatedFile;

@@ -750,9 +750,11 @@ Your message is deleted immediately when using /secret set to keep credentials o
         } else {
           await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
         }
-      } else if (caption) {
-        const contextMsg = `[User sent a ${fileInfo.mediaType}: ${filename}] ${caption}`;
-        const mediaCaptionCtx = {
+      } else {
+        const contextMsg = caption
+          ? `[User sent a ${fileInfo.mediaType}: ${filename}, saved at ${savedPath}] ${caption}`
+          : `[User sent a ${fileInfo.mediaType}: ${filename}, saved at ${savedPath}. Use read_file to read its contents if needed.]`;
+        const mediaChatCtx = {
           userId,
           userName: ctx.from.first_name || 'User',
           chatId: ctx.chat.id,
@@ -771,12 +773,12 @@ Your message is deleted immediately when using /secret set to keep credentials o
             return bot.api.sendMessage(targetUserId, message);
           },
         };
-        const { text: response, usage, model } = await tenant.claude.chat(contextMsg, mediaCaptionCtx);
+        const { text: response, usage, model } = await tenant.claude.chat(contextMsg, mediaChatCtx);
 
         stopTyping();
         if (!response?.trim()) return;
 
-        tenant.messageLog?.log(ctx.chat.id, 'user', contextMsg);
+        tenant.messageLog?.log(ctx.chat.id, 'user', `[${fileInfo.mediaType}] ${filename}${caption ? `: ${caption}` : ''}`);
         tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
 
         if (response.length > 4096) {
@@ -786,9 +788,6 @@ Your message is deleted immediately when using /secret set to keep credentials o
         } else {
           await ctx.reply(response, { parse_mode: 'Markdown' }).catch(() => ctx.reply(response));
         }
-      } else {
-        stopTyping();
-        await ctx.reply(`Got it — saved ${filename}`);
       }
     } catch (e) {
       stopTyping();
