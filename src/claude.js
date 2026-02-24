@@ -1252,11 +1252,7 @@ async function executeToolCall(toolUse, memory, context = {}) {
         });
         try {
           const { InputFile } = require('grammy');
-          if (filePath.endsWith('.ogg')) {
-            await telegramCtx.replyWithVoice(new InputFile(filePath));
-          } else {
-            await telegramCtx.replyWithAudio(new InputFile(filePath));
-          }
+          await telegramCtx.replyWithAudio(new InputFile(filePath));
           return `Voice message sent (voice: ${voice})`;
         } finally {
           try { fs.unlinkSync(filePath); } catch {}

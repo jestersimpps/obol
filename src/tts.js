@@ -1,34 +1,27 @@
-const path = require('path');
-const { execSync } = require('child_process');
+let _EdgeTTS = null;
+
+async function getEdgeTTS() {
+  if (!_EdgeTTS) {
+    const mod = await import('@andresaya/edge-tts');
+    _EdgeTTS = mod.EdgeTTS;
+  }
+  return new _EdgeTTS();
+}
 
 async function synthesize(text, voice = 'en-US-JennyNeural', options = {}) {
-  const { EdgeTTS } = await import('@andresaya/edge-tts');
-  const tts = new EdgeTTS();
+  const tts = await getEdgeTTS();
 
   const synthOpts = {};
   if (options.rate) synthOpts.rate = `${options.rate > 0 ? '+' : ''}${options.rate}%`;
   if (options.pitch) synthOpts.pitch = `${options.pitch > 0 ? '+' : ''}${options.pitch}Hz`;
 
   await tts.synthesize(text, voice, synthOpts);
-  const basePath = `/tmp/tts-${Date.now()}`;
-  const mp3Path = await tts.toFile(basePath);
-
-  try {
-    const oggPath = `${basePath}.ogg`;
-    execSync(`ffmpeg -i "${mp3Path}" -c:a libopus -b:a 64k "${oggPath}" -y`, {
-      timeout: 30000,
-      stdio: 'pipe',
-    });
-    require('fs').unlinkSync(mp3Path);
-    return oggPath;
-  } catch {
-    return mp3Path;
-  }
+  const mp3Path = await tts.toFile(`/tmp/tts-${Date.now()}`);
+  return mp3Path;
 }
 
 async function getVoices(language, gender) {
-  const { EdgeTTS } = await import('@andresaya/edge-tts');
-  const tts = new EdgeTTS();
+  const tts = await getEdgeTTS();
 
   let voices;
   if (language) {

@@ -1232,11 +1232,7 @@ Your message is deleted immediately when using /secret set to keep credentials o
         try {
           const filePath = await tts.synthesize(TTS_SAMPLE, voiceName);
           const { InputFile } = require('grammy');
-          if (filePath.endsWith('.ogg')) {
-            await ctx.replyWithVoice(new InputFile(filePath));
-          } else {
-            await ctx.replyWithAudio(new InputFile(filePath));
-          }
+          await ctx.replyWithAudio(new InputFile(filePath));
           try { fs.unlinkSync(filePath); } catch {}
 
           const kb = new InlineKeyboard();
