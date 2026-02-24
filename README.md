@@ -16,7 +16,9 @@ One process. Multiple users. Each brain grows independently.
 
 🧠 **Living memory** — Vector memory with semantic search. Haiku routes queries and rewrites them for better embedding hits. Free local embeddings.
 
-🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? No wasted API calls.
+🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? No wasted API calls
+
+💰 **Prompt caching** — Static system prompt and conversation history prefix are cached via Anthropic's prompt caching, cutting ~85% of repeated input token costs across turns
 
 🛡️ **Self-hardening** — Auto-configures SSH (port 2222), firewall, fail2ban, encrypted secrets, and kernel hardening on first run.
 
@@ -72,7 +74,7 @@ ranked recall   or Opus (complex)
            ↓
    ┌───────┴────────┐
    ↓                ↓
-Every 5 msgs     24h + 10 exchanges
+Every 10 msgs    24h + 10 exchanges
    ↓                ↓
 Haiku              Sonnet
 consolidation      evolution cycle
@@ -89,7 +91,7 @@ Extract facts      Growth analysis →
 
 Every message is stored verbatim in `obol_messages`. On restart, OBOL loads the last 20 so it never starts blank.
 
-**Storage:** Every 5 exchanges, Haiku extracts important facts into `obol_memory` (pgvector). Before storing, each fact is checked against existing memories via semantic similarity (threshold 0.92) — near-duplicates are skipped. Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
+**Storage:** Every 10 exchanges, Haiku extracts important facts into `obol_memory` (pgvector). Before storing, each fact is checked against existing memories via semantic similarity (threshold 0.92) — near-duplicates are skipped. Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
 **Retrieval:** When OBOL needs past context, the Haiku router analyzes the message and generates 1-3 search queries — one per distinct topic. A message like "what was that python project? also what's my colleague's timezone?" produces two parallel searches instead of one lossy combined query.
 
@@ -180,7 +182,7 @@ Day 1:   obol init → obol start → first conversation
          → OBOL responds naturally from message one
          → post-setup hardens your VPS automatically
 
-Day 1:   Every 5 messages → Haiku extracts facts to vector memory
+Day 1:   Every 10 messages → Haiku extracts facts to vector memory
 
 Day 2:   Evolution #1 → growth analysis + Sonnet rewrites everything
          → voice shifts from generic to personal

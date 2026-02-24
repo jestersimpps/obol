@@ -60,6 +60,23 @@ const SENSITIVE_READ_PATHS = [
   /\/root\//,
 ];
 
+function withCacheBreakpoints(messages) {
+  if (messages.length < 2) return messages;
+  const result = messages.slice();
+  const idx = result.length - 2;
+  const msg = { ...result[idx] };
+  if (typeof msg.content === 'string') {
+    msg.content = [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }];
+  } else if (Array.isArray(msg.content)) {
+    const last = msg.content.length - 1;
+    msg.content = msg.content.map((block, i) =>
+      i === last ? { ...block, cache_control: { type: 'ephemeral' } } : block
+    );
+  }
+  result[idx] = msg;
+  return result;
+}
+
 function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
   if (useOAuth && anthropicConfig.oauth?.accessToken) {
     return new Anthropic({
@@ -305,7 +322,10 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
 
     const model = context._model || 'claude-sonnet-4-6';
     vlog(`[model] ${model} | history=${history.length} msgs`);
-    const systemPrompt = baseSystemPrompt + `\nCurrent time: ${new Date().toISOString()}`;
+    const systemPrompt = [
+      { type: 'text', text: baseSystemPrompt, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: `\nCurrent time: ${new Date().toISOString()}` },
+    ];
     context._reloadPersonality = reloadPersonality;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
 
@@ -313,19 +333,24 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
       model,
       max_tokens: 4096,
       system: systemPrompt,
-      messages: [...history],
+      messages: withCacheBreakpoints([...history]),
       tools: runnableTools.length > 0 ? runnableTools : undefined,
       max_iterations: MAX_TOOL_ITERATIONS,
     }, { signal: abortController.signal });
 
     let finalMessage;
-    let totalUsage = { input_tokens: 0, output_tokens: 0 };
+    let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
     for await (const message of runner) {
       finalMessage = message;
       if (message.usage) {
         totalUsage.input_tokens += message.usage.input_tokens || 0;
         totalUsage.output_tokens += message.usage.output_tokens || 0;
-        vlog(`[tokens] in=${message.usage.input_tokens} out=${message.usage.output_tokens}`);
+        totalUsage.cache_creation_input_tokens += message.usage.cache_creation_input_tokens || 0;
+        totalUsage.cache_read_input_tokens += message.usage.cache_read_input_tokens || 0;
+        const cacheInfo = (message.usage.cache_read_input_tokens || message.usage.cache_creation_input_tokens)
+          ? ` cache_read=${message.usage.cache_read_input_tokens || 0} cache_create=${message.usage.cache_creation_input_tokens || 0}`
+          : '';
+        vlog(`[tokens] in=${message.usage.input_tokens} out=${message.usage.output_tokens}${cacheInfo}`);
       }
     }
 
@@ -342,7 +367,7 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
       ]);
       const bailoutResponse = await client.messages.create({
-        model, max_tokens: 4096, system: systemPrompt, messages: [...histories.get(chatId)],
+        model, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, bailoutResponse.content);
       if (bailoutResponse.usage) {
@@ -359,7 +384,7 @@ Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (t
       vlog('[claude] No text in final response after tool use — forcing summary');
       histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
       const summaryResponse = await client.messages.create({
-        model, max_tokens: 4096, system: systemPrompt, messages: [...histories.get(chatId)],
+        model, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, summaryResponse.content);
       if (summaryResponse.usage) {

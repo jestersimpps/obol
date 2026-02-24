@@ -112,10 +112,10 @@ describe('messages', () => {
       expect(mockCheckEvolution).not.toHaveBeenCalled();
     });
 
-    it('triggers consolidation after 5 assistant messages', async () => {
+    it('triggers consolidation after 10 assistant messages', async () => {
       const consolidateSpy = vi.spyOn(messageLog, 'consolidate').mockResolvedValue(undefined);
 
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 10; i++) {
         mockFetchOk({});
         await messageLog.log('chat-1', 'assistant', `response ${i}`);
       }

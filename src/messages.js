@@ -61,8 +61,8 @@ class MessageLog {
       this.exchangeCount.set(chatId, count);
       this._lastActivity.set(chatId, Date.now());
 
-      // Consolidate every 5 exchanges
-      if (count >= 5) {
+      // Consolidate every 10 exchanges
+      if (count >= 10) {
         this.exchangeCount.set(chatId, 0);
         this.consolidate(chatId).catch(e => console.error('[consolidate] Failed:', e.message));
       }
