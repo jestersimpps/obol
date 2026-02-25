@@ -1,3 +1,6 @@
+## 0.2.20
+- increase tool iterations to 100 and max tokens to 128K
+
 ## 0.2.19
 - add location, venue, contact, poll message support
 - update changelog
