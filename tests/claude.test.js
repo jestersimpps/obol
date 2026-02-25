@@ -36,7 +36,7 @@ function mockRunnerResult(finalMessage) {
     params: {
       messages: [...params.messages, { role: 'assistant', content: finalMessage.content }],
     },
-    [Symbol.asyncIterator]: async function*() { yield finalMessage; },
+    [Symbol.asyncIterator]: async function*() { yield { finalMessage: async () => finalMessage }; },
   });
 }
 
