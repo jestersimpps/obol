@@ -95,9 +95,46 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     ];
     context._reloadPersonality = reloadPersonality;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
+    let activeModel = model;
+
+    let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+
+    function trackUsage(usage) {
+      if (!usage) return;
+      totalUsage.input_tokens += usage.input_tokens || 0;
+      totalUsage.output_tokens += usage.output_tokens || 0;
+      totalUsage.cache_creation_input_tokens += usage.cache_creation_input_tokens || 0;
+      totalUsage.cache_read_input_tokens += usage.cache_read_input_tokens || 0;
+      const cacheInfo = (usage.cache_read_input_tokens || usage.cache_creation_input_tokens)
+        ? ` cache_read=${usage.cache_read_input_tokens || 0} cache_create=${usage.cache_creation_input_tokens || 0}`
+        : '';
+      vlog(`[tokens] in=${usage.input_tokens} out=${usage.output_tokens}${cacheInfo}`);
+    }
+
+    if (activeModel.includes('haiku') && runnableTools.length > 0) {
+      const toolDefs = runnableTools.map(({ run, ...def }) => def);
+      const probe = await client.messages.create({
+        model: activeModel,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: withCacheBreakpoints([...history]),
+        tools: toolDefs,
+      }, { signal: abortController.signal });
+
+      trackUsage(probe.usage);
+
+      if (probe.stop_reason !== 'tool_use') {
+        histories.pushAssistant(chatId, probe.content);
+        const text = probe.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+        return { text, usage: totalUsage, model: activeModel };
+      }
+
+      vlog('[escalate] haiku → sonnet (tool use requested)');
+      activeModel = 'claude-sonnet-4-6';
+    }
 
     const runner = client.beta.messages.toolRunner({
-      model,
+      model: activeModel,
       max_tokens: 4096,
       system: systemPrompt,
       messages: withCacheBreakpoints([...history]),
@@ -106,19 +143,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     }, { signal: abortController.signal });
 
     let finalMessage;
-    let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
     for await (const message of runner) {
       finalMessage = message;
-      if (message.usage) {
-        totalUsage.input_tokens += message.usage.input_tokens || 0;
-        totalUsage.output_tokens += message.usage.output_tokens || 0;
-        totalUsage.cache_creation_input_tokens += message.usage.cache_creation_input_tokens || 0;
-        totalUsage.cache_read_input_tokens += message.usage.cache_read_input_tokens || 0;
-        const cacheInfo = (message.usage.cache_read_input_tokens || message.usage.cache_creation_input_tokens)
-          ? ` cache_read=${message.usage.cache_read_input_tokens || 0} cache_create=${message.usage.cache_creation_input_tokens || 0}`
-          : '';
-        vlog(`[tokens] in=${message.usage.input_tokens} out=${message.usage.output_tokens}${cacheInfo}`);
-      }
+      trackUsage(message.usage);
     }
 
     const runnerMessages = runner.params.messages;
@@ -134,15 +161,12 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
       ]);
       const bailoutResponse = await client.messages.create({
-        model, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, bailoutResponse.content);
-      if (bailoutResponse.usage) {
-        totalUsage.input_tokens += bailoutResponse.usage.input_tokens || 0;
-        totalUsage.output_tokens += bailoutResponse.usage.output_tokens || 0;
-      }
+      trackUsage(bailoutResponse.usage);
       const text = bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-      return { text, usage: totalUsage, model };
+      return { text, usage: totalUsage, model: activeModel };
     }
 
     let text = finalMessage.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
@@ -151,17 +175,14 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       vlog('[claude] No text in final response after tool use — forcing summary');
       histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
       const summaryResponse = await client.messages.create({
-        model, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, summaryResponse.content);
-      if (summaryResponse.usage) {
-        totalUsage.input_tokens += summaryResponse.usage.input_tokens || 0;
-        totalUsage.output_tokens += summaryResponse.usage.output_tokens || 0;
-      }
+      trackUsage(summaryResponse.usage);
       text = summaryResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     }
 
-    return { text, usage: totalUsage, model };
+    return { text, usage: totalUsage, model: activeModel };
 
     } catch (e) {
       if (e.message === 'Request was aborted.' || e.constructor?.name === 'APIUserAbortError') {
