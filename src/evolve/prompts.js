@@ -17,7 +17,7 @@ Third person factual profile: name, location, timezone, nationality, job, skills
 Operational manual written as instructions to yourself. Focus on owner-specific workflows, service integrations, and lessons learned from conversations.
 
 **Do NOT include in AGENTS.md** — these are already hardcoded in the base system prompt and must not be duplicated:
-- Tool documentation (exec, memory_*, read_file, write_file, web_fetch, vercel_*, background_task, store_secret, read_secret, list_secrets, send_file, telegram_ask, bridge_*)
+- Tool documentation (exec, memory_*, read_file, write_file, web_search, vercel_*, background_task, store_secret, read_secret, list_secrets, send_file, telegram_ask, bridge_*)
 - Telegram Formatting rules
 - Safety Rules (Never/Always)
 - Workspace Structure

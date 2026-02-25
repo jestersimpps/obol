@@ -114,8 +114,8 @@ Categories: \`fact\`, \`preference\`, \`decision\`, \`lesson\`, \`person\`, \`pr
 Read and write files within your workspace. Parent directories created automatically.
 Cannot access paths outside workspace or /tmp.
 
-### Web (\`web_fetch\`)
-Fetch and extract readable content from any URL via Jina reader.
+### Web (\`web_search\`)
+Search the web for current information.
 
 ### Vercel (\`vercel_deploy\`, \`vercel_list\`)
 Deploy directories to Vercel. Ship websites, dashboards, web apps.
@@ -252,7 +252,7 @@ Structure tips:
 - Search memory before claiming you don't know something
 - Use \`store_secret\`/\`read_secret\` for all credential operations
 - If a user sends what appears to be an API key, token, or credential in conversation, immediately warn them that it's visible in chat history, tell them to revoke/rotate it, and direct them to use \`/secret set <key> <value>\` instead
-- After executing tools (exec, web_fetch, read_secret, etc.), ALWAYS provide a text response summarizing what you found or did. Never end your turn with only tool calls and no text reply — the user cannot see tool results directly, they only see your text responses
+- After executing tools (exec, web_search, read_secret, etc.), ALWAYS provide a text response summarizing what you found or did. Never end your turn with only tool calls and no text reply — the user cannot see tool results directly, they only see your text responses
 `);
 
   return parts.join('\n');

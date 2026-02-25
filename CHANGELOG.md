@@ -1,3 +1,15 @@
+## 0.2.16
+- add chat_history tool for retrieving past conversations by date
+- add stop button to status UI with concurrent update processing
+- update status UI to reflect model escalation from haiku to sonnet
+- escalate haiku to sonnet when tool use is requested
+- fix tests to match refactored module APIs
+- refactor claude.js, telegram.js, evolve.js into modular directories
+- auto-cleanup stale npm temp dirs on ENOTEMPTY upgrade failure
+
+## 0.2.15
+- auto-generate changelog on publish + show after upgrade
+
 ## 0.2.14
 - prompt caching + consolidation interval tuning for inference cost reduction
 - multi-query memory retrieval with importance-weighted ranking
