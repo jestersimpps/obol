@@ -120,7 +120,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       const toolDefs = runnableTools.map(({ run, ...def }) => def);
       const probe = await client.messages.create({
         model: activeModel,
-        max_tokens: 131072,
+        max_tokens: 1024,
         system: systemPrompt,
         messages: withCacheBreakpoints([...history]),
         tools: toolDefs,
@@ -167,9 +167,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         ...bailoutResults,
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
       ]);
-      const bailoutResponse = await client.messages.create({
+      const bailoutResponse = await client.messages.stream({
         model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
-      }, { signal: abortController.signal });
+      }, { signal: abortController.signal }).finalMessage();
       histories.pushAssistant(chatId, bailoutResponse.content);
       trackUsage(bailoutResponse.usage);
       const text = bailoutResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
@@ -181,9 +181,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     if (!text.trim() && newMessages.length > 1) {
       vlog('[claude] No text in final response after tool use — forcing summary');
       histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
-      const summaryResponse = await client.messages.create({
+      const summaryResponse = await client.messages.stream({
         model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
-      }, { signal: abortController.signal });
+      }, { signal: abortController.signal }).finalMessage();
       histories.pushAssistant(chatId, summaryResponse.content);
       trackUsage(summaryResponse.usage);
       text = summaryResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');

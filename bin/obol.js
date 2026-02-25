@@ -86,4 +86,12 @@ program
     await deleteAll();
   });
 
+program
+  .command('reauth')
+  .description('Re-authenticate with Anthropic OAuth')
+  .action(async () => {
+    const { reauth } = require('../src/cli/reauth');
+    await reauth();
+  });
+
 program.parse();

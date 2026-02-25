@@ -446,4 +446,4 @@ async function config() {
   console.log(`\n  Config: ${CONFIG_FILE}\n`);
 }
 
-module.exports = { config };
+module.exports = { config, runOAuthFlow };
