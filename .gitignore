@@ -16,6 +16,7 @@ config.json
 # obol data
 .backup-repo/
 .obol/
+obol-messages-*.csv
 
 # os
 .DS_Store
