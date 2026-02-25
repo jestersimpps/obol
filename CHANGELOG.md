@@ -1,8 +1,3 @@
-## 0.2.22
-- fix toolRunner to use streaming mode, required for OAuth with 128k max_tokens
-- fix max_tokens to 128000 (claude-sonnet-4-6 limit)
-- fix OAuth error message to point to obol reauth
-
 ## 0.2.21
 - add obol reauth command and fix bailout/summary to use streaming
 - update changelog
