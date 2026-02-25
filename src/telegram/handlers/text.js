@@ -230,7 +230,7 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
     stopTyping();
     console.error('Message handling error:', e.message);
     const errMsg = e.isOAuthExpiry
-      ? `OAuth error: ${e.message}\n\nRun \`obol config\` → Anthropic → re-authenticate OAuth.`
+      ? `OAuth error: ${e.message}\n\nRun \`obol reauth\` to re-authenticate.`
       : (e.status === 401 || e.message?.includes('401'))
         ? 'API key invalid or expired. Run `obol config` to update.'
         : (e.status === 429 || e.message?.includes('rate'))

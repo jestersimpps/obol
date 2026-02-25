@@ -141,17 +141,19 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
     const runner = client.beta.messages.toolRunner({
       model: activeModel,
-      max_tokens: 131072,
+      max_tokens: 128000,
       system: systemPrompt,
       messages: withCacheBreakpoints([...history]),
       tools: runnableTools.length > 0 ? runnableTools : undefined,
       max_iterations: getMaxToolIterations(),
+      stream: true,
     }, { signal: abortController.signal });
 
     let finalMessage;
-    for await (const message of runner) {
-      finalMessage = message;
-      trackUsage(message.usage);
+    for await (const streamItem of runner) {
+      const msg = await streamItem.finalMessage();
+      finalMessage = msg;
+      trackUsage(msg.usage);
       if (abortController.signal.aborted) break;
     }
 
