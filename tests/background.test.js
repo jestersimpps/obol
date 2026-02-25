@@ -159,11 +159,11 @@ describe('BackgroundRunner', () => {
       expect(task.startedAt).toBe(now);
     });
 
-    it('initializes empty progress array', () => {
+    it('stores task description on spawned task', () => {
       const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory);
 
       const task = runner.tasks.get(id);
-      expect(task.progress).toEqual([]);
+      expect(task.task).toBe('my task');
     });
 
     it('makes hasRunningTasks return true', () => {
@@ -179,11 +179,11 @@ describe('BackgroundRunner', () => {
       expect(status[0].task).toBe('my task');
     });
 
-    it('sets up check-in interval timer', () => {
+    it('stores promise on spawned task', () => {
       const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory);
 
       const task = runner.tasks.get(id);
-      expect(task.checkInTimer).toBeDefined();
+      expect(task.promise).toBeDefined();
     });
 
     it('calls claude.chat to run the task', () => {

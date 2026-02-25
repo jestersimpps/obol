@@ -144,7 +144,7 @@ describe('createClaude', () => {
     const reply = await chat('Hi there');
 
     expect(runnerSpy).toHaveBeenCalled();
-    expect(reply).toBe('Hello from Claude');
+    expect(reply.text).toBe('Hello from Claude');
   });
 
   it('chat accumulates history across calls', async () => {

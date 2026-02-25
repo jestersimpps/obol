@@ -123,16 +123,18 @@ describe('memory', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('updates accessed_at for returned results', async () => {
+    it('increments access count for returned results', async () => {
       mockFetchOk([{ id: 10 }, { id: 20 }]);
       mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
 
       await memory.search('query');
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      const [patchUrl, patchOpts] = mockFetch.mock.calls[1];
-      expect(patchUrl).toContain('/rest/v1/obol_memory?id=in.(10,20)');
-      expect(patchOpts.method).toBe('PATCH');
+      const [rpcUrl, rpcOpts] = mockFetch.mock.calls[1];
+      expect(rpcUrl).toContain('/rest/v1/rpc/increment_memory_access');
+      expect(rpcOpts.method).toBe('POST');
+      const body = JSON.parse(rpcOpts.body);
+      expect(body.memory_ids).toEqual([10, 20]);
     });
 
     it('skips accessed_at update when no results', async () => {

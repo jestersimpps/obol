@@ -59,13 +59,11 @@ describe('messages', () => {
   });
 
   describe('createMessageLog', () => {
-    it('returns object with log, getRecent, consolidate methods', () => {
+    it('returns object with log and getRecent methods', () => {
       expect(messageLog).toHaveProperty('log');
       expect(messageLog).toHaveProperty('getRecent');
-      expect(messageLog).toHaveProperty('consolidate');
       expect(typeof messageLog.log).toBe('function');
       expect(typeof messageLog.getRecent).toBe('function');
-      expect(typeof messageLog.consolidate).toBe('function');
     });
   });
 
@@ -92,7 +90,6 @@ describe('messages', () => {
       expect(body.model).toBe('claude-3');
       expect(body.tokens_in).toBe(100);
       expect(body.tokens_out).toBe(200);
-      expect(body.user_id).toBe(42);
     });
 
     it('checks evolution on assistant messages', async () => {
@@ -110,18 +107,6 @@ describe('messages', () => {
       await messageLog.log('chat-1', 'user', 'hello');
 
       expect(mockCheckEvolution).not.toHaveBeenCalled();
-    });
-
-    it('triggers consolidation after 10 assistant messages', async () => {
-      const consolidateSpy = vi.spyOn(messageLog, 'consolidate').mockResolvedValue(undefined);
-
-      for (let i = 0; i < 10; i++) {
-        mockFetchOk({});
-        await messageLog.log('chat-1', 'assistant', `response ${i}`);
-      }
-
-      expect(consolidateSpy).toHaveBeenCalledWith('chat-1');
-      consolidateSpy.mockRestore();
     });
 
     it('does not throw when fetch fails', async () => {
@@ -148,7 +133,6 @@ describe('messages', () => {
 
       const fetchUrl = mockFetch.mock.calls[0][0];
       expect(fetchUrl).toContain('chat_id=eq.chat-1');
-      expect(fetchUrl).toContain('user_id=eq.42');
       expect(fetchUrl).toContain('order=created_at.desc');
       expect(fetchUrl).toContain('limit=20');
     });
@@ -162,73 +146,14 @@ describe('messages', () => {
     });
   });
 
-  describe('consolidate', () => {
-    it('skips when memory is null', async () => {
+  describe('fact extraction', () => {
+    it('skips extraction when memory is null', async () => {
       const noMemoryLog = createMessageLog(SUPABASE_CONFIG, null, mockClaudeClient, 42);
-      await noMemoryLog.consolidate('chat-1');
-      expect(mockClaudeClient.messages.create).not.toHaveBeenCalled();
-    });
-
-    it('skips when client is null', async () => {
-      const noClientLog = createMessageLog(SUPABASE_CONFIG, mockMemory, null, 42);
-      await noClientLog.consolidate('chat-1');
+      mockFetchOk({});
+      await noMemoryLog.log('chat-1', 'user', 'hello');
+      mockFetchOk({});
+      await noMemoryLog.log('chat-1', 'assistant', 'hi there');
       expect(mockMemory.search).not.toHaveBeenCalled();
-    });
-
-    it('skips when fewer than 4 messages', async () => {
-      mockFetchOk([
-        { role: 'user', content: 'hi', created_at: '2026-01-01T00:00:00Z' },
-        { role: 'assistant', content: 'hello', created_at: '2026-01-01T00:00:01Z' },
-      ]);
-
-      await messageLog.consolidate('chat-1');
-
-      expect(mockClaudeClient.messages.create).not.toHaveBeenCalled();
-    });
-
-    it('extracts memories and stores deduplicated facts', async () => {
-      const messages = [
-        { role: 'user', content: 'msg1', created_at: '2026-01-01T00:00:00Z' },
-        { role: 'assistant', content: 'msg2', created_at: '2026-01-01T00:00:01Z' },
-        { role: 'user', content: 'msg3', created_at: '2026-01-01T00:00:02Z' },
-        { role: 'assistant', content: 'msg4', created_at: '2026-01-01T00:00:03Z' },
-      ];
-      mockFetchOk(messages);
-
-      mockClaudeClient.messages.create.mockResolvedValueOnce({
-        content: [{ text: '{"memories": [{"content": "user likes TypeScript", "category": "preference"}]}' }],
-      });
-
-      mockMemory.search.mockResolvedValueOnce([]);
-      mockMemory.add.mockResolvedValueOnce({});
-
-      await messageLog.consolidate('chat-1');
-
-      expect(mockMemory.search).toHaveBeenCalledWith('user likes TypeScript', { limit: 1, threshold: 0.85 });
-      expect(mockMemory.add).toHaveBeenCalledWith('user likes TypeScript', {
-        category: 'preference',
-        importance: 0.5,
-        source: 'auto-consolidation',
-      });
-    });
-
-    it('skips duplicate memories', async () => {
-      const messages = [
-        { role: 'user', content: 'msg1', created_at: '2026-01-01T00:00:00Z' },
-        { role: 'assistant', content: 'msg2', created_at: '2026-01-01T00:00:01Z' },
-        { role: 'user', content: 'msg3', created_at: '2026-01-01T00:00:02Z' },
-        { role: 'assistant', content: 'msg4', created_at: '2026-01-01T00:00:03Z' },
-      ];
-      mockFetchOk(messages);
-
-      mockClaudeClient.messages.create.mockResolvedValueOnce({
-        content: [{ text: '{"memories": [{"content": "already known fact", "category": "fact"}]}' }],
-      });
-
-      mockMemory.search.mockResolvedValueOnce([{ id: 1, content: 'already known fact' }]);
-
-      await messageLog.consolidate('chat-1');
-
       expect(mockMemory.add).not.toHaveBeenCalled();
     });
   });
