@@ -7,6 +7,15 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
     const data = ctx.callbackQuery.data;
     const answer = (opts) => ctx.answerCallbackQuery(opts).catch(() => {});
 
+    if (data.startsWith('stop:')) {
+      const chatId = parseInt(data.slice(5));
+      const userId = ctx.from.id;
+      const tenant = await getTenant(userId, config);
+      const stopped = tenant?.claude?.stopChat(chatId);
+      await answer({ text: stopped ? 'Stopping' : 'Nothing to stop' });
+      return;
+    }
+
     if (data.startsWith('tool:')) {
       const featureKey = data.slice(5);
       await handleToolCallback(ctx, featureKey, answer, { getTenant, config, bot });

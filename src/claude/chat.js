@@ -94,6 +94,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       { type: 'text', text: `\nCurrent time: ${new Date().toISOString()}${memoryBlock ? `\n\n${memoryBlock}` : ''}` },
     ];
     context._reloadPersonality = reloadPersonality;
+    context._abortSignal = abortController.signal;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
 
@@ -147,6 +148,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     for await (const message of runner) {
       finalMessage = message;
       trackUsage(message.usage);
+      if (abortController.signal.aborted) break;
     }
 
     const runnerMessages = runner.params.messages;

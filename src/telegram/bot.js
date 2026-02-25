@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Bot, GrammyError, HttpError, InlineKeyboard } = require('grammy');
+const { run, sequentialize } = require('@grammyjs/runner');
 const { getTenant } = require('../tenant');
 const { DEDUP_TTL_MS, DEDUP_MAX_SIZE } = require('./constants');
 const { sendHtml } = require('./utils');
@@ -45,6 +46,11 @@ function createBot(telegramConfig, config) {
       });
     });
   }
+
+  bot.use(sequentialize((ctx) => {
+    if (ctx.callbackQuery?.data?.startsWith('stop:')) return undefined;
+    return ctx.chat?.id.toString();
+  }));
 
   bot.use(async (ctx, next) => {
     const updateId = ctx.update?.update_id;
@@ -119,37 +125,24 @@ function createBot(telegramConfig, config) {
     ctx?.reply?.('⚠️ Something went wrong. I\'m still alive though.').catch(() => {});
   });
 
-  const originalStart = bot.start.bind(bot);
-  bot.start = async function startWithResilience(opts = {}) {
-    const MAX_RETRIES = 10;
-    const BASE_DELAY = 1000;
-    let retries = 0;
+  let runnerHandle = null;
 
-    const attempt = async () => {
-      try {
-        retries = 0;
-        await originalStart({
-          ...opts,
-          onStart: (info) => {
-            console.log(`  Bot: @${info.username}`);
-            opts.onStart?.(info);
-          },
-        });
-      } catch (e) {
-        retries++;
-        if (retries > MAX_RETRIES) {
-          console.error(`💀 Polling failed ${MAX_RETRIES} times. Giving up.`);
-          process.exit(1);
-        }
-        const delay = Math.min(BASE_DELAY * Math.pow(2, retries - 1), 60000);
-        console.error(`⚠️ Polling error (attempt ${retries}/${MAX_RETRIES}): ${e.message}`);
-        console.error(`  Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
-        return attempt();
-      }
-    };
+  bot.start = async function startConcurrent(opts = {}) {
+    const me = await bot.api.getMe();
+    bot.botInfo = me;
+    opts.onStart?.(me);
 
-    return attempt();
+    runnerHandle = run(bot);
+    await runnerHandle.task();
+  };
+
+  const originalStop = bot.stop.bind(bot);
+  bot.stop = async function stopConcurrent() {
+    if (runnerHandle) {
+      runnerHandle.stop();
+      runnerHandle = null;
+    }
+    await originalStop().catch(() => {});
   };
 
   return bot;

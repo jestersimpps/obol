@@ -11,6 +11,7 @@ const telegramTool = require('./tools/telegram');
 const schedulerTool = require('./tools/scheduler');
 const ttsTool = require('./tools/tts');
 const bridgeTool = require('./tools/bridge');
+const historyTool = require('./tools/history');
 
 const TOOL_MODULES = [
   execTool,
@@ -22,6 +23,7 @@ const TOOL_MODULES = [
   telegramTool,
   schedulerTool,
   ttsTool,
+  historyTool,
 ];
 
 const INPUT_SUMMARIES = {
@@ -38,6 +40,7 @@ const INPUT_SUMMARIES = {
   create_pdf: (i) => i.filename || 'document',
   text_to_speech: (i) => i.text?.substring(0, 60),
   tts_voices: (i) => i.language || 'all',
+  chat_history: (i) => `${i.date}${i.role ? ` [${i.role}]` : ''}`,
 };
 
 function summarizeInput(toolName, input) {
@@ -92,6 +95,7 @@ function buildRunnableTools(tools, memory, context, vlog) {
     .map(tool => ({
       ...tool,
       run: async (input) => {
+        if (context._abortSignal?.aborted) return 'Aborted.';
         const inputSummary = summarizeInput(tool.name, input);
         vlog(`[tool] ${tool.name}: ${inputSummary}`);
         context._onToolStart?.(tool.name, inputSummary);

@@ -84,7 +84,8 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
 
     stopTyping();
     if (!response?.trim()) {
-      status.clear();
+      status.deleteMsg();
+      await ctx.reply('⏹ Stopped.').catch(() => {});
       return;
     }
 

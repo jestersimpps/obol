@@ -1,3 +1,4 @@
+const { InlineKeyboard } = require('grammy');
 const { getTenant } = require('../../tenant');
 const { evolve, loadEvolutionState } = require('../../evolve');
 const { buildStatusHtml, describeToolCall } = require('../../status');
@@ -39,6 +40,7 @@ function createStatusTracker(ctx) {
   let statusTimer = null;
   let statusStart = null;
   let routeInfo = null;
+  const stopBtn = new InlineKeyboard().text('■ Stop', `stop:${ctx.chat.id}`);
 
   const clear = () => {
     if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
@@ -49,14 +51,14 @@ function createStatusTracker(ctx) {
     if (statusTimer) return;
     statusStart = Date.now();
     const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText });
-    ctx.reply(html, { parse_mode: 'HTML' }).then(sent => {
+    ctx.reply(html, { parse_mode: 'HTML', reply_markup: stopBtn }).then(sent => {
       if (sent) statusMsgId = sent.message_id;
     }).catch(() => {});
     statusTimer = setInterval(() => {
       if (!statusMsgId) return;
       const elapsed = Math.round((Date.now() - statusStart) / 1000);
       const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText });
-      ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
+      ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML', reply_markup: stopBtn }).catch(() => {});
     }, 1000);
   };
 
@@ -143,7 +145,8 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
     if (!response?.trim()) {
       stopTyping();
-      status.clear();
+      status.deleteMsg();
+      await ctx.reply('⏹ Stopped.').catch(() => {});
       return;
     }
 

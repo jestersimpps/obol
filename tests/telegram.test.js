@@ -14,6 +14,7 @@ const mockBotInstance = {
   },
   catch: vi.fn(),
   start: vi.fn(),
+  stop: vi.fn().mockResolvedValue(undefined),
 };
 
 const MockBot = vi.fn(function() { return mockBotInstance; });
@@ -29,6 +30,18 @@ require.cache[grammyPath] = {
     GrammyError: class GrammyError extends Error {},
     HttpError: class HttpError extends Error {},
     InlineKeyboard: class InlineKeyboard { text() { return this; } row() { return this; } },
+  },
+};
+
+const runnerPath = require.resolve('@grammyjs/runner');
+const originalRunnerCache = require.cache[runnerPath];
+require.cache[runnerPath] = {
+  id: runnerPath,
+  filename: runnerPath,
+  loaded: true,
+  exports: {
+    run: vi.fn(() => ({ stop: vi.fn(), task: () => new Promise(() => {}) })),
+    sequentialize: vi.fn(() => (ctx, next) => next()),
   },
 };
 
@@ -88,9 +101,8 @@ vi.spyOn(mediaModule, 'bufferToImageBlock');
 const { createBot } = require('../src/telegram');
 
 afterAll(() => {
-  if (originalGrammyCache) {
-    require.cache[grammyPath] = originalGrammyCache;
-  }
+  if (originalGrammyCache) require.cache[grammyPath] = originalGrammyCache;
+  if (originalRunnerCache) require.cache[runnerPath] = originalRunnerCache;
 });
 
 const telegramConfig = { token: 'test-token-123', allowedUsers: [123] };
@@ -137,11 +149,12 @@ describe('telegram', () => {
       expect(MockBot).toHaveBeenCalledWith('test-token-123');
     });
 
-    it('registers dedup and auth middleware via bot.use', () => {
+    it('registers sequentialize, dedup, and auth middleware via bot.use', () => {
       createBot(telegramConfig, config);
-      expect(mockBotInstance.use).toHaveBeenCalledTimes(2);
+      expect(mockBotInstance.use).toHaveBeenCalledTimes(3);
       expect(typeof mockBotInstance.use.mock.calls[0][0]).toBe('function');
       expect(typeof mockBotInstance.use.mock.calls[1][0]).toBe('function');
+      expect(typeof mockBotInstance.use.mock.calls[2][0]).toBe('function');
     });
 
     it('sets bot commands via api', () => {
@@ -241,7 +254,7 @@ describe('telegram', () => {
   describe('auth middleware', () => {
     it('blocks unauthorized users', async () => {
       createBot(telegramConfig, config);
-      const middleware = mockBotInstance.use.mock.calls[1][0];
+      const middleware = mockBotInstance.use.mock.calls[2][0];
       const ctx = { from: { id: 999 } };
       const next = vi.fn();
       await middleware(ctx, next);
@@ -250,7 +263,7 @@ describe('telegram', () => {
 
     it('allows authorized users', async () => {
       createBot(telegramConfig, config);
-      const middleware = mockBotInstance.use.mock.calls[1][0];
+      const middleware = mockBotInstance.use.mock.calls[2][0];
       const ctx = { from: { id: 123 } };
       const next = vi.fn();
       await middleware(ctx, next);
@@ -259,7 +272,7 @@ describe('telegram', () => {
 
     it('allows all users when allowedUsers is empty', async () => {
       createBot({ token: 'test', allowedUsers: [] }, config);
-      const middleware = mockBotInstance.use.mock.calls[1][0];
+      const middleware = mockBotInstance.use.mock.calls[2][0];
       const ctx = { from: { id: 999 } };
       const next = vi.fn();
       await middleware(ctx, next);
