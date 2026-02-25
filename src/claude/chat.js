@@ -50,6 +50,11 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     chatAbortControllers.set(chatId, abortController);
     chatForceControllers.set(chatId, forceController);
 
+    const lockTimeoutId = setTimeout(() => {
+      abortController.abort();
+      context._onLockTimeout?.();
+    }, 10 * 60 * 1000);
+
     const history = histories.get(chatId);
 
     try {
@@ -205,6 +210,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       }
       throw e;
     } finally {
+      clearTimeout(lockTimeoutId);
       chatAbortControllers.delete(chatId);
       chatForceControllers.delete(chatId);
       releaseLock();

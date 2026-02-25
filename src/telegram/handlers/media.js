@@ -76,6 +76,10 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
       });
       status.start();
     };
+    mediaChatCtx._onLockTimeout = () => {
+      status.clear();
+      ctx.api.sendMessage(ctx.chat.id, 'Request timed out after 10 minutes. Send a new message to continue.').catch(() => {});
+    };
 
     const { text: response, usage, model } = await tenant.claude.chat(prompt, mediaChatCtx);
 

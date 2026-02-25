@@ -139,6 +139,10 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
       });
       status.start();
     };
+    chatContext._onLockTimeout = () => {
+      status.clear();
+      ctx.api.sendMessage(ctx.chat.id, 'Request timed out after 10 minutes. Send a new message to continue.').catch(() => {});
+    };
 
     const { text: response, usage, model } = await tenant.claude.chat(chatMessage, chatContext);
 
