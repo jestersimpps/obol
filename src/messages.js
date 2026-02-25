@@ -137,29 +137,50 @@ class MessageLog {
     if (!client) return;
     const vlog = this._verboseCallbacks.get(chatId);
 
+    const extractTool = [{
+      name: 'save_memory',
+      description: 'Save extracted facts from this exchange',
+      input_schema: {
+        type: 'object',
+        properties: {
+          facts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                content: { type: 'string' },
+                category: { type: 'string', enum: ['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email'] },
+                importance: { type: 'number' },
+                tags: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['content', 'category', 'importance'],
+            },
+          },
+        },
+        required: ['facts'],
+      },
+    }];
+
     try {
       const response = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
         system: `Extract 0-5 atomic facts from this exchange worth remembering long-term.
 
-Return ONLY a JSON array (no wrapping object):
-[{"content":"specific fact","category":"fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context|email","tags":["keyword1","keyword2"],"importance":0.5}]
-
 Store: personal details, preferences, decisions, projects, plans, people mentioned, technical details, events, deadlines, emotional context, resources.
-Skip: greetings, acknowledgments, content-free exchanges. Return [] if nothing worth storing.
+Skip: greetings, acknowledgments, content-free exchanges. Use facts=[] if nothing worth storing.
 
 Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.
 Keep each fact atomic — one idea per entry.`,
+        tools: extractTool,
+        tool_choice: { type: 'tool', name: 'save_memory' },
         messages: [{ role: 'user', content: `Human: ${userMsg.substring(0, 2000)}\nAssistant: ${assistantMsg.substring(0, 2000)}` }],
       });
 
-      const text = response.content[0]?.text || '';
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) return;
+      const toolUse = response.content.find(b => b.type === 'tool_use' && b.name === 'save_memory');
+      if (!toolUse) return;
 
-      let facts;
-      try { facts = JSON.parse(jsonMatch[0]); } catch { return; }
+      const facts = toolUse.input?.facts;
       if (!Array.isArray(facts)) return;
 
       if (facts.length === 0) {
