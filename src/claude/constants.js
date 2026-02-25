@@ -1,5 +1,5 @@
 const MAX_EXEC_TIMEOUT = 120;
-let MAX_TOOL_ITERATIONS = 10;
+let MAX_TOOL_ITERATIONS = 100;
 
 const OPTIONAL_TOOLS = {
   text_to_speech: {

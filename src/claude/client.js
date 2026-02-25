@@ -9,12 +9,17 @@ function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
       authToken: anthropicConfig.oauth.accessToken,
       defaultHeaders: {
         'anthropic-dangerous-direct-browser-access': 'true',
-        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20',
+        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,output-128k-2025-02-19',
       },
     });
   }
   if (anthropicConfig.apiKey) {
-    return new Anthropic({ apiKey: anthropicConfig.apiKey });
+    return new Anthropic({
+      apiKey: anthropicConfig.apiKey,
+      defaultHeaders: {
+        'anthropic-beta': 'output-128k-2025-02-19',
+      },
+    });
   }
   throw new Error('No Anthropic credentials configured. Run: obol config');
 }

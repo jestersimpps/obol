@@ -120,7 +120,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       const toolDefs = runnableTools.map(({ run, ...def }) => def);
       const probe = await client.messages.create({
         model: activeModel,
-        max_tokens: 4096,
+        max_tokens: 131072,
         system: systemPrompt,
         messages: withCacheBreakpoints([...history]),
         tools: toolDefs,
@@ -141,7 +141,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
     const runner = client.beta.messages.toolRunner({
       model: activeModel,
-      max_tokens: 4096,
+      max_tokens: 131072,
       system: systemPrompt,
       messages: withCacheBreakpoints([...history]),
       tools: runnableTools.length > 0 ? runnableTools : undefined,
@@ -168,7 +168,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
       ]);
       const bailoutResponse = await client.messages.create({
-        model: activeModel, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, bailoutResponse.content);
       trackUsage(bailoutResponse.usage);
@@ -182,7 +182,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       vlog('[claude] No text in final response after tool use — forcing summary');
       histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
       const summaryResponse = await client.messages.create({
-        model: activeModel, max_tokens: 4096, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
       }, { signal: abortController.signal });
       histories.pushAssistant(chatId, summaryResponse.content);
       trackUsage(summaryResponse.usage);
