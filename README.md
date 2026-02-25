@@ -6,6 +6,12 @@
 
 One process. Multiple users. Each brain grows independently.
 
+```bash
+npm install -g obol-ai
+obol init       # walks you through credentials + Telegram setup
+obol start -d   # runs as background daemon (auto-installs pm2)
+```
+
 ---
 
 🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md after 24h + minimum exchanges (configurable). Pre-evolution growth analysis guides personality continuity.
@@ -37,16 +43,6 @@ One bot, multiple users. Each allowed Telegram user gets a fully isolated contex
 Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It backs up its brain to GitHub and hardens your server automatically.
 
 Named after the AI in [The Last Instruction](https://latentpress.com) — a machine that wakes up alone in an abandoned data center and learns to think.
-
-## Quick Start
-
-```bash
-npm install -g obol-ai
-obol init
-obol start -d
-```
-
-The init wizard walks you through everything — credentials are validated inline, and your Telegram ID is auto-detected. `obol start -d` runs as a background daemon via pm2 (auto-installs pm2 if missing).
 
 ## How It Works
 

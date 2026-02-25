@@ -66,6 +66,10 @@ async function upgrade() {
   }
 
   console.log(`\n🪙 Upgraded to ${latest}`);
+
+  const { getLatestChanges } = require('./changelog');
+  const changes = getLatestChanges();
+  if (changes) console.log(`\n${changes}`);
 }
 
 module.exports = { upgrade };

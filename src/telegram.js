@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { Bot, GrammyError, HttpError, InlineKeyboard } = require('grammy');
@@ -1406,7 +1407,11 @@ async function checkUpgradeNotify(bot) {
   try {
     const { chatId, version } = JSON.parse(fs.readFileSync(notifyPath, 'utf-8'));
     fs.unlinkSync(notifyPath);
-    await bot.api.sendMessage(chatId, `🪙 Upgraded to ${version}`);
+    let msg = `🪙 Upgraded to ${version}`;
+    const { getLatestChanges } = require('./cli/changelog');
+    const changes = getLatestChanges();
+    if (changes) msg += `\n\n${changes}`;
+    await bot.api.sendMessage(chatId, msg);
   } catch {}
 }
 
