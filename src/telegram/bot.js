@@ -48,7 +48,7 @@ function createBot(telegramConfig, config) {
   }
 
   bot.use(sequentialize((ctx) => {
-    if (ctx.callbackQuery?.data?.startsWith('stop:')) return undefined;
+    if (ctx.callbackQuery?.data?.startsWith('stop:') || ctx.callbackQuery?.data?.startsWith('force:')) return undefined;
     return ctx.chat?.id.toString();
   }));
 

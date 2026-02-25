@@ -12,7 +12,16 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
       const userId = ctx.from.id;
       const tenant = await getTenant(userId, config);
       const stopped = tenant?.claude?.stopChat(chatId);
-      await answer({ text: stopped ? 'Stopping' : 'Nothing to stop' });
+      await answer({ text: stopped ? 'Stopping...' : 'Nothing to stop' });
+      return;
+    }
+
+    if (data.startsWith('force:')) {
+      const chatId = parseInt(data.slice(6));
+      const userId = ctx.from.id;
+      const tenant = await getTenant(userId, config);
+      const stopped = tenant?.claude?.forceStopChat(chatId);
+      await answer({ text: stopped ? 'Force stopped' : 'Nothing to stop' });
       return;
     }
 

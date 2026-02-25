@@ -32,6 +32,7 @@ const INPUT_SUMMARIES = {
   read_file: (i) => i.path,
   memory_search: (i) => i.query,
   memory_add: (i) => `[${i.category || 'fact'}]`,
+  memory_remove: (i) => i.ids?.join(', '),
   memory_query: (i) => `${i.date || ''}${i.tags ? ' #' + i.tags.join(' #') : ''}${i.category ? ' [' + i.category + ']' : ''}`.trim() || 'all',
   web_search: (i) => i.query,
   background_task: (i) => i.task?.substring(0, 60),
@@ -95,7 +96,9 @@ function buildRunnableTools(tools, memory, context, vlog) {
     .map(tool => ({
       ...tool,
       run: async (input) => {
-        if (context._abortSignal?.aborted) return 'Aborted.';
+        const signal = context._abortSignal;
+        const forceSignal = context._forceSignal;
+        if (signal?.aborted) return 'Aborted.';
         const inputSummary = summarizeInput(tool.name, input);
         vlog(`[tool] ${tool.name}: ${inputSummary}`);
         context._onToolStart?.(tool.name, inputSummary);
@@ -104,8 +107,14 @@ function buildRunnableTools(tools, memory, context, vlog) {
         if (!handler) return `Unknown tool: ${tool.name}`;
 
         try {
-          return await handler(input, memory, context);
+          if (!forceSignal) return await handler(input, memory, context);
+          if (forceSignal.aborted) return 'Aborted.';
+          const forcePromise = new Promise((resolve) => {
+            forceSignal.addEventListener('abort', () => resolve('Aborted.'), { once: true });
+          });
+          return await Promise.race([handler(input, memory, context), forcePromise]);
         } catch (e) {
+          if (signal?.aborted || forceSignal?.aborted) return 'Aborted.';
           return `Error: ${e.message}`;
         }
       },

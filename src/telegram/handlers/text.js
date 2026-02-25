@@ -40,7 +40,9 @@ function createStatusTracker(ctx) {
   let statusTimer = null;
   let statusStart = null;
   let routeInfo = null;
-  const stopBtn = new InlineKeyboard().text('■ Stop', `stop:${ctx.chat.id}`);
+  const stopBtn = new InlineKeyboard()
+    .text('■ Stop', `stop:${ctx.chat.id}`)
+    .text('■ Force Stop', `force:${ctx.chat.id}`);
 
   const clear = () => {
     if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }

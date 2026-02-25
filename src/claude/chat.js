@@ -16,6 +16,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
   const histories = new ChatHistory(50);
   const chatLocks = new Map();
   const chatAbortControllers = new Map();
+  const chatForceControllers = new Map();
 
   const tools = buildTools(memory, { bridgeEnabled });
 
@@ -45,7 +46,9 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
     const releaseLock = await acquireChatLock(chatId);
     const abortController = new AbortController();
+    const forceController = new AbortController();
     chatAbortControllers.set(chatId, abortController);
+    chatForceControllers.set(chatId, forceController);
 
     const history = histories.get(chatId);
 
@@ -95,6 +98,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     ];
     context._reloadPersonality = reloadPersonality;
     context._abortSignal = abortController.signal;
+    context._forceSignal = forceController.signal;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
 
@@ -198,6 +202,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       throw e;
     } finally {
       chatAbortControllers.delete(chatId);
+      chatForceControllers.delete(chatId);
       releaseLock();
     }
   }
@@ -208,6 +213,14 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       controller.abort();
       return true;
     }
+    return false;
+  }
+
+  function forceStopChat(chatId) {
+    const controller = chatAbortControllers.get(chatId);
+    const force = chatForceControllers.get(chatId);
+    if (force) force.abort();
+    if (controller) { controller.abort(); return true; }
     return false;
   }
 
@@ -236,7 +249,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     return histories.estimateTokens(id, baseSystemPrompt.length);
   }
 
-  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats, stopChat };
+  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats, stopChat, forceStopChat };
 }
 
 module.exports = { createClaude };
