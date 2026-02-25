@@ -28,6 +28,17 @@ const definitions = [
     },
   },
   {
+    name: 'memory_remove',
+    description: 'Remove one or more memories by their IDs. Use memory_query or memory_search first to get IDs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ids: { type: 'array', items: { type: 'string' }, description: 'Memory IDs to remove' },
+      },
+      required: ['ids'],
+    },
+  },
+  {
     name: 'memory_query',
     description: 'Filter memories by tag, date, category, source, or importance. Use for "what did we do today", "anything tagged X", "all decisions this week".',
     input_schema: {
@@ -47,7 +58,7 @@ const definitions = [
 function formatMemory(m) {
   const date = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : null;
   const tags = m.tags?.length ? ` #${m.tags.join(' #')}` : '';
-  return `[${date || '?'}] [${m.category}] ${m.content}${tags}`;
+  return `[id:${m.id}] [${date || '?'}] [${m.category}] ${m.content}${tags}`;
 }
 
 const handlers = {
@@ -67,6 +78,11 @@ const handlers = {
       source: input.source,
     });
     return `Stored memory: ${result.id}`;
+  },
+
+  async memory_remove(input, memory) {
+    await Promise.all(input.ids.map(id => memory.forget(id)));
+    return `Removed ${input.ids.length} memory${input.ids.length !== 1 ? 'ies' : ''}`;
   },
 
   async memory_query(input, memory) {

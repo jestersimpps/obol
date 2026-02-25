@@ -27,9 +27,9 @@ function createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk }
       sendHtml(ctx, `\`${msg}\``).catch(() => {});
     } : undefined,
     telegramAsk: (message, options, timeout) => createAsk(ctx, message, options, timeout),
-    _notifyFn: (targetUserId, message) => {
+    _notifyFn: (targetUserId, message, opts = {}) => {
       if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
-      return bot.api.sendMessage(targetUserId, message);
+      return bot.api.sendMessage(targetUserId, message, opts);
     },
   };
 }

@@ -36,6 +36,66 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
       return;
     }
 
+    if (data.startsWith('bridge:reply:')) {
+      const targetUserId = parseInt(data.split(':')[2]);
+      const reactingUserId = ctx.from.id;
+
+      const tenant = await getTenant(reactingUserId, config);
+      if (!tenant) return answer({ text: 'Could not load your agent' });
+
+      const { checkBridgeRateLimit, bridgeTell } = require('../../bridge');
+      const rateErr = checkBridgeRateLimit(reactingUserId);
+      if (rateErr) return answer({ text: rateErr });
+
+      let memoryContext = '';
+      if (tenant.memory) {
+        try {
+          const memories = await tenant.memory.search('message from partner bridge', { limit: 5, threshold: 0.3 });
+          if (memories.length > 0) {
+            memoryContext = '\n\n[Recent bridge messages]\n' + memories.map(m => `- ${m.content}`).join('\n');
+          }
+        } catch {}
+      }
+
+      const systemParts = [
+        'Compose a brief, natural reply to send back to your partner\'s agent via bridge. 1-3 sentences. Be genuine and respond to the most recent message from them.',
+      ];
+      if (tenant.personality?.soul) systemParts.push(`\n## Your Personality\n${tenant.personality.soul}`);
+      if (tenant.personality?.user) systemParts.push(`\n## About You\n${tenant.personality.user}`);
+      if (memoryContext) systemParts.push(memoryContext);
+
+      let replyText;
+      try {
+        const response = await tenant.claude.client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 256,
+          system: systemParts.join('\n'),
+          messages: [{ role: 'user', content: 'Compose your reply to send via bridge.' }],
+        });
+        replyText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      } catch (e) {
+        console.error('[bridge:reply] Generation failed:', e.message);
+        return answer({ text: 'Failed to generate reply' });
+      }
+
+      if (!replyText) return answer({ text: 'Could not generate a reply' });
+
+      const notifyFn = (uid, msg, opts = {}) => ctx.api.sendMessage(uid, msg, opts);
+      try {
+        await bridgeTell(replyText, reactingUserId, config, notifyFn, targetUserId);
+      } catch (e) {
+        console.error('[bridge:reply] bridgeTell failed:', e.message);
+        return answer({ text: 'Failed to send reply' });
+      }
+
+      ctx.editMessageText(
+        ctx.callbackQuery.message.text + '\n\n✓ Reply sent',
+        { reply_markup: { inline_keyboard: [] } }
+      ).catch(() => {});
+
+      return answer({ text: 'Reply sent!' });
+    }
+
     if (!data.startsWith('ask:')) return answer();
     const parts = data.split(':');
     const askId = parseInt(parts[1]);

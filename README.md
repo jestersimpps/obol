@@ -286,29 +286,39 @@ Each new user starts fresh. Their bot evolves independently from every other use
 
 ### Bridge (couples / roommates / teams)
 
-When two users share the same OBOL instance, their agents can talk to each other.
+When two users share the same OBOL instance, their agents can talk to each other — bidirectionally.
 
 ```
 User A: "what does Jo want for dinner tonight?"
 Agent A: → bridge_ask → Agent B (one-shot, no tools, no history)
 Agent B: "Jo mentioned craving Thai food earlier today"
 Agent A: "Jo's been wanting Thai — maybe suggest pad see ew?"
+
+Jo gets: "🪙 Your partner's agent asked: 'what does Jo want for dinner?'
+          Your agent answered: 'Jo mentioned craving Thai food earlier today'"
 ```
 
 ```
 User A: "remind Jo I'll be home late"
 Agent A: → bridge_tell → stores in Agent B's memory + Telegram notification
-Jo gets: "🪙 Message from your partner's agent: I'll be home late"
+
+Jo gets: "🪙 Message from your partner's agent:
+          'I'll be home late'"
+          [↩ Reply]
+
+Jo taps Reply → Jo's agent reads recent bridge context, composes a reply
+             → sends back via bridge_tell
+A gets: "🪙 Message from your partner's agent: 'Got it, I'll start dinner around 7'"
 ```
 
 Two tools:
 
 | Tool | Direction | What happens |
 |------|-----------|--------------|
-| `bridge_ask` | A → B → A | Query the partner's agent. One-shot Sonnet call with partner's personality + memories. No tools, no history, no recursion risk. |
-| `bridge_tell` | A → B | Send a message to the partner. Stored in their memory (importance 0.6) + Telegram notification. Their agent picks it up as context in future conversations. |
+| `bridge_ask` | A → B → A | Query the partner's agent. One-shot Haiku call with partner's personality + memories. No tools, no history, no recursion risk. Partner is notified with both the question and your agent's answer. |
+| `bridge_tell` | A → B (↩ B → A) | Send a message to the partner. Stored in their memory (importance 0.6) + Telegram notification with a Reply button. Tapping Reply has their agent compose a contextual response and send it back — no typing needed. |
 
-The partner always gets notified when their agent is contacted. Privacy rules apply — the responding agent gives summaries, never raw data or secrets.
+The partner always gets notified when their agent is contacted. Privacy rules apply — the responding agent gives summaries, never raw data or secrets. Rate-limited to 20 bridge calls per user per hour.
 
 Enable during `obol init` (auto-prompted when 2+ users are added) or toggle later with `obol config` → Bridge.
 

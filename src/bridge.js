@@ -106,7 +106,8 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
 
   if (notifyFn) {
     try {
-      await notifyFn(partnerUserId, `🪙 Your partner's agent asked about you:\n"${question}"`);
+      const preview = answer.length > 200 ? `${answer.substring(0, 200)}…` : answer;
+      await notifyFn(partnerUserId, `🪙 Your partner's agent asked: "${question}"\nYour agent answered: "${preview}"`);
     } catch (e) {
       console.error(`[bridge] Notify failed for ${partnerUserId}:`, e.message);
     }
@@ -170,7 +171,8 @@ async function bridgeTell(message, fromUserId, config, notifyFn, targetId) {
 
   if (notifyFn) {
     try {
-      await notifyFn(partnerUserId, `🪙 Message from your partner's agent:\n"${message}"`);
+      const replyMarkup = { inline_keyboard: [[{ text: '↩ Reply', callback_data: `bridge:reply:${fromUserId}` }]] };
+      await notifyFn(partnerUserId, `🪙 Message from your partner's agent:\n"${message}"`, { reply_markup: replyMarkup });
     } catch (e) {
       console.error(`[bridge] Notify failed for ${partnerUserId}:`, e.message);
     }
