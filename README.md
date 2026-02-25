@@ -22,7 +22,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 🧠 **Living memory** — Vector memory with semantic search. Haiku routes queries and rewrites them for better embedding hits. Free local embeddings.
 
-🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? No wasted API calls
+🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? Auto-escalates to Sonnet when tool use is needed. No wasted API calls
 
 💰 **Prompt caching** — Static system prompt and conversation history prefix are cached via Anthropic's prompt caching, cutting ~85% of repeated input token costs across turns
 
@@ -59,9 +59,9 @@ User message
     ↓             ↓
 Memory recall   Model selection
     ↓             ↓
-Multi-query     Sonnet (default)
-ranked recall   or Opus (complex)
-    ↓             ↓
+Multi-query     Haiku → Sonnet (auto-
+ranked recall   escalates on tool use)
+    ↓             or Opus (complex)
     └──────┬──────┘
            ↓
    Claude (tool use loop)
@@ -213,6 +213,17 @@ OBOL: "11:42 PM CET"
 
 [90s] ✅ Done! Here are the top 5 coworking spaces: ...
 ```
+
+### Live Status & Stop Controls
+
+Every request shows a live status message with elapsed time, model routing info, and what tools are being used. Two inline buttons let you cancel:
+
+| Button | Behavior |
+|--------|----------|
+| **■ Stop** | Cancels after the current API call finishes |
+| **■ Force Stop** | Instantly aborts mid-tool — races the handler and returns immediately |
+
+The `/stop` command also works as a text alternative.
 
 ## Multi-User Architecture
 
@@ -471,6 +482,7 @@ Or edit `~/.obol/config.json` directly:
 /memory     — Search or view memory stats
 /recent     — Last 10 memories
 /today      — Today's memories
+/events     — Show upcoming scheduled events
 /tasks      — Running background tasks
 /status     — Bot status, uptime, evolution progress, traits
 /backup     — Trigger GitHub backup
@@ -478,6 +490,11 @@ Or edit `~/.obol/config.json` directly:
 /traits     — View or adjust personality traits (0-100)
 /secret     — Manage per-user encrypted secrets
 /evolution  — Evolution progress
+/verbose    — Toggle verbose mode on/off
+/toolimit   — View or set max tool iterations per message
+/tools      — Toggle optional tools on/off
+/stop       — Stop the current request
+/upgrade    — Check for updates and upgrade
 /help       — Show available commands
 ```
 
