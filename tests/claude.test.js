@@ -175,7 +175,9 @@ describe('createClaude', () => {
     expect(lastCall.messages.length).toBe(3);
     expect(lastCall.messages[0].content).toBe('First message');
     expect(lastCall.messages[1].role).toBe('assistant');
-    expect(lastCall.messages[2].content).toBe('Second message');
+    const lastContent = lastCall.messages[2].content;
+    const lastText = Array.isArray(lastContent) ? lastContent.at(-1).text : lastContent;
+    expect(lastText).toBe('Second message');
   });
 
   it('clearHistory resets conversation for a specific chatId', async () => {
@@ -197,7 +199,9 @@ describe('createClaude', () => {
     await chat('fresh start', { chatId: 'session-1' });
 
     const lastCall = runnerSpy.mock.calls.at(-1)[0];
-    expect(lastCall.messages[0].content).toBe('fresh start');
+    const c0 = lastCall.messages[0].content;
+    const c0text = Array.isArray(c0) ? c0.at(-1).text : c0;
+    expect(c0text).toBe('fresh start');
     expect(lastCall.messages[0].role).toBe('user');
   });
 
@@ -221,7 +225,9 @@ describe('createClaude', () => {
     await chat('fresh', { chatId: 'a' });
 
     const lastCall = runnerSpy.mock.calls.at(-1)[0];
-    expect(lastCall.messages[0].content).toBe('fresh');
+    const c = lastCall.messages[0].content;
+    const ctext = Array.isArray(c) ? c.at(-1).text : c;
+    expect(ctext).toBe('fresh');
     expect(lastCall.messages[0].role).toBe('user');
   });
 });
