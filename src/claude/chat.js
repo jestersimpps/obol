@@ -147,12 +147,20 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       context._onRouteUpdate?.({ model: 'sonnet' });
     }
 
+    let cachedTools;
+    if (runnableTools.length > 0) {
+      cachedTools = [...runnableTools];
+      const lastIdx = cachedTools.length - 1;
+      const { run, ...lastDef } = cachedTools[lastIdx];
+      cachedTools[lastIdx] = { ...lastDef, cache_control: { type: 'ephemeral' }, run };
+    }
+
     const runner = client.beta.messages.toolRunner({
       model: activeModel,
       max_tokens: 128000,
       system: systemPrompt,
       messages: withCacheBreakpoints([...history]),
-      tools: runnableTools.length > 0 ? runnableTools : undefined,
+      tools: cachedTools ?? undefined,
       max_iterations: getMaxToolIterations(),
       stream: true,
     }, { signal: abortController.signal });
