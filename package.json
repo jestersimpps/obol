@@ -10,7 +10,8 @@
     "start": "node src/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "node src/cli/changelog.js"
+    "prepublishOnly": "node src/cli/changelog.js",
+    "postinstall": "pip3 install faster-whisper 2>/dev/null || pip install faster-whisper 2>/dev/null || echo 'Note: faster-whisper not installed (Python/pip unavailable). Voice transcription will be disabled.'"
   },
   "keywords": [
     "ai",
