@@ -121,7 +121,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       const toolDefs = runnableTools.map(({ run, ...def }) => def);
       const probe = await client.messages.create({
         model: activeModel,
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: withCacheBreakpoints([...history]),
         tools: toolDefs,
@@ -129,7 +129,8 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
       trackUsage(probe.usage);
 
-      if (probe.stop_reason !== 'tool_use') {
+      const hasToolUse = probe.content.some(b => b.type === 'tool_use');
+      if (!hasToolUse) {
         histories.pushAssistant(chatId, probe.content);
         const text = probe.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
         return { text, usage: totalUsage, model: activeModel };
