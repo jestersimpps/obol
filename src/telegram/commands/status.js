@@ -1,8 +1,7 @@
 const path = require('path');
 const { getTenant } = require('../../tenant');
-const { loadConfig } = require('../../config');
 const { loadTraits } = require('../../personality');
-const { evolve, loadEvolutionState } = require('../../evolve');
+const { loadEvolutionState } = require('../../evolve');
 const { getMaxToolIterations } = require('../../claude');
 const { termBar, formatTraits } = require('../utils');
 const { TERM_SEP } = require('../constants');
@@ -44,16 +43,13 @@ function register(bot, config) {
     );
 
     const evoState = loadEvolutionState(tenant.userDir);
-    const cfg = loadConfig();
-    const intervalHours = cfg?.evolution?.intervalHours ?? 24;
-    const elapsed = evoState.lastEvolution ? (Date.now() - new Date(evoState.lastEvolution).getTime()) / 3600000 : Infinity;
-    const evoPct = Math.min(100, Math.round((elapsed / intervalHours) * 100));
-    const timeLeft = Math.max(0, intervalHours - elapsed);
     lines.push(
       ``, `EVOLUTION`,
-      `  ${termBar(evoPct)} ${evoPct}%`,
-      `  ${timeLeft < 1 ? 'ready' : `${timeLeft.toFixed(1)}h remaining`} ▪ ${evoState.evolutionCount || 0} completed`,
+      `  ${evoState.evolutionCount || 0} completed`,
     );
+    if (evoState.lastEvolution) {
+      lines.push(`  last ${new Date(evoState.lastEvolution).toLocaleDateString()}`);
+    }
 
     const personalityDir = path.join(tenant.userDir, 'personality');
     const traits = loadTraits(personalityDir);
@@ -68,18 +64,11 @@ function register(bot, config) {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const state = loadEvolutionState(tenant.userDir);
-    const cfg = loadConfig();
-    const intervalHours = cfg?.evolution?.intervalHours ?? 24;
-    const elapsed = state.lastEvolution ? (Date.now() - new Date(state.lastEvolution).getTime()) / 3600000 : Infinity;
-    const pct = Math.min(100, Math.round((elapsed / intervalHours) * 100));
-    const timeLeft = Math.max(0, intervalHours - elapsed);
 
     const lines = [
       `◈ OBOL EVOLUTION CYCLE`,
       TERM_SEP,
       ``,
-      `  ${termBar(pct)} ${pct}%`,
-      `  ${timeLeft < 1 ? 'ready' : `${timeLeft.toFixed(1)}h remaining`}`,
       `  ${state.evolutionCount || 0} completed`,
     ];
     if (state.lastEvolution) {
