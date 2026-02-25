@@ -1,5 +1,25 @@
-docs/obol-banner.png
-docs/DEPLOY.md
-.git
-.github
+# testing
 tests/
+vitest.config.js
+coverage/
+
+# dev/local files
+.claude/
+ISSUES.md
+obol-messages-*.csv
+*.csv
+
+# os/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# secrets/env
+.env
+.env.*
+*.pem
+*.key
