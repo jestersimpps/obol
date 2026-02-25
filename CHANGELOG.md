@@ -1,3 +1,7 @@
+## 0.2.17
+- add force stop button to instantly abort mid-tool execution
+- replace web_fetch with native web_search tool
+
 ## 0.2.16
 - add chat_history tool for retrieving past conversations by date
 - add stop button to status UI with concurrent update processing
