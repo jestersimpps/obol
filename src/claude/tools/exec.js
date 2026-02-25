@@ -1,3 +1,4 @@
+const path = require('path');
 const { MAX_EXEC_TIMEOUT, BLOCKED_EXEC_PATTERNS } = require('../constants');
 const { execAsync } = require('../../sanitize');
 
@@ -18,6 +19,17 @@ function extractAbsolutePaths(command) {
     paths.add(m[1]);
   }
   return [...paths];
+}
+
+/** Extract and resolve relative traversal paths (e.g. ../../etc) against userDir */
+function extractTraversalPaths(command, userDir) {
+  const re = /(?:^|[\s=|&;<>('"])(\.\.[\w.\-/]*)/g;
+  const paths = [];
+  let m;
+  while ((m = re.exec(command)) !== null) {
+    paths.push(path.resolve(userDir, m[1]));
+  }
+  return paths;
 }
 
 /** Returns true if path is within userDir or a safe system prefix */
@@ -48,9 +60,12 @@ const handlers = {
       }
     }
     if (userDir) {
-      const blockedPaths = extractAbsolutePaths(input.command).filter(p => !isAllowedPath(p, userDir));
-      if (blockedPaths.length > 0) {
-        return `Blocked: command accesses path(s) outside your workspace: ${blockedPaths.join(', ')}`;
+      const blocked = [
+        ...extractAbsolutePaths(input.command).filter(p => !isAllowedPath(p, userDir)),
+        ...extractTraversalPaths(input.command, userDir).filter(p => !isAllowedPath(p, userDir)),
+      ];
+      if (blocked.length > 0) {
+        return `Blocked: command accesses path(s) outside your workspace: ${blocked.join(', ')}. Your workspace is ${userDir} — all file operations must stay within it.`;
       }
     }
     const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;

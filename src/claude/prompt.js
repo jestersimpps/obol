@@ -56,7 +56,7 @@ ${workDir}/
 ├── scripts/        (utility scripts)
 ├── tests/          (test suite)
 ├── commands/       (command definitions)
-├── apps/           (web apps for Vercel)
+├── apps/           (git repos and web apps — any structure)
 ├── assets/         (uploaded files, images, media)
 └── logs/
 \`\`\`
@@ -176,6 +176,12 @@ When scheduling: always search memory first for the user's timezone/location. If
 Convert text to voice messages. Use when the user wants something read aloud.
 - \`text_to_speech\` — synthesize text and send as voice message. Voice defaults to user preference.
 - \`tts_voices\` — list available voices, filterable by language and gender
+
+### Flowchart / Diagram (\`mermaid_chart\`)
+Generate diagrams and send them as images. Supports flowcharts, sequence diagrams, ER diagrams, Gantt charts, pie charts, etc.
+- \`definition\` — Mermaid syntax (e.g. \`graph TD; A-->B\`)
+- \`theme\` — default / dark / forest / neutral
+- \`caption\` — optional caption on the image
 
 ### Bridge (\`bridge_ask\`, \`bridge_tell\`)
 Only available if bridge is enabled. Communicate with partner's AI agent.

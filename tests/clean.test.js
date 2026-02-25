@@ -29,11 +29,11 @@ describe('cleanWorkspace', () => {
     expect(errors).toEqual([]);
   });
 
-  it('returns error for non-existent directory', async () => {
+  it('returns empty for non-existent directory', async () => {
     const { issues, errors } = await cleanWorkspace('/tmp/obol-does-not-exist-' + Date.now());
 
     expect(issues).toEqual([]);
-    expect(errors).toEqual(['Directory does not exist']);
+    expect(errors).toEqual([]);
   });
 
   it('detects and removes empty rogue directories', async () => {
@@ -44,7 +44,7 @@ describe('cleanWorkspace', () => {
     expect(errors).toEqual([]);
     expect(issues).toContainEqual({
       path: 'rogue-empty/',
-      action: 'deleted (empty rogue dir)',
+      action: 'deleted (empty dir)',
     });
     expect(fs.existsSync(path.join(tmpDir, 'rogue-empty'))).toBe(false);
   });

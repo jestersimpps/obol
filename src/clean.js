@@ -3,26 +3,20 @@ const path = require('path');
 const { OBOL_DIR } = require('./config');
 
 const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']);
-const ALLOWED_FILES = new Set([
+const ALLOWED_ROOT_FILES = new Set([
   'config.json',
   '.evolution-state.json',
   '.first-run-done',
   '.post-setup-done',
 ]);
-const ALLOWED_PATTERNS = [/^\./];
 
-const FILE_RULES = {
-  '.js': 'scripts',
-  '.sh': 'scripts',
-  '.md': 'commands',
-};
+// Extensions that belong in scripts/
+const SCRIPT_EXTS = new Set(['.js', '.ts', '.sh', '.py', '.rb', '.php', '.go', '.rs', '.pl', '.lua']);
+// Extensions that belong in assets/
+const ASSET_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.mp3', '.wav', '.pdf', '.zip']);
 
-const DIR_FILE_RULES = {
-  personality: ['.md'],
-  scripts: ['.js', '.sh'],
-  tests: ['.js', '.sh'],
-  commands: ['.md'],
-};
+// Dirs where only .md files are allowed
+const MD_ONLY_DIRS = new Set(['personality', 'commands']);
 
 function safeReaddir(dir) {
   try {
@@ -36,252 +30,148 @@ function safeReaddirAll(dir) {
   try { return fs.readdirSync(dir); } catch { return []; }
 }
 
+/** @param {string} filename @returns {string|null} */
 function guessDestination(filename) {
-  const ext = path.extname(filename);
-  if (filename.startsWith('test-') || filename.startsWith('test_')) return 'tests';
-  return FILE_RULES[ext] || null;
+  const ext = path.extname(filename).toLowerCase();
+  const base = path.basename(filename, ext).toLowerCase();
+  if (base.startsWith('test-') || base.startsWith('test_') || base.endsWith('.test') || base.endsWith('.spec')) return 'tests';
+  if (SCRIPT_EXTS.has(ext)) return 'scripts';
+  if (ASSET_EXTS.has(ext)) return 'assets';
+  if (ext === '.md') return 'commands';
+  if (ext === '.log') return 'logs';
+  return null;
 }
 
 /**
  * @param {string} userDir
- * @returns {Array<{type: string, name: string, children?: string[], currentDir?: string}>}
+ * @returns {Array<{type: string, name: string, dest?: string, children?: string[], currentDir?: string}>}
  */
 function scanWorkspace(userDir) {
-  const rogueItems = [];
-  if (!fs.existsSync(userDir)) return rogueItems;
+  const issues = [];
+  if (!fs.existsSync(userDir)) return issues;
 
   const entries = fs.readdirSync(userDir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (!ALLOWED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-        rogueItems.push({ type: 'dir', name: entry.name, children: safeReaddirAll(path.join(userDir, entry.name)) });
+        // Unknown root dir — move to apps/ (likely a project/repo)
+        issues.push({ type: 'dir', name: entry.name, dest: 'apps', children: safeReaddirAll(path.join(userDir, entry.name)) });
       }
     } else if (entry.isFile()) {
-      if (!ALLOWED_FILES.has(entry.name) && !ALLOWED_PATTERNS.some(p => p.test(entry.name))) {
-        rogueItems.push({ type: 'file', name: entry.name });
+      if (!ALLOWED_ROOT_FILES.has(entry.name) && !entry.name.startsWith('.')) {
+        const dest = guessDestination(entry.name);
+        issues.push({ type: 'file', name: entry.name, dest });
       }
     }
   }
 
-  for (const [dir, allowedExts] of Object.entries(DIR_FILE_RULES)) {
+  // Check md-only dirs for non-.md files
+  for (const dir of MD_ONLY_DIRS) {
     const dirPath = path.join(userDir, dir);
     if (!fs.existsSync(dirPath)) continue;
     for (const file of safeReaddir(dirPath)) {
-      const ext = path.extname(file);
-      if (ext && !allowedExts.includes(ext)) {
-        rogueItems.push({ type: 'misplaced', name: file, currentDir: dir });
+      if (path.extname(file).toLowerCase() !== '.md') {
+        const dest = guessDestination(file);
+        issues.push({ type: 'misplaced', name: file, currentDir: dir, dest });
       }
     }
   }
 
-  return rogueItems;
+  return issues;
 }
 
 /**
- * @param {Array} rogueItems
- * @param {object} claudeClient - Anthropic client instance
- * @returns {Promise<Array<{path: string, action: string, dest?: string}>|null>}
- */
-async function resolveWithLlm(rogueItems, claudeClient) {
-  const itemList = rogueItems.map(item => {
-    if (item.type === 'dir') {
-      return `- Directory "${item.name}/" containing: ${item.children.length ? item.children.join(', ') : '(empty)'}`;
-    }
-    if (item.type === 'misplaced') {
-      return `- File "${item.currentDir}/${item.name}" (wrong location for its type)`;
-    }
-    return `- File "${item.name}" at root level`;
-  }).join('\n');
-
-  const prompt = `You are organizing a workspace directory. The valid structure is:
-- personality/ — .md files (soul, personality config)
-- scripts/ — .js and .sh scripts
-- tests/ — test files (test-*.js, test_*.js, *.test.js)
-- commands/ — .md command definitions
-- apps/ — application subdirectories
-- logs/ — log files
-- assets/ — media and binary assets
-
-These items don't belong in their current location:
-${itemList}
-
-For each item, decide: "move" to a valid directory, or "delete" if truly rogue/irrelevant.
-Respond ONLY with a JSON array, no explanation:
-[{"path":"item-name","action":"move|delete","dest":"destination-dir"}]
-For directories use "dirname/", for misplaced files use "currentDir/filename".`;
-
-  const response = await claudeClient.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0]?.text || '[]';
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * @param {string} userDir
- * @param {Array} rogueItems
- * @param {Array} decisions
+ * @param {string} baseDir
+ * @param {Array} issues
  * @returns {{issues: Array, errors: Array}}
  */
-function applyDecisions(userDir, rogueItems, decisions) {
-  const issues = [];
+function applyIssues(baseDir, issues) {
+  const applied = [];
   const errors = [];
 
-  for (const decision of decisions) {
-    const item = rogueItems.find(r => {
-      if (r.type === 'dir') return decision.path === r.name + '/';
-      if (r.type === 'misplaced') return decision.path === `${r.currentDir}/${r.name}`;
-      return decision.path === r.name;
-    });
-    if (!item) continue;
-
-    const srcPath = item.type === 'misplaced'
-      ? path.join(userDir, item.currentDir, item.name)
-      : path.join(userDir, item.name);
-
-    if (decision.action === 'delete') {
-      try {
-        fs.rmSync(srcPath, { recursive: true, force: true });
-        issues.push({ path: decision.path, action: 'deleted' });
-      } catch (e) {
-        errors.push(`Failed to delete ${decision.path}: ${e.message}`);
-      }
-    } else if (decision.action === 'move' && decision.dest) {
-      const destDir = path.join(userDir, decision.dest);
-      const destPath = path.join(destDir, item.name);
-      try {
-        fs.mkdirSync(destDir, { recursive: true });
-        fs.renameSync(srcPath, destPath);
-        issues.push({ path: decision.path, action: `moved → ${decision.dest}/${item.name}` });
-      } catch (e) {
-        errors.push(`Failed to move ${decision.path}: ${e.message}`);
-      }
-    }
-  }
-
-  return { issues, errors };
-}
-
-/**
- * @param {string} userDir
- * @param {Array} rogueItems
- * @returns {{issues: Array, errors: Array}}
- */
-function applyHeuristics(userDir, rogueItems) {
-  const issues = [];
-  const errors = [];
-
-  for (const item of rogueItems) {
+  for (const item of issues) {
     if (item.type === 'dir') {
-      const fullPath = path.join(userDir, item.name);
-      const files = safeReaddir(fullPath);
-
+      const src = path.join(baseDir, item.name);
       if (item.children.length === 0) {
         try {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-          issues.push({ path: item.name + '/', action: 'deleted (empty rogue dir)' });
+          fs.rmSync(src, { recursive: true, force: true });
+          applied.push({ path: item.name + '/', action: 'deleted (empty dir)' });
         } catch (e) {
-          errors.push(`Failed to remove ${item.name}/: ${e.message}`);
+          errors.push(`Failed to delete ${item.name}/: ${e.message}`);
         }
       } else {
-        for (const file of files) {
-          const dest = guessDestination(file);
-          if (dest) {
-            try {
-              const destPath = path.join(userDir, dest, file);
-              fs.mkdirSync(path.join(userDir, dest), { recursive: true });
-              fs.renameSync(path.join(fullPath, file), destPath);
-              issues.push({ path: `${item.name}/${file}`, action: `moved → ${dest}/${file}` });
-            } catch (e) {
-              errors.push(`Failed to move ${item.name}/${file}: ${e.message}`);
-            }
-          } else {
-            try {
-              fs.unlinkSync(path.join(fullPath, file));
-              issues.push({ path: `${item.name}/${file}`, action: 'deleted (unknown type)' });
-            } catch (e) {
-              errors.push(`Failed to delete ${item.name}/${file}: ${e.message}`);
-            }
-          }
-        }
+        const dest = path.join(baseDir, 'apps', item.name);
         try {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-          issues.push({ path: item.name + '/', action: 'deleted (rogue dir cleared)' });
-        } catch {}
+          fs.mkdirSync(path.join(baseDir, 'apps'), { recursive: true });
+          fs.renameSync(src, dest);
+          applied.push({ path: item.name + '/', action: `moved → apps/${item.name}/` });
+        } catch (e) {
+          errors.push(`Failed to move ${item.name}/: ${e.message}`);
+        }
       }
     } else if (item.type === 'file') {
-      const dest = guessDestination(item.name);
-      const fullPath = path.join(userDir, item.name);
-      if (dest) {
+      const src = path.join(baseDir, item.name);
+      if (item.dest) {
+        const destDir = path.join(baseDir, item.dest);
         try {
-          const destPath = path.join(userDir, dest, item.name);
-          fs.mkdirSync(path.join(userDir, dest), { recursive: true });
-          fs.renameSync(fullPath, destPath);
-          issues.push({ path: item.name, action: `moved → ${dest}/${item.name}` });
+          fs.mkdirSync(destDir, { recursive: true });
+          fs.renameSync(src, path.join(destDir, item.name));
+          applied.push({ path: item.name, action: `moved → ${item.dest}/${item.name}` });
         } catch (e) {
           errors.push(`Failed to move ${item.name}: ${e.message}`);
         }
       } else {
-        try {
-          fs.unlinkSync(fullPath);
-          issues.push({ path: item.name, action: 'deleted (unknown file at root)' });
-        } catch (e) {
-          errors.push(`Failed to delete ${item.name}: ${e.message}`);
-        }
+        errors.push(`Don't know where to put ${item.name} — move it manually`);
       }
     } else if (item.type === 'misplaced') {
-      const dest = guessDestination(item.name);
-      if (dest && dest !== item.currentDir) {
-        const src = path.join(userDir, item.currentDir, item.name);
+      const src = path.join(baseDir, item.currentDir, item.name);
+      if (item.dest && item.dest !== item.currentDir) {
+        const destDir = path.join(baseDir, item.dest);
         try {
-          const destPath = path.join(userDir, dest, item.name);
-          fs.mkdirSync(path.join(userDir, dest), { recursive: true });
-          fs.renameSync(src, destPath);
-          issues.push({ path: `${item.currentDir}/${item.name}`, action: `moved → ${dest}/${item.name}` });
+          fs.mkdirSync(destDir, { recursive: true });
+          fs.renameSync(src, path.join(destDir, item.name));
+          applied.push({ path: `${item.currentDir}/${item.name}`, action: `moved → ${item.dest}/${item.name}` });
         } catch (e) {
           errors.push(`Failed to move ${item.currentDir}/${item.name}: ${e.message}`);
         }
+      } else {
+        errors.push(`Don't know where to put ${item.currentDir}/${item.name} — move it manually`);
       }
     }
   }
 
-  return { issues, errors };
+  return { issues: applied, errors };
 }
 
 /**
  * @param {string} userDir
- * @param {object|null} claudeClient - optional Anthropic client for LLM-based resolution
- * @returns {Promise<{issues: Array, errors: Array}>}
+ * @returns {Promise<{baseDir: string, issues: Array}>}
  */
-async function cleanWorkspace(userDir, claudeClient = null) {
+async function planClean(userDir) {
   const baseDir = userDir || OBOL_DIR;
-  if (!fs.existsSync(baseDir)) {
-    return { issues: [], errors: ['Directory does not exist'] };
-  }
-
-  const rogueItems = scanWorkspace(baseDir);
-  if (rogueItems.length === 0) return { issues: [], errors: [] };
-
-  if (claudeClient) {
-    try {
-      const decisions = await resolveWithLlm(rogueItems, claudeClient);
-      if (decisions) return applyDecisions(baseDir, rogueItems, decisions);
-    } catch (e) {
-      console.error('[clean] LLM resolution failed, falling back to heuristics:', e.message);
-    }
-  }
-
-  return applyHeuristics(baseDir, rogueItems);
+  if (!fs.existsSync(baseDir)) return { baseDir, issues: [] };
+  return { baseDir, issues: scanWorkspace(baseDir) };
 }
 
-module.exports = { cleanWorkspace };
+/**
+ * @param {string} baseDir
+ * @param {Array} issues
+ * @returns {{issues: Array, errors: Array}}
+ */
+function applyPlan(baseDir, issues) {
+  return applyIssues(baseDir, issues);
+}
+
+/**
+ * Convenience wrapper: plan + apply in one call.
+ * @param {string} userDir
+ * @returns {Promise<{issues: Array, errors: Array}>}
+ */
+async function cleanWorkspace(userDir) {
+  const plan = await planClean(userDir);
+  if (plan.issues.length === 0) return { issues: [], errors: [] };
+  return applyPlan(plan.baseDir, plan.issues);
+}
+
+module.exports = { planClean, applyPlan, cleanWorkspace };

@@ -100,7 +100,7 @@ function createBot(telegramConfig, config) {
   conversationCommands.register(bot, config);
   memoryCommands.register(bot, config);
   statusCommands.register(bot, config);
-  adminCommands.register(bot, config);
+  adminCommands.register(bot, config, createAsk);
   traitsCommands.register(bot, config);
   secretsCommands.register(bot, config);
   toolsCommands.register(bot, config);

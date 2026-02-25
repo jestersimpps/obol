@@ -14,6 +14,7 @@ const bridgeTool = require('./tools/bridge');
 const historyTool = require('./tools/history');
 const agentTool = require('./tools/agent');
 const sttTool = require('./tools/stt');
+const mermaidTool = require('./tools/mermaid');
 
 const TOOL_MODULES = [
   execTool,
@@ -28,6 +29,7 @@ const TOOL_MODULES = [
   historyTool,
   agentTool,
   sttTool,
+  mermaidTool,
 ];
 
 const INPUT_SUMMARIES = {

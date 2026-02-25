@@ -6,7 +6,7 @@ const { loadConfig } = require('../../config');
 const { getMaxToolIterations, setMaxToolIterations } = require('../../claude');
 const pkg = require('../../../package.json');
 
-function register(bot, config) {
+function register(bot, config, createAsk) {
   bot.command('backup', async (ctx) => {
     if (!ctx.from) return;
     try {
@@ -25,18 +25,25 @@ function register(bot, config) {
   bot.command('clean', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
-    const { cleanWorkspace } = require('../../clean');
+    const { planClean, applyPlan } = require('../../clean');
     await ctx.replyWithChatAction('typing');
     try {
-      const result = await cleanWorkspace(tenant.userDir, tenant.claude.client);
-      if (result.issues.length === 0) {
+      const plan = await planClean(tenant.userDir);
+      if (plan.issues.length === 0) {
         await ctx.reply('✨ Workspace is clean. Nothing out of place.');
-      } else {
-        const text = `🧹 Found ${result.issues.length} issue(s):\n\n` +
-          result.issues.map(i => `${i.action === 'deleted' ? '🗑️' : '📦'} ${i.path} → ${i.action}`).join('\n') +
-          (result.errors.length > 0 ? `\n\n⚠️ ${result.errors.length} error(s):\n${result.errors.join('\n')}` : '');
-        await ctx.reply(text);
+        return;
       }
+      const previewLines = plan.issues.map(i => {
+        const src = i.type === 'misplaced' ? `${i.currentDir}/${i.name}` : (i.type === 'dir' ? i.name + '/' : i.name);
+        return i.dest ? `📦 ${src} → ${i.dest}/` : `⚠️ ${src} — unknown type, needs manual move`;
+      });
+      const preview = `🧹 Found ${plan.issues.length} issue(s):\n\n${previewLines.join('\n')}\n\nApply these changes?`;
+      const answer = await createAsk(ctx, preview, ['Apply', 'Cancel']);
+      if (answer !== 'Apply') return;
+      const result = applyPlan(plan.baseDir, plan.issues);
+      const text = `✅ Done — ${result.applied.length} change(s) applied` +
+        (result.errors.length > 0 ? `\n\n⚠️ ${result.errors.length} error(s):\n${result.errors.join('\n')}` : '');
+      await ctx.reply(text);
     } catch (e) {
       await ctx.reply(`⚠️ Clean failed: ${e.message}`);
     }

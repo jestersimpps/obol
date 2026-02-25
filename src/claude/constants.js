@@ -24,14 +24,14 @@ const OPTIONAL_TOOLS = {
     tools: ['vercel_deploy', 'vercel_list'],
     config: {},
   },
-  scheduler: {
-    label: 'Scheduler',
-    tools: ['schedule_event', 'list_events', 'cancel_event'],
-    config: {},
-  },
   background: {
     label: 'Background Tasks',
     tools: ['background_task'],
+    config: {},
+  },
+  mermaid: {
+    label: 'Flowchart',
+    tools: ['mermaid_chart'],
     config: {},
   },
 };
