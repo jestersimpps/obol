@@ -2,6 +2,11 @@ const MAX_EXEC_TIMEOUT = 120;
 let MAX_TOOL_ITERATIONS = 100;
 
 const OPTIONAL_TOOLS = {
+  speech_to_text: {
+    label: 'Speech to Text',
+    tools: ['transcribe_audio'],
+    config: {},
+  },
   text_to_speech: {
     label: 'Text to Speech',
     tools: ['text_to_speech', 'tts_voices'],
