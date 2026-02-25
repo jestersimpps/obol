@@ -1,3 +1,10 @@
+## 0.2.18
+- remove evolution progress bar from status UI
+- bidirectional bridge with reply button + memory_remove tool
+- update background tasks section in readme
+- add status UI screenshot to readme
+- update readme with stop controls, commands, and model escalation
+
 ## 0.2.17
 - add force stop button to instantly abort mid-tool execution
 - replace web_fetch with native web_search tool
