@@ -5,7 +5,7 @@ const { createAnthropicClient, ensureFreshToken } = require('./client');
 const { routeMessage } = require('./router');
 const { buildSystemPrompt } = require('./prompt');
 const { buildTools, buildRunnableTools } = require('./tool-registry');
-const { withCacheBreakpoints } = require('./cache');
+const { withCacheBreakpoints, sanitizeMessages } = require('./cache');
 const { getMaxToolIterations } = require('./constants');
 
 function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled }) {
@@ -123,7 +123,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         ? [{ type: 'text', text: last.content }]
         : [...last.content];
       copy[lastIdx] = { ...last, content: [...runtimePrefix, ...existing] };
-      return copy;
+      return sanitizeMessages(copy);
     }
 
     let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
@@ -203,7 +203,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         { type: 'text', text: 'You have used too many tool calls. Please provide a final response now based on what you have so far.' },
       ]);
       const bailoutResponse = await client.messages.stream({
-        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints(sanitizeMessages([...histories.get(chatId)])),
       }, { signal: abortController.signal }).finalMessage();
       histories.pushAssistant(chatId, bailoutResponse.content);
       trackUsage(bailoutResponse.usage);
@@ -217,7 +217,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       vlog('[claude] No text in final response after tool use — forcing summary');
       histories.pushUser(chatId, 'Provide a concise response to the user based on the tool results above.');
       const summaryResponse = await client.messages.stream({
-        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints([...histories.get(chatId)]),
+        model: activeModel, max_tokens: 131072, system: systemPrompt, messages: withCacheBreakpoints(sanitizeMessages([...histories.get(chatId)])),
       }, { signal: abortController.signal }).finalMessage();
       histories.pushAssistant(chatId, summaryResponse.content);
       trackUsage(summaryResponse.usage);

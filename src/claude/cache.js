@@ -1,3 +1,19 @@
+function sanitizeMessages(messages) {
+  return messages.map(msg => {
+    if (typeof msg.content === 'string') {
+      if (msg.content === '') {
+        return { ...msg, content: msg.role === 'assistant' ? null : '(empty)' };
+      }
+      return msg;
+    }
+    if (Array.isArray(msg.content)) {
+      const filtered = msg.content.filter(b => !(b.type === 'text' && b.text === ''));
+      return { ...msg, content: filtered.length ? filtered : null };
+    }
+    return msg;
+  });
+}
+
 function withCacheBreakpoints(messages) {
   if (messages.length < 2) return messages;
   const result = messages.slice();
@@ -15,4 +31,4 @@ function withCacheBreakpoints(messages) {
   return result;
 }
 
-module.exports = { withCacheBreakpoints };
+module.exports = { withCacheBreakpoints, sanitizeMessages };
