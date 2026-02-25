@@ -81,7 +81,9 @@ TASK: ${task}`;
           routeInfo = info;
         },
         _onRouteUpdate: (update) => {
-          if (routeInfo) routeInfo.memoryCount = update.memoryCount;
+          if (!routeInfo) return;
+          if (update.memoryCount !== undefined) routeInfo.memoryCount = update.memoryCount;
+          if (update.model) routeInfo.model = update.model;
         },
         _onToolStart: (toolName, inputSummary) => {
           statusText = 'Processing';

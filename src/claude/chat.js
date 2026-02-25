@@ -131,6 +131,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
 
       vlog('[escalate] haiku → sonnet (tool use requested)');
       activeModel = 'claude-sonnet-4-6';
+      context._onRouteUpdate?.({ model: 'sonnet' });
     }
 
     const runner = client.beta.messages.toolRunner({

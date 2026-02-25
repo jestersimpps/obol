@@ -18,6 +18,7 @@ function createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk }
     ctx,
     claude: tenant.claude,
     scheduler: tenant.scheduler,
+    messageLog: tenant.messageLog,
     toolPrefs: tenant.toolPrefs,
     config,
     verbose: tenant.verbose,
@@ -123,7 +124,9 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
     };
     chatContext._onRouteUpdate = (update) => {
       const ri = status.routeInfo;
-      if (ri) ri.memoryCount = update.memoryCount;
+      if (!ri) return;
+      if (update.memoryCount !== undefined) ri.memoryCount = update.memoryCount;
+      if (update.model) ri.model = update.model;
     };
     chatContext._onToolStart = (toolName, inputSummary) => {
       status.setStatusText('Processing');

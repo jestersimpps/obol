@@ -65,7 +65,9 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
     };
     mediaChatCtx._onRouteUpdate = (update) => {
       const ri = status.routeInfo;
-      if (ri) ri.memoryCount = update.memoryCount;
+      if (!ri) return;
+      if (update.memoryCount !== undefined) ri.memoryCount = update.memoryCount;
+      if (update.model) ri.model = update.model;
     };
     mediaChatCtx._onToolStart = (toolName, inputSummary) => {
       status.setStatusText('Processing');
