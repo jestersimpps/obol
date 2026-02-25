@@ -70,8 +70,14 @@ async function bridgeAsk(question, fromUserId, config, notifyFn, targetId) {
   const partnerUserId = result.partnerId;
 
   const { getTenant } = require('./tenant');
-  const partner = await getTenant(partnerUserId, config);
-  if (!partner) return 'Could not load partner tenant.';
+  let partner;
+  try {
+    partner = await getTenant(partnerUserId, config);
+  } catch (e) {
+    console.error(`[bridge] getTenant failed for ${partnerUserId}:`, e.message);
+    return `Bridge is down — could not reach partner's agent (${e.message}). Answered from own knowledge instead.`;
+  }
+  if (!partner) return 'Bridge is down — partner agent unavailable. Answered from own knowledge instead.';
 
   let memoryContext = '';
   if (partner.memory) {
@@ -154,8 +160,14 @@ async function bridgeTell(message, fromUserId, config, notifyFn, targetId) {
   const partnerUserId = result.partnerId;
 
   const { getTenant } = require('./tenant');
-  const partner = await getTenant(partnerUserId, config);
-  if (!partner) return 'Could not load partner tenant.';
+  let partner;
+  try {
+    partner = await getTenant(partnerUserId, config);
+  } catch (e) {
+    console.error(`[bridge] getTenant failed for ${partnerUserId}:`, e.message);
+    return `Bridge is down — could not reach partner's agent (${e.message}).`;
+  }
+  if (!partner) return 'Bridge is down — partner agent unavailable.';
 
   if (partner.memory) {
     try {
