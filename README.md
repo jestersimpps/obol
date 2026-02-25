@@ -199,19 +199,17 @@ Month 6: evolution/ has 180+ archived souls
 
 ### Background Tasks
 
-Heavy work runs in the background. The main conversation stays responsive.
+Heavy work runs in the background with its own live status UI. The main conversation stays responsive — you can keep chatting while tasks run.
 
 ```
 You: "research the best coworking spaces in Barcelona"
-OBOL: "On it 🪙"
-
-[30s] ⏳ Found 15 spaces, filtering by reviews...
-[60s] ⏳ Narrowed to top 7, checking prices...
+OBOL: spawns BG #1 with live status
 
 You: "what time is it?"
 OBOL: "11:42 PM CET"
 
-[90s] ✅ Done! Here are the top 5 coworking spaces: ...
+✅ BG #1 done (1m 32s)
+Here are the top 5 coworking spaces: ...
 ```
 
 ### Live Status & Stop Controls
