@@ -1,3 +1,22 @@
+## 0.2.24
+- update changelog and lockfile
+- ignore obol message export csvs
+- add speech-to-text tool with faster-whisper, auto-transcribes voice messages when enabled
+- install faster-whisper in postinstall
+- update tests to expect runtime context blocks in last user message
+- sanitize empty content blocks before API calls to prevent 400 errors
+- inject time and memory as runtime context in user message, not system prompt
+- cache last tool definition to maximise prompt cache hits
+- replace regex JSON extraction with forced tool call for memory consolidation
+- surface bridge failures to user instead of swallowing errors
+- pass recent history to router to prevent haiku misrouting on follow-up messages
+- seed last 50 messages at boot, align to first user row
+- add 10-minute lock timeout with user notification
+- fix haiku probe: check tool_use blocks instead of stop_reason, raise max_tokens to 4096
+- 0.2.23 subagent tool, edit/glob/grep tools, path sandboxing, llm-driven clean, button cleanup
+- fix claude test mock to yield stream-like object with finalMessage()
+- 0.2.22 fix streaming for OAuth, max_tokens limit, and reauth message
+
 ## 0.2.21
 - add obol reauth command and fix bailout/summary to use streaming
 - update changelog
