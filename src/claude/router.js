@@ -1,8 +1,18 @@
-async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate }) {
+async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate, recentHistory = [] }) {
   let memoryBlock = null;
   let model = null;
 
   try {
+    const lastAssistantMsgs = recentHistory
+      .filter(m => m.role === 'assistant')
+      .slice(-3)
+      .map(m => typeof m.content === 'string' ? m.content : m.content.filter(b => b.type === 'text').map(b => b.text).join(''))
+      .filter(Boolean);
+
+    const contextNote = lastAssistantMsgs.length > 0
+      ? `\n\nRecent assistant context (last ${lastAssistantMsgs.length} turns):\n${lastAssistantMsgs.map((t, i) => `[${i + 1}] ${t.substring(0, 300)}`).join('\n')}`
+      : '';
+
     const routerDecision = await client.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 200,
@@ -18,7 +28,9 @@ search_queries: 1-3 optimized search queries covering different topics in the me
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
-Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, quick yes/no questions, and short single-turn exchanges that don't need any tool calling. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.`,
+Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, quick yes/no questions, and short single-turn exchanges that don't need any tool calling. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.
+
+If recent context shows an ongoing task (sonnet/opus was just used, multi-step work in progress), bias toward that model even for short follow-up messages.${contextNote}`,
       messages: [{ role: 'user', content: userMessage }],
     });
 

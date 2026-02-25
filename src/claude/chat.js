@@ -82,6 +82,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         vlog,
         onRouteDecision: context._onRouteDecision,
         onRouteUpdate: context._onRouteUpdate,
+        recentHistory: history,
       });
       memoryBlock = result.memoryBlock;
       if (result.model) context._model = result.model;
