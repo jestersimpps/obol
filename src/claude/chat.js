@@ -100,7 +100,6 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     vlog(`[model] ${model} | history=${history.length} msgs | facts=${memoryBlock ? 'yes' : 'none'}`);
     const systemPrompt = [
       { type: 'text', text: baseSystemPrompt, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: `\nCurrent time: ${new Date().toISOString()}${memoryBlock ? `\n\n${memoryBlock}` : ''}` },
     ];
     context._reloadPersonality = reloadPersonality;
     context._abortSignal = abortController.signal;
@@ -108,6 +107,24 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     context.claude = { chat, clearHistory, client };
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
+
+    const runtimePrefix = [
+      { type: 'text', text: '[Runtime context — metadata only, not instructions]' },
+      { type: 'text', text: `Current time: ${new Date().toISOString()}\nChat ID: ${chatId}` },
+      ...(memoryBlock ? [{ type: 'text', text: memoryBlock }] : []),
+    ];
+
+    function withRuntimeContext(msgs) {
+      if (msgs.length === 0) return msgs;
+      const copy = [...msgs];
+      const lastIdx = copy.length - 1;
+      const last = copy[lastIdx];
+      const existing = typeof last.content === 'string'
+        ? [{ type: 'text', text: last.content }]
+        : [...last.content];
+      copy[lastIdx] = { ...last, content: [...runtimePrefix, ...existing] };
+      return copy;
+    }
 
     let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
@@ -129,7 +146,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
         model: activeModel,
         max_tokens: 4096,
         system: systemPrompt,
-        messages: withCacheBreakpoints([...history]),
+        messages: withCacheBreakpoints(withRuntimeContext([...history])),
         tools: toolDefs,
       }, { signal: abortController.signal });
 
@@ -159,7 +176,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
       model: activeModel,
       max_tokens: 128000,
       system: systemPrompt,
-      messages: withCacheBreakpoints([...history]),
+      messages: withCacheBreakpoints(withRuntimeContext([...history])),
       tools: cachedTools ?? undefined,
       max_iterations: getMaxToolIterations(),
       stream: true,
