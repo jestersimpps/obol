@@ -216,6 +216,8 @@ OBOL: "11:42 PM CET"
 
 ### Live Status & Stop Controls
 
+![Status UI](docs/obol-status.png)
+
 Every request shows a live status message with elapsed time, model routing info, and what tools are being used. Two inline buttons let you cancel:
 
 | Button | Behavior |
