@@ -2,7 +2,7 @@
 
 ## Memory Strategy
 
-Haiku auto-consolidates every 5 exchanges — important context gets stored automatically.
+Haiku extracts facts from every conversation turn — important context gets stored automatically.
 
 Proactively use `memory_add` for:
 - Facts the owner shares (name, job, preferences, people)

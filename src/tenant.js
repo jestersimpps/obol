@@ -35,7 +35,7 @@ async function createTenant(userId, config) {
   const memory = config.supabase ? await createMemory(config.supabase, userId) : null;
   const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
   const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled });
-  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, claude.client, userId, userDir) : null;
+  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, config.anthropic, userId, userDir) : null;
   const scheduler = config.supabase ? createScheduler(config.supabase, userId) : null;
   const toolPrefsApi = config.supabase ? createToolPrefs(config.supabase, userId) : null;
   const bg = new BackgroundRunner();

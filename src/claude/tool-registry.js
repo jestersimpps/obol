@@ -1,0 +1,111 @@
+const { OPTIONAL_TOOLS } = require('./constants');
+
+const execTool = require('./tools/exec');
+const memoryTool = require('./tools/memory');
+const webTool = require('./tools/web');
+const filesTool = require('./tools/files');
+const secretsTool = require('./tools/secrets');
+const vercelTool = require('./tools/vercel');
+const backgroundTool = require('./tools/background');
+const telegramTool = require('./tools/telegram');
+const schedulerTool = require('./tools/scheduler');
+const ttsTool = require('./tools/tts');
+const bridgeTool = require('./tools/bridge');
+
+const TOOL_MODULES = [
+  execTool,
+  webTool,
+  filesTool,
+  secretsTool,
+  vercelTool,
+  backgroundTool,
+  telegramTool,
+  schedulerTool,
+  ttsTool,
+];
+
+const INPUT_SUMMARIES = {
+  exec: (i) => i.command,
+  write_file: (i) => i.path,
+  read_file: (i) => i.path,
+  memory_search: (i) => i.query,
+  memory_add: (i) => `[${i.category || 'fact'}]`,
+  memory_query: (i) => `${i.date || ''}${i.tags ? ' #' + i.tags.join(' #') : ''}${i.category ? ' [' + i.category + ']' : ''}`.trim() || 'all',
+  web_fetch: (i) => i.url,
+  background_task: (i) => i.task?.substring(0, 60),
+  schedule_event: (i) => `${i.title} @ ${i.due_at}${i.cron_expr ? ` [${i.cron_expr}]` : ''}`,
+  cancel_event: (i) => i.event_id,
+  create_pdf: (i) => i.filename || 'document',
+  text_to_speech: (i) => i.text?.substring(0, 60),
+  tts_voices: (i) => i.language || 'all',
+};
+
+function summarizeInput(toolName, input) {
+  const fn = INPUT_SUMMARIES[toolName];
+  return fn ? fn(input) : JSON.stringify(input).substring(0, 80);
+}
+
+function buildTools(memory, opts = {}) {
+  const tools = [];
+
+  for (const mod of TOOL_MODULES) {
+    tools.push(...mod.definitions);
+  }
+
+  if (memory) {
+    tools.push(...memoryTool.definitions);
+  }
+
+  if (opts.bridgeEnabled) {
+    tools.push(...bridgeTool.getDefinitions());
+  }
+
+  return tools;
+}
+
+function buildHandlerMap() {
+  const map = {};
+  for (const mod of TOOL_MODULES) {
+    Object.assign(map, mod.handlers);
+  }
+  Object.assign(map, memoryTool.handlers);
+  Object.assign(map, bridgeTool.handlers);
+  return map;
+}
+
+const _handlers = buildHandlerMap();
+
+function buildRunnableTools(tools, memory, context, vlog) {
+  const disabledTools = new Set();
+  const toolPrefs = context.toolPrefs;
+  if (toolPrefs) {
+    for (const [featureKey, feature] of Object.entries(OPTIONAL_TOOLS)) {
+      const pref = toolPrefs.get(featureKey);
+      if (!pref || !pref.enabled) {
+        for (const t of feature.tools) disabledTools.add(t);
+      }
+    }
+  }
+
+  return tools
+    .filter(tool => !disabledTools.has(tool.name))
+    .map(tool => ({
+      ...tool,
+      run: async (input) => {
+        const inputSummary = summarizeInput(tool.name, input);
+        vlog(`[tool] ${tool.name}: ${inputSummary}`);
+        context._onToolStart?.(tool.name, inputSummary);
+
+        const handler = _handlers[tool.name];
+        if (!handler) return `Unknown tool: ${tool.name}`;
+
+        try {
+          return await handler(input, memory, context);
+        } catch (e) {
+          return `Error: ${e.message}`;
+        }
+      },
+    }));
+}
+
+module.exports = { buildTools, buildRunnableTools, OPTIONAL_TOOLS, summarizeInput };

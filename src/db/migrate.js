@@ -192,6 +192,11 @@ async function migrate(supabaseConfig) {
         CHECK (status IN ('pending','sent','cancelled','completed'));
     EXCEPTION WHEN undefined_object THEN NULL;
     END $$;`,
+
+    // Cleanup: remove message embeddings (replaced by per-turn fact extraction to obol_memory)
+    `DROP FUNCTION IF EXISTS match_obol_messages(VECTOR(384), FLOAT, INT, BIGINT);`,
+    `DROP INDEX IF EXISTS obol_messages_embedding_idx;`,
+    `ALTER TABLE obol_messages DROP COLUMN IF EXISTS embedding;`,
   ];
 
   // Save SQL file for manual fallback

@@ -143,7 +143,29 @@ async function createMemory(supabaseConfig, userId = 0) {
     return { total, counts, breakdown };
   }
 
-  return { add, search, byDate, recent, update, forget, stats };
+  async function query(opts = {}) {
+    const limit = opts.limit || 20;
+    const parts = [`user_id=eq.${userId}`];
+    if (opts.category) parts.push(`category=eq.${opts.category}`);
+    if (opts.source) parts.push(`source=eq.${opts.source}`);
+    if (opts.minImportance) parts.push(`importance=gte.${opts.minImportance}`);
+    if (opts.tags?.length) parts.push(`tags=ov.{${opts.tags.join(',')}}`);
+    if (opts.date) {
+      const { start, end } = parseDateRange(opts.date);
+      parts.push(`created_at=gte.${start.toISOString()}`);
+      parts.push(`created_at=lt.${end.toISOString()}`);
+    }
+    const filter = parts.join('&');
+    const res = await fetch(
+      `${url}/rest/v1/obol_memory?select=id,content,category,tags,importance,source,created_at&${filter}&order=created_at.desc&limit=${limit}`,
+      { headers }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+    return data;
+  }
+
+  return { add, search, byDate, recent, update, forget, stats, query };
 }
 
 function parseDateRange(dateStr) {

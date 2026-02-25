@@ -1,16 +1,14 @@
 /**
- * Message logging + periodic consolidation to vector memory.
- * 
- * Tier 1: obol_messages — raw log, every message, no embeddings
- * Tier 2: obol_memory — vector, Haiku summarizes every ~5 exchanges
+ * Message logging + per-turn fact extraction to vector memory.
+ *
+ * Tier 1: obol_messages — raw log, every message
+ * Tier 2: obol_memory — curated facts, extracted after every assistant turn
  */
 
-const fs = require('fs');
-const path = require('path');
-const { OBOL_DIR } = require('./config');
+const Anthropic = require('@anthropic-ai/sdk');
 
 class MessageLog {
-  constructor(supabaseConfig, memory, claudeClient, userId = 0, userDir = null) {
+  constructor(supabaseConfig, memory, anthropicConfig, userId = 0, userDir = null) {
     this.url = supabaseConfig.url;
     this.headers = {
       'apikey': supabaseConfig.serviceKey,
@@ -19,25 +17,30 @@ class MessageLog {
       'Prefer': 'return=representation',
     };
     this.memory = memory;
-    this.client = claudeClient;
+    this._anthropicConfig = anthropicConfig;
+    this._extractionClient = null;
     this.userId = userId;
     this.userDir = userDir;
     this.exchangeCount = new Map();
+    this._lastUserMessage = new Map();
+    this._verboseCallbacks = new Map();
     this._cleanup = setInterval(() => {
       const now = Date.now();
       for (const [key] of this.exchangeCount) {
-        if (now - (this._lastActivity?.get(key) || 0) > 1800000) this.exchangeCount.delete(key);
+        if (now - (this._lastActivity?.get(key) || 0) > 1800000) {
+          this.exchangeCount.delete(key);
+          this._lastUserMessage.delete(key);
+          this._verboseCallbacks.delete(key);
+        }
       }
     }, 600000);
     this._cleanup.unref();
     this._lastActivity = new Map();
-    this._lastConsolidatedAt = new Map();
   }
 
-  /**
-   * Log a message (fire and forget)
-   */
   async log(chatId, role, content, opts = {}) {
+    const truncated = content.substring(0, 50000);
+
     try {
       await fetch(`${this.url}/rest/v1/obol_messages`, {
         method: 'POST',
@@ -45,7 +48,7 @@ class MessageLog {
         body: JSON.stringify({
           chat_id: chatId,
           role,
-          content: content.substring(0, 50000),
+          content: truncated,
           model: opts.model || null,
           tokens_in: opts.tokensIn || null,
           tokens_out: opts.tokensOut || null,
@@ -55,16 +58,18 @@ class MessageLog {
       console.error('[messages] Log failed:', e.message);
     }
 
-    // Track exchanges for consolidation + evolution
+    if (role === 'user') {
+      this._lastUserMessage.set(chatId, truncated);
+    }
+
     if (role === 'assistant') {
       const count = (this.exchangeCount.get(chatId) || 0) + 1;
       this.exchangeCount.set(chatId, count);
       this._lastActivity.set(chatId, Date.now());
 
-      // Consolidate every 10 exchanges
-      if (count >= 10) {
-        this.exchangeCount.set(chatId, 0);
-        this.consolidate(chatId).catch(e => console.error('[consolidate] Failed:', e.message));
+      const lastUser = this._lastUserMessage.get(chatId);
+      if (lastUser) {
+        this._extractFacts(chatId, lastUser, truncated).catch(() => {});
       }
 
       const { checkEvolution } = require('./evolve');
@@ -90,108 +95,97 @@ class MessageLog {
     }
   }
 
-  /**
-   * Haiku consolidates recent messages into vector memory
-   */
-  async consolidate(chatId) {
-    if (!this.memory || !this.client) return;
+  _getExtractionClient() {
+    if (!this._extractionClient && this._anthropicConfig) {
+      const key = this._anthropicConfig.apiKey;
+      const oauth = this._anthropicConfig.oauth;
+      if (oauth?.accessToken) {
+        this._extractionClient = new Anthropic({
+          apiKey: null,
+          authToken: oauth.accessToken,
+          defaultHeaders: {
+            'anthropic-dangerous-direct-browser-access': 'true',
+            'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20',
+          },
+        });
+      } else if (key) {
+        this._extractionClient = new Anthropic({ apiKey: key });
+      }
+    }
+    return this._extractionClient;
+  }
+
+  async _extractFacts(chatId, userMsg, assistantMsg) {
+    if (!this.memory) return;
+    const client = this._getExtractionClient();
+    if (!client) return;
+    const vlog = this._verboseCallbacks.get(chatId);
 
     try {
-      const since = this._lastConsolidatedAt.get(chatId);
-      this._lastConsolidatedAt.set(chatId, new Date().toISOString());
-
-      let fetchUrl = `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=10&select=role,content,created_at`;
-      if (since) fetchUrl += `&created_at=gt.${since}`;
-      const msgRes = await fetch(fetchUrl, { headers: this.headers });
-      const messages = msgRes.ok ? (await msgRes.json()).reverse() : await this.getRecent(chatId, 10).catch(() => []);
-      if (messages.length < 4) return; // Not enough to consolidate
-
-      const transcript = messages.map(m =>
-        `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.content.substring(0, 500)}`
-      ).join('\n');
-
-      // Ask Haiku to extract memories worth storing long-term
-      const response = await this.client.messages.create({
+      const response = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
-        system: `Extract ALL noteworthy information from this conversation for long-term memory. Be aggressive — when in doubt, store it.
+        max_tokens: 1024,
+        system: `Extract 0-5 atomic facts from this exchange worth remembering long-term.
 
-Return JSON:
-{
-  "memories": [
-    {
-      "content": "specific, detailed fact",
-      "category": "fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context",
-      "tags": ["tag1", "tag2"],
-      "importance": 0.5
-    }
-  ]
-}
+Return ONLY a JSON array (no wrapping object):
+[{"content":"specific fact","category":"fact|preference|decision|lesson|person|project|event|conversation|resource|pattern|context|email","tags":["keyword1","keyword2"],"importance":0.5}]
 
-STORE generously:
-- Personal details (name, age, location, job, relationships, hobbies)
-- Preferences and opinions on any topic
-- Ongoing projects, goals, tasks, deadlines
-- Decisions made and their rationale
-- Skills, tools, expertise, tech stack
-- Plans, intentions, next steps
-- Emotional context (stressed, excited, frustrated)
-- Resources mentioned (tools, sites, books, services)
-- Events, dates, timelines
-- Recurring topics or interests
-- Patterns in behavior or communication
-- Anything the user would want recalled later
+Store: personal details, preferences, decisions, projects, plans, people mentioned, technical details, events, deadlines, emotional context, resources.
+Skip: greetings, acknowledgments, content-free exchanges. Return [] if nothing worth storing.
 
-Tags: 2-5 specific lowercase keywords. Examples: ["python", "side-project"], ["health", "sleep"], ["work", "deadline"]
-
-Importance: 0.3 = minor detail, 0.5 = useful context, 0.7 = important, 0.9 = critical to remember
-
-ONLY skip: pure content-free exchanges ("hi", "ok", "thanks", "bye") with zero informational value.
-
-Return empty array only if the entire conversation has no extractable facts.`,
-        messages: [{ role: 'user', content: transcript }],
+Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.
+Keep each fact atomic — one idea per entry.`,
+        messages: [{ role: 'user', content: `Human: ${userMsg.substring(0, 2000)}\nAssistant: ${assistantMsg.substring(0, 2000)}` }],
       });
 
       const text = response.content[0]?.text || '';
-      const jsonMatch = text.match(/```json?\s*\n?([\s\S]*?)\n?\s*```/) || text.match(/\{[^{}]*"memories"\s*:\s*\[[\s\S]*?\]\s*\}/);
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) return;
 
-      let extracted;
-      try {
-        extracted = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-      } catch {
+      let facts;
+      try { facts = JSON.parse(jsonMatch[0]); } catch { return; }
+      if (!Array.isArray(facts)) return;
+
+      if (facts.length === 0) {
+        vlog?.('[extract] 0 facts (trivial exchange)');
         return;
       }
 
-      if (extracted.memories?.length && this.memory) {
-        const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
-        for (const mem of extracted.memories) {
-          if (!mem.content || mem.content.length <= 10) continue;
-          try {
-            const existing = await this.memory.search(mem.content, { limit: 1, threshold: 0.92 });
-            if (existing.length > 0) continue;
-          } catch {}
-          const category = validCategories.has(mem.category) ? mem.category : 'fact';
-          const tags = Array.isArray(mem.tags) ? mem.tags.slice(0, 5) : [];
-          const importance = typeof mem.importance === 'number' ? Math.min(1, Math.max(0, mem.importance)) : 0.5;
-          await this.memory.add(mem.content, {
-            category,
-            tags,
-            importance,
-            source: 'auto-consolidation',
-          });
-        }
+      const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
+      let stored = 0;
+      let duped = 0;
+
+      for (const fact of facts.slice(0, 5)) {
+        if (!fact.content || fact.content.length <= 10) continue;
+        try {
+          const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.92 });
+          if (existing.length > 0) { duped++; continue; }
+        } catch {}
+        const category = validCategories.has(fact.category) ? fact.category : 'fact';
+        const importance = typeof fact.importance === 'number' ? Math.min(1, Math.max(0, fact.importance)) : 0.5;
+        const tags = Array.isArray(fact.tags) ? fact.tags.slice(0, 5) : [];
+        await this.memory.add(fact.content, {
+          category,
+          tags,
+          importance,
+          source: 'turn-extraction',
+        });
+        stored++;
+        vlog?.(`[extract] +[${category}] ${fact.content}`);
       }
 
-      // Personality files (SOUL.md, USER.md) are only updated by Opus during soul evolution
+      if (stored > 0 || duped > 0) {
+        vlog?.(`[extract] ${stored} stored, ${duped} duped, ${facts.length} extracted`);
+      }
     } catch (e) {
-      console.error('[consolidate] Failed:', e.message);
+      console.error('[extract] Failed:', e.message);
+      vlog?.(`[extract] ERROR: ${e.message}`);
     }
   }
 }
 
-function createMessageLog(supabaseConfig, memory, claudeClient, userId = 0, userDir = null) {
-  return new MessageLog(supabaseConfig, memory, claudeClient, userId, userDir);
+function createMessageLog(supabaseConfig, memory, anthropicConfig, userId = 0, userDir = null) {
+  return new MessageLog(supabaseConfig, memory, anthropicConfig, userId, userDir);
 }
 
 module.exports = { createMessageLog };
