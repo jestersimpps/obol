@@ -95,6 +95,20 @@ class MessageLog {
     }
   }
 
+  /**
+   * Get messages by date range for history retrieval
+   */
+  async getByDate(chatId, dateStr, opts = {}) {
+    const { start, end } = parseDateRange(dateStr);
+    const limit = opts.limit || 50;
+    let fetchUrl = `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&created_at=gte.${start.toISOString()}&created_at=lt.${end.toISOString()}&order=created_at.asc&limit=${limit}&select=role,content,created_at`;
+    if (opts.role) fetchUrl += `&role=eq.${opts.role}`;
+    const res = await fetch(fetchUrl, { headers: this.headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+    return data;
+  }
+
   _getExtractionClient() {
     if (!this._extractionClient && this._anthropicConfig) {
       const key = this._anthropicConfig.apiKey;
@@ -186,6 +200,30 @@ Keep each fact atomic — one idea per entry.`,
 
 function createMessageLog(supabaseConfig, memory, anthropicConfig, userId = 0, userDir = null) {
   return new MessageLog(supabaseConfig, memory, anthropicConfig, userId, userDir);
+}
+
+function parseDateRange(dateStr) {
+  const now = new Date();
+  let start, end;
+
+  if (!dateStr || dateStr === 'today') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    end = new Date(start); end.setDate(end.getDate() + 1);
+  } else if (dateStr === 'yesterday') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  } else if (/^(\d+)d$/.test(dateStr)) {
+    const days = parseInt(dateStr);
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  } else {
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed)) throw new Error(`Cannot parse date: ${dateStr}`);
+    start = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    end = new Date(start); end.setDate(end.getDate() + 1);
+  }
+
+  return { start, end };
 }
 
 module.exports = { createMessageLog };
