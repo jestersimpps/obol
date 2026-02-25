@@ -82,14 +82,16 @@ class MessageLog {
   /**
    * Get recent messages for context loading on boot
    */
-  async getRecent(chatId, limit = 20) {
+  async getRecent(chatId, limit = 50) {
     try {
       const res = await fetch(
         `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`,
         { headers: this.headers }
       );
       const data = await res.json();
-      return data.reverse(); // oldest first
+      const rows = data.reverse(); // oldest first
+      const firstUserIdx = rows.findIndex(r => r.role === 'user');
+      return firstUserIdx > 0 ? rows.slice(firstUserIdx) : rows;
     } catch {
       return [];
     }

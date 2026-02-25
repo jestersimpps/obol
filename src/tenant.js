@@ -45,6 +45,15 @@ async function createTenant(userId, config) {
     try { toolPrefs = await toolPrefsApi.getAll(); } catch {}
   }
 
+  if (messageLog) {
+    try {
+      const recent = await messageLog.getRecent(userId, 50);
+      for (const row of recent) {
+        claude.injectHistory(userId, row.role, row.content);
+      }
+    } catch {}
+  }
+
   let personalityMtime = 0;
   try {
     personalityMtime = fs.statSync(path.join(personalityDir, 'SOUL.md')).mtimeMs;
