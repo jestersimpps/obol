@@ -22,6 +22,21 @@ function isBotRunning() {
   }
 }
 
+function cleanStaleModules() {
+  try {
+    const globalDir = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+    const fs = require('fs');
+    const path = require('path');
+    const entries = fs.readdirSync(globalDir);
+    const stale = entries.filter(e => e.startsWith(`.${pkg.name}-`));
+    for (const dir of stale) {
+      const full = path.join(globalDir, dir);
+      fs.rmSync(full, { recursive: true, force: true });
+      console.log(`  🗑 Removed ${dir}`);
+    }
+  } catch {}
+}
+
 async function upgrade() {
   const current = pkg.version;
   console.log(`🪙 Current version: ${current}`);
@@ -52,12 +67,27 @@ async function upgrade() {
   try {
     execSync(`npm install -g ${pkg.name}@latest`, { stdio: 'inherit' });
   } catch (e) {
-    console.error(`\n  ❌ Update failed: ${e.message}`);
-    if (wasRunning) {
-      console.log('  Restarting bot...');
-      execSync('pm2 start obol', { stdio: 'pipe' });
+    if (e.message.includes('ENOTEMPTY')) {
+      console.log('  ⚠ Stale temp directory detected, cleaning up...');
+      cleanStaleModules();
+      try {
+        execSync(`npm install -g ${pkg.name}@latest`, { stdio: 'inherit' });
+      } catch (retryErr) {
+        console.error(`\n  ❌ Update failed after cleanup: ${retryErr.message}`);
+        if (wasRunning) {
+          console.log('  Restarting bot...');
+          execSync('pm2 start obol', { stdio: 'pipe' });
+        }
+        process.exit(1);
+      }
+    } else {
+      console.error(`\n  ❌ Update failed: ${e.message}`);
+      if (wasRunning) {
+        console.log('  Restarting bot...');
+        execSync('pm2 start obol', { stdio: 'pipe' });
+      }
+      process.exit(1);
     }
-    process.exit(1);
   }
 
   if (wasRunning) {
