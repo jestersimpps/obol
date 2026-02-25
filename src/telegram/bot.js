@@ -15,6 +15,7 @@ const secretsCommands = require('./commands/secrets');
 const toolsCommands = require('./commands/tools');
 const { registerTextHandler } = require('./handlers/text');
 const { registerMediaHandler } = require('./handlers/media');
+const { registerSpecialHandler } = require('./handlers/special');
 const { registerCallbackHandler } = require('./handlers/callbacks');
 
 function createBot(telegramConfig, config) {
@@ -107,6 +108,7 @@ function createBot(telegramConfig, config) {
   const deps = { config, allowedUsers, bot, createAsk };
   registerTextHandler(bot, deps);
   registerMediaHandler(bot, telegramConfig, deps);
+  registerSpecialHandler(bot, deps);
   registerCallbackHandler(bot, { config, pendingAsks, getTenant });
 
   bot.catch((err) => {
