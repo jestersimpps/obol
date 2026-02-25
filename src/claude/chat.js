@@ -99,6 +99,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     context._reloadPersonality = reloadPersonality;
     context._abortSignal = abortController.signal;
     context._forceSignal = forceController.signal;
+    context.claude = { chat, clearHistory, client };
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
 

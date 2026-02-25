@@ -28,7 +28,7 @@ function register(bot, config) {
     const { cleanWorkspace } = require('../../clean');
     await ctx.replyWithChatAction('typing');
     try {
-      const result = await cleanWorkspace(tenant.userDir);
+      const result = await cleanWorkspace(tenant.userDir, tenant.claude.client);
       if (result.issues.length === 0) {
         await ctx.reply('✨ Workspace is clean. Nothing out of place.');
       } else {

@@ -13,6 +13,7 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
       const tenant = await getTenant(userId, config);
       const stopped = tenant?.claude?.stopChat(chatId);
       await answer({ text: stopped ? 'Stopping...' : 'Nothing to stop' });
+      ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
       return;
     }
 
@@ -22,6 +23,7 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
       const tenant = await getTenant(userId, config);
       const stopped = tenant?.claude?.forceStopChat(chatId);
       await answer({ text: stopped ? 'Force stopped' : 'Nothing to stop' });
+      ctx.editMessageReplyMarkup({ inline_keyboard: [] }).catch(() => {});
       return;
     }
 
@@ -107,7 +109,7 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
     clearTimeout(pending.timer);
     pendingAsks.delete(askId);
     const confirmHtml = markdownToTelegramHtml(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`);
-    ctx.editMessageText(confirmHtml, { parse_mode: 'HTML' }).catch(() => {});
+    ctx.editMessageText(confirmHtml, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }).catch(() => {});
     pending.resolve(selected);
   });
 }

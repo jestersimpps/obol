@@ -1,5 +1,30 @@
-const { MAX_EXEC_TIMEOUT, BLOCKED_EXEC_PATTERNS, SENSITIVE_READ_PATHS } = require('../constants');
+const { MAX_EXEC_TIMEOUT, BLOCKED_EXEC_PATTERNS } = require('../constants');
 const { execAsync } = require('../../sanitize');
+
+const ALLOWED_PATH_PREFIXES = [
+  '/usr/', '/bin/', '/sbin/', '/lib/', '/lib64/', '/lib32/',
+  '/opt/',
+  '/tmp/',
+  '/dev/null', '/dev/stdout', '/dev/stderr', '/dev/stdin',
+  '/proc/self/',
+];
+
+/** Extract absolute path tokens from a shell command */
+function extractAbsolutePaths(command) {
+  const re = /(?:^|[\s=|&;<>('"])(\/[\w.\-/]*)/g;
+  const paths = new Set();
+  let m;
+  while ((m = re.exec(command)) !== null) {
+    paths.add(m[1]);
+  }
+  return [...paths];
+}
+
+/** Returns true if path is within userDir or a safe system prefix */
+function isAllowedPath(p, userDir) {
+  if (p === userDir || p.startsWith(userDir + '/')) return true;
+  return ALLOWED_PATH_PREFIXES.some(prefix => p.startsWith(prefix));
+}
 
 const definitions = [{
   name: 'exec',
@@ -23,10 +48,9 @@ const handlers = {
       }
     }
     if (userDir) {
-      for (const pattern of SENSITIVE_READ_PATHS) {
-        if (pattern.test(input.command)) {
-          return `Blocked: command accesses a sensitive path. Ask the user for confirmation first.`;
-        }
+      const blockedPaths = extractAbsolutePaths(input.command).filter(p => !isAllowedPath(p, userDir));
+      if (blockedPaths.length > 0) {
+        return `Blocked: command accesses path(s) outside your workspace: ${blockedPaths.join(', ')}`;
       }
     }
     const timeout = Math.min(input.timeout || 30, MAX_EXEC_TIMEOUT) * 1000;

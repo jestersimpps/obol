@@ -12,6 +12,7 @@ const schedulerTool = require('./tools/scheduler');
 const ttsTool = require('./tools/tts');
 const bridgeTool = require('./tools/bridge');
 const historyTool = require('./tools/history');
+const agentTool = require('./tools/agent');
 
 const TOOL_MODULES = [
   execTool,
@@ -24,17 +25,22 @@ const TOOL_MODULES = [
   schedulerTool,
   ttsTool,
   historyTool,
+  agentTool,
 ];
 
 const INPUT_SUMMARIES = {
   exec: (i) => i.command,
   write_file: (i) => i.path,
-  read_file: (i) => i.path,
+  read_file: (i) => i.offset ? `${i.path}:${i.offset}` : i.path,
+  edit_file: (i) => i.path,
+  glob: (i) => i.pattern,
+  grep: (i) => `${i.pattern}${i.path ? ` in ${i.path}` : ''}`,
   memory_search: (i) => i.query,
   memory_add: (i) => `[${i.category || 'fact'}]`,
   memory_remove: (i) => i.ids?.join(', '),
   memory_query: (i) => `${i.date || ''}${i.tags ? ' #' + i.tags.join(' #') : ''}${i.category ? ' [' + i.category + ']' : ''}`.trim() || 'all',
   web_search: (i) => i.query,
+  agent: (i) => i.task?.substring(0, 60),
   background_task: (i) => i.task?.substring(0, 60),
   schedule_event: (i) => `${i.title} @ ${i.due_at}${i.cron_expr ? ` [${i.cron_expr}]` : ''}`,
   cancel_event: (i) => i.event_id,
