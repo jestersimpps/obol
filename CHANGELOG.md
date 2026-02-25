@@ -1,3 +1,7 @@
+## 0.2.19
+- add location, venue, contact, poll message support
+- update changelog
+
 ## 0.2.18
 - remove evolution progress bar from status UI
 - bidirectional bridge with reply button + memory_remove tool
