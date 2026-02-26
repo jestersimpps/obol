@@ -1,3 +1,12 @@
+## 0.2.26
+- fix ask callback deadlock in sequentialize middleware
+- clean command writes tests and audits scripts for hardcoded secrets
+- remove buttons on ask timeout, increase default to 120s
+
+## 0.2.25
+- changelog
+- add npmignore to exclude local files from package
+
 ## 0.2.24
 - update changelog and lockfile
 - ignore obol message export csvs

@@ -1,4 +1,3 @@
-const { markdownToTelegramHtml } = require('../utils');
 const { handleToolCallback } = require('../commands/tools');
 const { handleVoiceCallback } = require('../voice');
 
@@ -108,8 +107,7 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
     await answer({ text: selected });
     clearTimeout(pending.timer);
     pendingAsks.delete(askId);
-    const confirmHtml = markdownToTelegramHtml(`${ctx.callbackQuery.message.text}\n\n✓ _${selected}_`);
-    ctx.editMessageText(confirmHtml, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    ctx.deleteMessage().catch(() => {});
     pending.resolve(selected);
   });
 }

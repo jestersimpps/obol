@@ -8,7 +8,7 @@ class BackgroundRunner {
     this.taskCounter = 0;
   }
 
-  spawn(claude, task, ctx, memory, parentContext) {
+  spawn(claude, task, ctx, memory, parentContext, opts = {}) {
     let running = 0;
     for (const t of this.tasks.values()) {
       if (t.status === 'running') running++;
@@ -30,13 +30,13 @@ class BackgroundRunner {
     const verbose = parentContext?.verbose || false;
     const verboseNotify = parentContext?._verboseNotify;
 
-    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify);
+    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, opts.model);
     taskState.promise = promise;
 
     return taskId;
   }
 
-  async _runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify) {
+  async _runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, model) {
     let statusMsgId = null;
     let statusTimer = null;
     let statusStart = Date.now();
@@ -76,6 +76,7 @@ TASK: ${task}`;
         chatId: `bg-${taskState.id}`,
         userName: 'BackgroundTask',
         verbose,
+        ...(model ? { _model: model } : {}),
         _verboseNotify: bgNotify,
         _onRouteDecision: (info) => {
           routeInfo = info;

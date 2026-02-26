@@ -150,7 +150,7 @@ function getUserDir(userId) {
 
 function ensureUserDir(userId) {
   const dir = getUserDir(userId);
-  for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']) {
+  for (const sub of ['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets', 'library']) {
     fs.mkdirSync(path.join(dir, sub), { recursive: true });
   }
   const defaultAgents = path.join(__dirname, 'defaults', 'AGENTS.md');

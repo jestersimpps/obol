@@ -2,9 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
-const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']);
+const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets', 'library']);
 const ALLOWED_ROOT_FILES = new Set([
   'config.json',
+  'secrets.json',
   '.evolution-state.json',
   '.first-run-done',
   '.post-setup-done',
@@ -15,8 +16,9 @@ const SCRIPT_EXTS = new Set(['.js', '.ts', '.sh', '.py', '.rb', '.php', '.go', '
 // Extensions that belong in assets/
 const ASSET_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.mp3', '.wav', '.pdf', '.zip']);
 
-// Dirs where only .md files are allowed
+// Dirs where only .md files are allowed (with per-dir exceptions)
 const MD_ONLY_DIRS = new Set(['personality', 'commands']);
+const MD_DIR_EXCEPTIONS = { personality: new Set(['traits.json']) };
 
 function safeReaddir(dir) {
   try {
@@ -71,7 +73,8 @@ function scanWorkspace(userDir) {
     const dirPath = path.join(userDir, dir);
     if (!fs.existsSync(dirPath)) continue;
     for (const file of safeReaddir(dirPath)) {
-      if (path.extname(file).toLowerCase() !== '.md') {
+      if (file.startsWith('.')) continue;
+      if (path.extname(file).toLowerCase() !== '.md' && !MD_DIR_EXCEPTIONS[dir]?.has(file)) {
         const dest = guessDestination(file);
         issues.push({ type: 'misplaced', name: file, currentDir: dir, dest });
       }
