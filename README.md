@@ -12,7 +12,7 @@ obol init       # walks you through credentials + Telegram setup
 obol start -d   # runs as background daemon (auto-installs pm2)
 ```
 
-<video src="docs/obol-demo.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/ec63c46e-d1e6-411a-b985-b4a71c279afd" controls width="100%"></video>
 
 ---
 
