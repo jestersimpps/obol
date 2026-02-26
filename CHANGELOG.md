@@ -1,3 +1,6 @@
+## 0.2.38
+- use bot name from config in system prompt, backup, and personality files
+
 ## 0.2.37
 - add rename user option to cli config
 - add upgrade screenshot to readme
