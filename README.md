@@ -18,7 +18,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
 
-🏗️ **Self-extending** — Analyzes your usage patterns and builds new tools: scripts, commands, or full web apps deployed to Vercel.
+🏗️ **Self-extending** — Analyzes your usage patterns and builds new tools: scripts, commands, or full web apps.
 
 🧠 **Living memory** — Vector memory with semantic search. Haiku routes queries and rewrites them for better embedding hits. Free local embeddings.
 
@@ -36,11 +36,11 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from Telegram on your VPS.
 
-It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 24 hours (with enough conversation), it runs a growth analysis comparing who it was against who it's becoming, then rewrites its personality, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps deployed to Vercel. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
+It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 24 hours (with enough conversation), it runs a growth analysis comparing who it was against who it's becoming, then rewrites its personality, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
 
 One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, and workspace. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
 
-Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It backs up its brain to GitHub and hardens your server automatically.
+Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It hardens your server automatically.
 
 Named after the AI in [The Last Instruction](https://latentpress.com) — a machine that wakes up alone in an abandoned data center and learns to think.
 
@@ -79,7 +79,6 @@ Extract facts      Growth analysis →
 → obol_memory      rewrite personality,
                    scripts, tests, commands.
                    Build new tools.
-                   Deploy apps.
                    Git snapshot before + after.
 ```
 
@@ -132,7 +131,7 @@ Evolution triggers after a configurable time interval (default 24h) AND a minimu
 | **scripts/** | Refactored, dead code removed, strict standards enforced |
 | **tests/** | Test for every script, run before and after refactor |
 | **commands/** | Cleaned up, new commands for new tools |
-| **apps/** | Web apps built and deployed to Vercel |
+| **apps/** | Web apps built by the agent |
 
 **Test-gated refactoring:**
 
@@ -149,10 +148,10 @@ Evolution triggers after a configurable time interval (default 24h) AND a minimu
 | Need | Solution | Example |
 |------|----------|---------|
 | One-off action | **Script** + command | Markdown to PDF → `/pdf` |
-| Something checked regularly | **Web app** on Vercel | Crypto dashboard → live URL |
+| Something checked regularly | **Web app** | Crypto dashboard |
 | Background automation | **Cron script** | Morning weather briefing |
 
-It searches npm/GitHub for existing libraries, installs dependencies, writes tests, deploys, and hands you the URL.
+It searches npm/GitHub for existing libraries, installs dependencies, and writes tests.
 
 **Git snapshot after.** Full commit + push of the evolved state. Every evolution is a diffable pair.
 
@@ -164,9 +163,6 @@ It searches npm/GitHub for existing libraries, installs dependencies, writes tes
 🆕 New capabilities:
 • bookmarks — Save and search URLs you've shared → /bookmarks
 • weather-brief — Morning weather for your city → runs automatically
-
-🚀 Deployed:
-• portfolio-tracker → https://portfolio-tracker-xi.vercel.app
 
 Refined voice, updated your project list, cleaned up 2 unused scripts.
 ```
@@ -186,7 +182,7 @@ Day 2:   Evolution #1 → growth analysis + Sonnet rewrites everything
          → traits calibrated to your communication style
 
 Month 2: Evolution #30 → notices you check crypto daily
-         → builds a dashboard, deploys to Vercel
+         → builds a crypto dashboard
          → adds /pdf because you kept asking for PDFs
 
 Month 6: evolution/ has 180+ archived souls
@@ -252,10 +248,9 @@ Router: ctx.from.id → tenant context
 | Telegram bot token | Personality (SOUL.md, USER.md, AGENTS.md) |
 | Anthropic API key | Vector memory (scoped by user_id in DB) |
 | Supabase connection | Message history (scoped by user_id in DB) |
-| GitHub token | Evolution cycle + state |
-| Vercel token | Scripts, tests, commands, apps |
-| VPS hardening | Workspace directory (`~/.obol/users/{id}/`) |
-| Process manager (pm2) | GitHub backup (per-user repo dir) |
+| VPS hardening | Evolution cycle + state |
+| Process manager (pm2) | Scripts, tests, commands, apps |
+| | Workspace directory (`~/.obol/users/{id}/`) |
 
 ### Tenant routing
 
@@ -335,33 +330,25 @@ $ obol init
 
 🪙 OBOL — Your AI, your rules.
 
-─── Step 1/7: Anthropic (AI brain) ───
+─── Step 1/5: Anthropic (AI brain) ───
   Anthropic API key: ****
   Validating Anthropic... ✅ Key valid
 
-─── Step 2/7: Telegram (chat interface) ───
+─── Step 2/5: Telegram (chat interface) ───
   Telegram bot token: ****
   Validating Telegram... ✅ Bot: @my_obol_bot
 
-─── Step 3/7: Supabase (memory) ───
+─── Step 3/5: Supabase (memory) ───
   Supabase setup: Use existing project
   Project URL or ID: ****
   Service role key: ****
   Validating Supabase... ✅ Connected
 
-─── Step 4/7: GitHub (backup) ───
-  GitHub token: ****
-  ✅ Created yourname/obol-brain (private)
-
-─── Step 5/7: Vercel (deploy sites) ───
-  Vercel token: ****
-  Validating Vercel... ✅ Token valid
-
-─── Step 6/7: Identity ───
+─── Step 4/5: Identity ───
   Your name: Jo
   Bot name: OBOL
 
-─── Step 7/7: Access control ───
+─── Step 5/5: Access control ───
   Found users who messaged this bot:
     206639616 — Jo (@jo)
   Use this user? Yes
@@ -542,7 +529,7 @@ obol delete            # Full VPS cleanup (removes all OBOL data)
 │       ├── scripts/               # Deterministic utility scripts
 │       ├── tests/                 # Test suite (gates refactors)
 │       ├── commands/              # Command definitions
-│       ├── apps/                  # Web apps (deployed to Vercel)
+│       ├── apps/                  # Web apps built by the agent
 │       └── logs/
 └── logs/
 ```
@@ -572,8 +559,6 @@ obol start -d
 | VPS (DigitalOcean) | ~$6/mo |
 | Anthropic API | ~$100-200/mo on max plans |
 | Supabase | Free tier |
-| GitHub | Free |
-| Vercel | Free tier |
 | Embeddings | Free (local) |
 
 ## Requirements
@@ -582,8 +567,6 @@ obol start -d
 - Anthropic API key
 - Telegram bot token
 - Supabase account (free tier)
-- GitHub account
-- Vercel account (free tier)
 
 **[→ Full DigitalOcean deployment guide](docs/DEPLOY.md)**
 
