@@ -5,7 +5,6 @@ const memoryTool = require('./tools/memory');
 const webTool = require('./tools/web');
 const filesTool = require('./tools/files');
 const secretsTool = require('./tools/secrets');
-const vercelTool = require('./tools/vercel');
 const backgroundTool = require('./tools/background');
 const telegramTool = require('./tools/telegram');
 const schedulerTool = require('./tools/scheduler');
@@ -21,7 +20,6 @@ const TOOL_MODULES = [
   webTool,
   filesTool,
   secretsTool,
-  vercelTool,
   backgroundTool,
   telegramTool,
   schedulerTool,

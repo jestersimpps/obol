@@ -86,7 +86,10 @@ function decryptSensitiveFields(config) {
       if (ENCRYPTED_RE.test(val)) {
         try {
           setPath(config, p, decrypt(val, key));
-        } catch {}
+        } catch {
+          setPath(config, p, null);
+          console.warn(`[config] Could not decrypt ${p} — hostname may have changed. Run: obol config`);
+        }
       } else {
         hadPlaintext = true;
       }

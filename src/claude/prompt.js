@@ -117,9 +117,6 @@ Cannot access paths outside workspace or /tmp.
 ### Web (\`web_search\`)
 Search the web for current information.
 
-### Vercel (\`vercel_deploy\`, \`vercel_list\`)
-Deploy directories to Vercel. Ship websites, dashboards, web apps.
-
 ### Background Tasks (\`background_task\`)
 Spawn heavy work (research, site building, complex analysis) in the background.
 The main conversation stays responsive. User gets progress updates every 30s.

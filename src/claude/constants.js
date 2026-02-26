@@ -19,11 +19,6 @@ const OPTIONAL_TOOLS = {
     tools: ['create_pdf'],
     config: {},
   },
-  vercel: {
-    label: 'Vercel Deploy',
-    tools: ['vercel_deploy', 'vercel_list'],
-    config: {},
-  },
   background: {
     label: 'Background Tasks',
     tools: ['background_task'],
