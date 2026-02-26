@@ -1,3 +1,7 @@
+## 0.2.37
+- add rename user option to cli config
+- add upgrade screenshot to readme
+
 ## 0.2.36
 - changelog and issues updates
 - auto-send tts voice summary when tts is enabled

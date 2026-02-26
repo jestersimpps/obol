@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const { OBOL_DIR } = require('./config');
+const { OBOL_DIR, loadConfig } = require('./config');
 
 function setupBackup(githubConfig) {
   const { listUsers } = require('./config');
@@ -30,6 +30,7 @@ async function runBackup(githubConfig, commitMessage, userDir) {
   const baseDir = userDir || OBOL_DIR;
   const backupDir = path.join(baseDir, '.backup-repo');
   const repoUrl = `https://${token}@github.com/${username}/${repo}.git`;
+  const botName = loadConfig({ resolve: false })?.bot?.name || 'OBOL';
 
   if (!fs.existsSync(path.join(backupDir, '.git'))) {
     execSync(`git clone ${repoUrl} "${backupDir}"`, { stdio: 'pipe' });
@@ -37,7 +38,7 @@ async function runBackup(githubConfig, commitMessage, userDir) {
     execSync('git pull', { cwd: backupDir, stdio: 'pipe' });
   }
 
-  execSync('git config user.name "OBOL"', { cwd: backupDir });
+  execSync(`git config user.name "${botName}"`, { cwd: backupDir });
   execSync('git config user.email "obol@backup"', { cwd: backupDir });
 
   const syncDirs = ['personality', 'scripts', 'tests', 'commands', 'apps'];

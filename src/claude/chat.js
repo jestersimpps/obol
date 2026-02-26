@@ -8,10 +8,10 @@ const { buildTools, buildRunnableTools } = require('./tool-registry');
 const { withCacheBreakpoints, sanitizeMessages } = require('./cache');
 const { getMaxToolIterations } = require('./constants');
 
-function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled }) {
+function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR, bridgeEnabled, botName }) {
   let client = createAnthropicClient(anthropicConfig);
 
-  let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
+  let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled, botName });
 
   const histories = new ChatHistory(50);
   const chatLocks = new Map();
@@ -266,7 +266,7 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     const newPersonality = require('../personality').loadPersonality(pDir);
     for (const key of Object.keys(personality)) delete personality[key];
     Object.assign(personality, newPersonality);
-    baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled });
+    baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled, botName });
   }
 
   function clearHistory(chatId) {

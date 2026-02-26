@@ -1,8 +1,9 @@
 const inquirer = require('inquirer');
-const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir } = require('../config');
+const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir, USERS_DIR } = require('../config');
 const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
 const SECTIONS = [
   {
@@ -351,6 +352,42 @@ async function runOAuthFlow(cfg) {
   }
 }
 
+function updatePersonalityNames(oldBotName, newBotName, oldOwnerName, newOwnerName) {
+  if (!fs.existsSync(USERS_DIR)) return;
+  const users = fs.readdirSync(USERS_DIR).filter(u => {
+    try { return fs.statSync(path.join(USERS_DIR, u)).isDirectory(); } catch { return false; }
+  });
+  for (const userId of users) {
+    const personalityDir = path.join(USERS_DIR, userId, 'personality');
+    if (!fs.existsSync(personalityDir)) continue;
+
+    if (oldBotName !== newBotName) {
+      const soulPath = path.join(personalityDir, 'SOUL.md');
+      if (fs.existsSync(soulPath)) {
+        let content = fs.readFileSync(soulPath, 'utf-8');
+        content = content.replace(new RegExp(`# SOUL\\.md — Who is ${oldBotName}\\?`, 'g'), `# SOUL.md — Who is ${newBotName}?`);
+        content = content.replace(new RegExp(`\\*\\*Name:\\*\\* ${oldBotName}`, 'g'), `**Name:** ${newBotName}`);
+        fs.writeFileSync(soulPath, content, 'utf-8');
+      }
+      const agentsPath = path.join(personalityDir, 'AGENTS.md');
+      if (fs.existsSync(agentsPath)) {
+        let content = fs.readFileSync(agentsPath, 'utf-8');
+        content = content.replace(new RegExp(`# AGENTS\\.md — How ${oldBotName} Works`, 'g'), `# AGENTS.md — How ${newBotName} Works`);
+        fs.writeFileSync(agentsPath, content, 'utf-8');
+      }
+    }
+
+    if (oldOwnerName !== newOwnerName) {
+      const soulPath = path.join(personalityDir, 'SOUL.md');
+      if (fs.existsSync(soulPath)) {
+        let content = fs.readFileSync(soulPath, 'utf-8');
+        content = content.replace(new RegExp(`\\*\\*Created by:\\*\\* ${oldOwnerName}`, 'g'), `**Created by:** ${newOwnerName}`);
+        fs.writeFileSync(soulPath, content, 'utf-8');
+      }
+    }
+  }
+}
+
 async function config() {
   const cfg = loadConfig({ resolve: false });
   if (!cfg) {
@@ -422,6 +459,8 @@ async function config() {
     }
 
     const currentVal = getNestedValue(cfg, field.key);
+    const oldBotName = cfg.bot?.name;
+    const oldOwnerName = cfg.owner?.name;
 
     if (field.type === 'boolean') {
       const { newVal } = await inquirer.prompt([{
@@ -470,6 +509,11 @@ async function config() {
     }
 
     saveConfig(cfg);
+
+    if (section === 'Identity') {
+      updatePersonalityNames(oldBotName, cfg.bot?.name, oldOwnerName, cfg.owner?.name);
+    }
+
     console.log('  ✅ Saved\n');
   }
 

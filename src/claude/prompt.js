@@ -3,8 +3,9 @@ const path = require('path');
 
 function buildSystemPrompt(personality, userDir, opts = {}) {
   const parts = [];
+  const botName = opts.botName || 'OBOL';
 
-  parts.push('You are OBOL, a personal AI agent running 24/7 on a server. You have persistent memory, can execute shell commands, deploy websites, and learn over time. You are not a generic chatbot — you are a dedicated agent for one person.');
+  parts.push(`You are ${botName}, a personal AI agent running 24/7 on a server. You have persistent memory, can execute shell commands, deploy websites, and learn over time. You are not a generic chatbot — you are a dedicated agent for one person.`);
 
   if (personality.soul) {
     parts.push(`\n## Personality\n${personality.soul}`);
