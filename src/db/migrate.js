@@ -200,6 +200,92 @@ async function migrate(supabaseConfig) {
 
     // Instructions column for agentic cron jobs
     `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS instructions TEXT;`,
+
+    // User behavior patterns (dedicated table — timing, mood, humor, engagement, communication, topics)
+    `CREATE TABLE IF NOT EXISTS obol_user_patterns (
+      user_id           BIGINT NOT NULL,
+      key               TEXT NOT NULL,
+      dimension         TEXT NOT NULL CHECK (dimension IN ('timing','mood','humor','engagement','communication','topics')),
+      summary           TEXT NOT NULL,
+      data              JSONB DEFAULT '{}',
+      confidence        FLOAT DEFAULT 0.5,
+      observation_count INT DEFAULT 0,
+      first_observed_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (user_id, key)
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_user_patterns_user ON obol_user_patterns (user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_user_patterns_dimension ON obol_user_patterns (user_id, dimension);`,
+    `ALTER TABLE obol_user_patterns ENABLE ROW LEVEL SECURITY;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_user_patterns FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
+
+    // Obol self-memory (separate from user memories — Obol's own brain: research, interests, reflections, patterns)
+    `CREATE TABLE IF NOT EXISTS obol_self_memory (
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id BIGINT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'research'
+        CHECK (category IN ('research','interest','self','pattern')),
+      tags TEXT[] DEFAULT '{}',
+      importance FLOAT DEFAULT 0.5,
+      source TEXT,
+      embedding VECTOR(384),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      accessed_at TIMESTAMPTZ DEFAULT NOW(),
+      access_count INT DEFAULT 0
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_self_memory_user ON obol_self_memory (user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_self_memory_category ON obol_self_memory (user_id, category);`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_self_memory_embedding ON obol_self_memory USING hnsw (embedding vector_cosine_ops);`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_self_memory_created_at ON obol_self_memory (created_at);`,
+    `ALTER TABLE obol_self_memory ENABLE ROW LEVEL SECURITY;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_self_memory FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
+
+    `CREATE OR REPLACE FUNCTION match_obol_self_memories(
+      query_embedding VECTOR(384),
+      match_threshold FLOAT,
+      match_count INT,
+      filter_category TEXT DEFAULT NULL,
+      filter_user_id BIGINT DEFAULT NULL
+    ) RETURNS TABLE (
+      id UUID,
+      content TEXT,
+      category TEXT,
+      tags TEXT[],
+      importance FLOAT,
+      source TEXT,
+      created_at TIMESTAMPTZ,
+      accessed_at TIMESTAMPTZ,
+      access_count INT,
+      similarity FLOAT
+    ) LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN QUERY
+      SELECT
+        m.id, m.content, m.category, m.tags, m.importance, m.source,
+        m.created_at, m.accessed_at, m.access_count,
+        1 - (m.embedding <=> query_embedding) AS similarity
+      FROM obol_self_memory m
+      WHERE 1 - (m.embedding <=> query_embedding) > match_threshold
+        AND (filter_category IS NULL OR m.category = filter_category)
+        AND (filter_user_id IS NULL OR m.user_id = filter_user_id)
+      ORDER BY m.embedding <=> query_embedding
+      LIMIT match_count;
+    END;
+    $$;`,
+
+    `CREATE OR REPLACE FUNCTION increment_self_memory_access(memory_ids UUID[])
+    RETURNS VOID LANGUAGE SQL AS $$
+      UPDATE obol_self_memory
+      SET access_count = access_count + 1, accessed_at = NOW()
+      WHERE id = ANY(memory_ids);
+    $$;`,
   ];
 
   // Save SQL file for manual fallback

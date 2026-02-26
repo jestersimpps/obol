@@ -1,6 +1,8 @@
 const { ensureUserDir } = require('./config');
 const { loadPersonality } = require('./personality');
 const { createMemory } = require('./memory');
+const { createSelfMemory } = require('./memory-self');
+const { createPatterns } = require('./patterns');
 const { createClaude } = require('./claude');
 const { createMessageLog } = require('./messages');
 const { BackgroundRunner } = require('./background');
@@ -33,10 +35,12 @@ async function createTenant(userId, config) {
   const personalityDir = path.join(userDir, 'personality');
   const personality = loadPersonality(personalityDir);
   const memory = config.supabase ? await createMemory(config.supabase, userId) : null;
+  const selfMemory = config.supabase ? await createSelfMemory(config.supabase, userId) : null;
+  const patterns = config.supabase ? await createPatterns(config.supabase, userId) : null;
   const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
-  const claude = createClaude(config.anthropic, { personality, memory, userDir, bridgeEnabled, botName: config.bot?.name });
-  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, config.anthropic, userId, userDir) : null;
+  const claude = createClaude(config.anthropic, { personality, memory, selfMemory, userDir, bridgeEnabled, botName: config.bot?.name });
   const scheduler = config.supabase ? createScheduler(config.supabase, userId) : null;
+  const messageLog = config.supabase ? createMessageLog(config.supabase, memory, config.anthropic, userId, userDir) : null;
   const toolPrefsApi = config.supabase ? createToolPrefs(config.supabase, userId) : null;
   const bg = new BackgroundRunner();
 
@@ -60,7 +64,7 @@ async function createTenant(userId, config) {
   } catch {}
 
   return {
-    claude, memory, messageLog, personality, scheduler, bg, userDir, userId,
+    claude, memory, selfMemory, patterns, messageLog, personality, scheduler, bg, userDir, userId,
     toolPrefs,
     toolPrefsApi,
     async reloadToolPrefs() {

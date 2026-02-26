@@ -3,7 +3,6 @@ const { TERM_WIDTH } = require('../status');
 const RATE_LIMIT_MS = 3000;
 const SPAM_THRESHOLD = 5;
 const SPAM_COOLDOWN_MS = 30000;
-const EVOLUTION_IDLE_MS = 15 * 60 * 1000;
 const DEDUP_TTL_MS = 5 * 60 * 1000;
 const DEDUP_MAX_SIZE = 2000;
 const TEXT_BUFFER_GAP_MS = 1500;
@@ -18,7 +17,6 @@ module.exports = {
   RATE_LIMIT_MS,
   SPAM_THRESHOLD,
   SPAM_COOLDOWN_MS,
-  EVOLUTION_IDLE_MS,
   DEDUP_TTL_MS,
   DEDUP_MAX_SIZE,
   TEXT_BUFFER_GAP_MS,

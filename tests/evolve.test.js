@@ -5,7 +5,7 @@ const os = require('os');
 
 const configModule = require('../src/config');
 
-const { loadEvolutionState, checkEvolution, runTests } = require('../src/evolve');
+const { loadEvolutionState, shouldEvolveNow, runTests } = require('../src/evolve');
 
 describe('evolve', () => {
   let tmpDir;
@@ -57,91 +57,37 @@ describe('evolve', () => {
     });
   });
 
-  describe('checkEvolution', () => {
-    const mockMessageLog = (rows) => ({
-      url: 'https://test.supabase.co',
-      headers: { apikey: 'test', Authorization: 'Bearer test', 'Content-Type': 'application/json' },
-      userId: 123,
-      _fetch: rows,
+  describe('shouldEvolveNow', () => {
+    it('returns true when no lastEvolution (never run)', () => {
+      const result = shouldEvolveNow(tmpDir, 'UTC');
+      expect(result).toBe(true);
     });
 
-    beforeEach(() => {
-      global._originalFetch = global.fetch;
-    });
-
-    afterEach(() => {
-      global.fetch = global._originalFetch;
-    });
-
-    it('returns false when time not elapsed', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
+    it('returns false when lastEvolution was today', () => {
+      const today = new Date().toISOString();
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ evolutionCount: 1, lastEvolution: new Date().toISOString() }),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: today }),
       );
 
-      const result = await checkEvolution(tmpDir, mockMessageLog([]));
-      expect(result.ready).toBe(false);
+      const result = shouldEvolveNow(tmpDir, 'UTC');
+      expect(result).toBe(false);
     });
 
-    it('returns false when no messageLog provided', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
+    it('returns true when lastEvolution was yesterday', () => {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       fs.writeFileSync(
         path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
+        JSON.stringify({ evolutionCount: 1, lastEvolution: yesterday }),
       );
 
-      const result = await checkEvolution(tmpDir, null);
-      expect(result.ready).toBe(false);
+      const result = shouldEvolveNow(tmpDir, 'UTC');
+      expect(result).toBe(true);
     });
 
-    it('returns true when time elapsed and DB has enough messages', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
-      );
-
-      const rows = Array.from({ length: 10 }, (_, i) => ({ id: i }));
-      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(rows) });
-
-      const result = await checkEvolution(tmpDir, mockMessageLog(rows));
-      expect(result.ready).toBe(true);
-    });
-
-    it('returns false when time elapsed but not enough messages in DB', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ evolutionCount: 1, lastEvolution: '2025-01-01T00:00:00.000Z' }),
-      );
-
-      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve([{ id: 1 }]) });
-
-      const result = await checkEvolution(tmpDir, mockMessageLog([{ id: 1 }]));
-      expect(result.ready).toBe(false);
-    });
-
-    it('returns true on first run (no lastEvolution) with enough messages', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue(null);
-
-      const rows = Array.from({ length: 10 }, (_, i) => ({ id: i }));
-      global.fetch = vi.fn().mockResolvedValue({ json: () => Promise.resolve(rows) });
-
-      const result = await checkEvolution(tmpDir, mockMessageLog(rows));
-      expect(result.ready).toBe(true);
-    });
-
-    it('uses custom intervalHours from config', async () => {
-      vi.spyOn(configModule, 'loadConfig').mockReturnValue({ evolution: { intervalHours: 48 } });
-      const recentTime = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-      fs.writeFileSync(
-        path.join(tmpDir, '.evolution-state.json'),
-        JSON.stringify({ evolutionCount: 1, lastEvolution: recentTime }),
-      );
-
-      const result = await checkEvolution(tmpDir, mockMessageLog([]));
-      expect(result.ready).toBe(false);
+    it('defaults to UTC when no timezone provided', () => {
+      const result = shouldEvolveNow(tmpDir);
+      expect(result).toBe(true);
     });
   });
 

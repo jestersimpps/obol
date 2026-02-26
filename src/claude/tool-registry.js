@@ -2,6 +2,7 @@ const { OPTIONAL_TOOLS } = require('./constants');
 
 const execTool = require('./tools/exec');
 const memoryTool = require('./tools/memory');
+const knowledgeTool = require('./tools/knowledge');
 const webTool = require('./tools/web');
 const filesTool = require('./tools/files');
 const secretsTool = require('./tools/secrets');
@@ -41,6 +42,10 @@ const INPUT_SUMMARIES = {
   memory_add: (i) => `[${i.category || 'fact'}]`,
   memory_remove: (i) => i.ids?.join(', '),
   memory_query: (i) => `${i.date || ''}${i.tags ? ' #' + i.tags.join(' #') : ''}${i.category ? ' [' + i.category + ']' : ''}`.trim() || 'all',
+  knowledge_add: (i) => `[${i.category}]`,
+  knowledge_search: (i) => i.query,
+  interests_list: () => 'interests',
+  interests_add: (i) => i.content?.substring(0, 60),
   web_search: (i) => i.query,
   agent: (i) => i.task?.substring(0, 60),
   background_task: (i) => i.task?.substring(0, 60),
@@ -68,6 +73,10 @@ function buildTools(memory, opts = {}) {
     tools.push(...memoryTool.definitions);
   }
 
+  if (opts.selfMemory) {
+    tools.push(...knowledgeTool.definitions);
+  }
+
   if (opts.bridgeEnabled) {
     tools.push(...bridgeTool.getDefinitions());
   }
@@ -81,6 +90,7 @@ function buildHandlerMap() {
     Object.assign(map, mod.handlers);
   }
   Object.assign(map, memoryTool.handlers);
+  Object.assign(map, knowledgeTool.handlers);
   Object.assign(map, bridgeTool.handlers);
   return map;
 }

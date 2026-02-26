@@ -3,6 +3,8 @@
  *
  * Tier 1: obol_messages — raw log, every message
  * Tier 2: obol_memory — curated facts, extracted after every assistant turn
+ * Tier 3: obol_events — follow-up intents, detected by batch analysis (see analysis.js)
+ * Tier 4: obol_user_patterns — synthesized behavioral patterns, refreshed by batch analysis (see analysis.js)
  */
 
 const Anthropic = require('@anthropic-ai/sdk');
@@ -71,17 +73,9 @@ class MessageLog {
       if (lastUser) {
         this._extractFacts(chatId, lastUser, truncated).catch(() => {});
       }
-
-      const { checkEvolution } = require('./evolve');
-      checkEvolution(this.userDir, this).then(result => {
-        if (result?.ready && !this._evolutionReady && !this._evolutionPending) this._evolutionReady = true;
-      }).catch(() => {});
     }
   }
 
-  /**
-   * Get recent messages for context loading on boot
-   */
   async getRecent(chatId, limit = 50) {
     try {
       const res = await fetch(
@@ -89,7 +83,7 @@ class MessageLog {
         { headers: this.headers }
       );
       const data = await res.json();
-      const rows = data.reverse(); // oldest first
+      const rows = data.reverse();
       const firstUserIdx = rows.findIndex(r => r.role === 'user');
       return firstUserIdx > 0 ? rows.slice(firstUserIdx) : rows;
     } catch {
@@ -97,9 +91,20 @@ class MessageLog {
     }
   }
 
-  /**
-   * Get messages by date range for history retrieval
-   */
+  async getSince(chatId, since, limit = 500) {
+    try {
+      const res = await fetch(
+        `${this.url}/rest/v1/obol_messages?chat_id=eq.${chatId}&created_at=gte.${since.toISOString()}&order=created_at.asc&limit=${limit}&select=role,content,created_at`,
+        { headers: this.headers }
+      );
+      const data = await res.json();
+      if (!res.ok) return [];
+      return data;
+    } catch {
+      return [];
+    }
+  }
+
   async getByDate(chatId, dateStr, opts = {}) {
     const { start, end } = parseDateRange(dateStr);
     const limit = opts.limit || 50;
@@ -165,13 +170,12 @@ class MessageLog {
       const response = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
-        system: `Extract 0-5 atomic facts from this exchange worth remembering long-term.
+        system: `Extract facts from this exchange.
 
+FACTS (0-5 atomic facts worth remembering long-term):
 Store: personal details, preferences, decisions, projects, plans, people mentioned, technical details, events, deadlines, emotional context, resources.
-Skip: greetings, acknowledgments, content-free exchanges. Use facts=[] if nothing worth storing.
-
-Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.
-Keep each fact atomic — one idea per entry.`,
+Skip: greetings, acknowledgments, content-free exchanges.
+Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.`,
         tools: extractTool,
         tool_choice: { type: 'tool', name: 'save_memory' },
         messages: [{ role: 'user', content: `Human: ${userMsg.substring(0, 2000)}\nAssistant: ${assistantMsg.substring(0, 2000)}` }],
@@ -181,38 +185,31 @@ Keep each fact atomic — one idea per entry.`,
       if (!toolUse) return;
 
       const facts = toolUse.input?.facts;
-      if (!Array.isArray(facts)) return;
 
-      if (facts.length === 0) {
+      if (Array.isArray(facts) && facts.length > 0) {
+        const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
+        let stored = 0;
+        let duped = 0;
+
+        for (const fact of facts.slice(0, 5)) {
+          if (!fact.content || fact.content.length <= 10) continue;
+          try {
+            const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.92 });
+            if (existing.length > 0) { duped++; continue; }
+          } catch {}
+          const category = validCategories.has(fact.category) ? fact.category : 'fact';
+          const importance = typeof fact.importance === 'number' ? Math.min(1, Math.max(0, fact.importance)) : 0.5;
+          const tags = Array.isArray(fact.tags) ? fact.tags.slice(0, 5) : [];
+          await this.memory.add(fact.content, { category, tags, importance, source: 'turn-extraction' });
+          stored++;
+          vlog?.(`[extract] +[${category}] ${fact.content}`);
+        }
+
+        if (stored > 0 || duped > 0) {
+          vlog?.(`[extract] ${stored} stored, ${duped} duped, ${facts.length} extracted`);
+        }
+      } else {
         vlog?.('[extract] 0 facts (trivial exchange)');
-        return;
-      }
-
-      const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
-      let stored = 0;
-      let duped = 0;
-
-      for (const fact of facts.slice(0, 5)) {
-        if (!fact.content || fact.content.length <= 10) continue;
-        try {
-          const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.92 });
-          if (existing.length > 0) { duped++; continue; }
-        } catch {}
-        const category = validCategories.has(fact.category) ? fact.category : 'fact';
-        const importance = typeof fact.importance === 'number' ? Math.min(1, Math.max(0, fact.importance)) : 0.5;
-        const tags = Array.isArray(fact.tags) ? fact.tags.slice(0, 5) : [];
-        await this.memory.add(fact.content, {
-          category,
-          tags,
-          importance,
-          source: 'turn-extraction',
-        });
-        stored++;
-        vlog?.(`[extract] +[${category}] ${fact.content}`);
-      }
-
-      if (stored > 0 || duped > 0) {
-        vlog?.(`[extract] ${stored} stored, ${duped} duped, ${facts.length} extracted`);
       }
     } catch (e) {
       console.error('[extract] Failed:', e.message);

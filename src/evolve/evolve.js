@@ -41,11 +41,12 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
   if (messageLog) {
     try {
       const userFilter = messageLog.userId ? `&user_id=eq.${messageLog.userId}` : '';
+      const sinceFilter = state.lastEvolution ? `&created_at=gt.${state.lastEvolution}` : '';
       const res = await fetch(
-        `${messageLog.url}/rest/v1/obol_messages?order=created_at.desc&limit=100&select=role,content,created_at${userFilter}`,
+        `${messageLog.url}/rest/v1/obol_messages?order=created_at.asc&limit=500&select=role,content,created_at${userFilter}${sinceFilter}`,
         { headers: messageLog.headers }
       );
-      recentMessages = (await res.json()).reverse();
+      recentMessages = await res.json();
     } catch (e) {
       console.error('[evolve] Failed to fetch recent messages:', e.message);
     }

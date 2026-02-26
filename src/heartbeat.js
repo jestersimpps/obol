@@ -1,6 +1,85 @@
 const cron = require('node-cron');
 const { createScheduler } = require('./scheduler');
 const { getTenant } = require('./tenant');
+const { shouldEvolveNow, evolve } = require('./evolve');
+const { ensureUserDir } = require('./config');
+const { runAnalysis } = require('./analysis');
+
+const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
+
+const _evolutionRunning = new Set();
+
+function getLocalHour(timezone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  return {
+    hour: parseInt(parts.find(p => p.type === 'hour').value),
+    minute: parseInt(parts.find(p => p.type === 'minute').value),
+  };
+}
+
+async function runEvolutionForUser(bot, config, userId) {
+  if (_evolutionRunning.has(userId)) return;
+
+  const timezone = config.timezone || 'UTC';
+  const userDir = ensureUserDir(userId);
+
+  if (!shouldEvolveNow(userDir, timezone)) return;
+
+  _evolutionRunning.add(userId);
+  console.log(`[evolution] Starting nightly evolution for user ${userId}`);
+
+  try {
+    const tenant = await getTenant(userId, config);
+    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir);
+    tenant.claude.reloadPersonality?.();
+
+    let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
+    if (result.scriptsFixed) msg += '\n🔧 Fixed a test regression automatically.';
+    else if (result.scriptsRolledBack) msg += '\n⚠️ Rolled back a script refactor — tests couldn\'t be fixed.';
+
+    if (result.upgrades?.length > 0) {
+      msg += '\n\n🆕 <b>New capabilities:</b>';
+      for (const u of result.upgrades) {
+        msg += `\n• <b>${u.name}</b> — ${u.description}`;
+        if (u.command) msg += ` → <code>${u.command}</code>`;
+      }
+    }
+
+    if (result.deployedApps?.length > 0) {
+      msg += '\n\n🚀 <b>Deployed:</b>';
+      for (const app of result.deployedApps) {
+        msg += app.url
+          ? `\n• ${app.name} → ${app.url}`
+          : `\n• ${app.name} — deploy failed: ${(app.error || '').substring(0, 100)}`;
+      }
+    }
+
+    if (result.changelog) msg += `\n\n<i>${result.changelog}</i>`;
+
+    await bot.api.sendMessage(userId, msg, { parse_mode: 'HTML' }).catch(() => {});
+    console.log(`[evolution] Completed evolution #${result.evolutionNumber} for user ${userId}`);
+  } catch (e) {
+    console.error(`[evolution] Failed for user ${userId}:`, e.message);
+  } finally {
+    _evolutionRunning.delete(userId);
+  }
+}
+
+async function runAnalysisForUser(bot, config, userId) {
+  const timezone = config.timezone || 'UTC';
+  try {
+    const tenant = await getTenant(userId, config);
+    if (!tenant.messageLog || !tenant.scheduler || !tenant.patterns) return;
+    await runAnalysis(tenant.claude.client, tenant.messageLog, tenant.scheduler, tenant.patterns, userId, userId, timezone);
+  } catch (e) {
+    console.error(`[analysis] Failed for user ${userId}:`, e.message);
+  }
+}
 
 function makeFakeCtx(bot, chatId) {
   return {
@@ -52,6 +131,35 @@ function setupHeartbeat(bot, config) {
     }
   });
 
+  const allowedUsers = config?.telegram?.allowedUsers || [];
+  if (allowedUsers.length > 0) {
+    cron.schedule('* * * * *', async () => {
+      const timezone = config.timezone || 'UTC';
+      const { hour, minute } = getLocalHour(timezone);
+      if (hour !== 3 || minute !== 0) return;
+
+      for (const userId of allowedUsers) {
+        runEvolutionForUser(bot, config, userId).catch(e =>
+          console.error(`[evolution] Unhandled error for user ${userId}:`, e.message)
+        );
+      }
+    });
+    console.log(`  ✅ Evolution cron running (daily 3am ${config.timezone || 'UTC'})`);
+
+    cron.schedule('* * * * *', async () => {
+      const timezone = config.timezone || 'UTC';
+      const { hour, minute } = getLocalHour(timezone);
+      if (!ANALYSIS_HOURS.has(hour) || minute !== 0) return;
+
+      for (const userId of allowedUsers) {
+        runAnalysisForUser(bot, config, userId).catch(e =>
+          console.error(`[analysis] Unhandled error for user ${userId}:`, e.message)
+        );
+      }
+    });
+    console.log(`  ✅ Analysis cron running (every 3h ${config.timezone || 'UTC'})`);
+  }
+
   console.log('  ✅ Heartbeat running (every 1min)');
 }
 
@@ -69,13 +177,50 @@ async function sendReminderMessage(bot, event) {
   );
 }
 
+async function buildProactiveContext(tenant, timezone, query) {
+  const parts = [];
+
+  const localTime = new Date().toLocaleString('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  parts.push(`Local time: ${localTime} (${timezone})`);
+
+  if (tenant.patterns) {
+    const formatted = await tenant.patterns.format().catch(() => null);
+    if (formatted) parts.push(`\nUser patterns:\n${formatted}`);
+  }
+
+  if (tenant.memory) {
+    const memories = query
+      ? await tenant.memory.search(query, { limit: 5 }).catch(() => [])
+      : await tenant.memory.recent({ limit: 5 }).catch(() => []);
+    if (memories.length > 0) {
+      parts.push(`\nRecent memory:\n${memories.map(m => `- ${m.content}`).join('\n')}`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
 async function runAgenticEvent(bot, config, event) {
   const tenant = await getTenant(event.user_id, config);
+  const timezone = event.timezone || config.timezone || 'UTC';
+
+  const query = event.description || event.instructions;
+  const context = await buildProactiveContext(tenant, timezone, query).catch(() => '');
+  const instructions = context
+    ? `[Context]\n${context}\n\n---\n\n${event.instructions}`
+    : event.instructions;
+
   const fakeCtx = makeFakeCtx(bot, event.chat_id);
 
   const taskId = tenant.bg.spawn(
     tenant.claude,
-    event.instructions,
+    instructions,
     fakeCtx,
     tenant.memory,
     null,

@@ -1,11 +1,9 @@
 const { InlineKeyboard } = require('grammy');
 const { getTenant } = require('../../tenant');
-const { evolve, loadEvolutionState } = require('../../evolve');
 const { buildStatusHtml, describeToolCall } = require('../../status');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
-const { EVOLUTION_IDLE_MS, TEXT_BUFFER_GAP_MS, TEXT_BUFFER_MAX_PARTS, TEXT_BUFFER_MAX_CHARS, TEXT_BUFFER_THRESHOLD } = require('../constants');
+const { TEXT_BUFFER_GAP_MS, TEXT_BUFFER_MAX_PARTS, TEXT_BUFFER_MAX_CHARS, TEXT_BUFFER_THRESHOLD } = require('../constants');
 
-const _evolutionTimers = new Map();
 const textBuffers = new Map();
 const VERBOSE_FLUSH_MS = 2000;
 
@@ -141,12 +139,6 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
   const userId = ctx.from.id;
   const tenant = await getTenant(userId, config);
 
-  if (_evolutionTimers.has(userId)) {
-    clearTimeout(_evolutionTimers.get(userId));
-    _evolutionTimers.delete(userId);
-    if (tenant.messageLog) tenant.messageLog._evolutionPending = false;
-  }
-
   let replyContext = '';
   const reply = ctx.message?.reply_to_message;
   if (reply) {
@@ -213,55 +205,6 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
     }
 
     tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
-
-    if (tenant.messageLog?._evolutionReady && !_evolutionTimers.has(userId)) {
-      tenant.messageLog._evolutionReady = false;
-      tenant.messageLog._evolutionPending = true;
-      const timer = setTimeout(async () => {
-        _evolutionTimers.delete(userId);
-        try {
-          const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir);
-          tenant.claude.reloadPersonality?.();
-          let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
-
-          if (result.scriptsFixed) {
-            msg += '\n🔧 Fixed a test regression automatically.';
-          } else if (result.scriptsRolledBack) {
-            msg += '\n⚠️ Rolled back a script refactor — tests couldn\'t be fixed.';
-          }
-
-          if (result.upgrades && result.upgrades.length > 0) {
-            msg += '\n\n🆕 **New capabilities:**';
-            for (const u of result.upgrades) {
-              msg += `\n• **${u.name}** — ${u.description}`;
-              if (u.command) msg += ` → \`${u.command}\``;
-            }
-          }
-
-          if (result.deployedApps && result.deployedApps.length > 0) {
-            msg += '\n\n🚀 **Deployed:**';
-            for (const app of result.deployedApps) {
-              if (app.url) {
-                msg += `\n• ${app.name} → ${app.url}`;
-              } else if (app.error) {
-                msg += `\n• ${app.name} — deploy failed: ${app.error.substring(0, 100)}`;
-              }
-            }
-          }
-
-          if (result.changelog) {
-            msg += `\n\n_${result.changelog}_`;
-          }
-
-          await sendHtml(ctx, msg).catch(() => {});
-        } catch (e) {
-          console.error('Evolution failed:', e.message);
-        } finally {
-          tenant.messageLog._evolutionPending = false;
-        }
-      }, EVOLUTION_IDLE_MS);
-      _evolutionTimers.set(userId, timer);
-    }
 
     stopTyping();
 

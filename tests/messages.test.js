@@ -13,15 +13,6 @@ vi.mock('../src/config', () => ({
   OBOL_DIR: '/mock/.obol',
 }));
 
-const mockCheckEvolution = vi.fn(() => Promise.resolve({ ready: false }));
-const evolvePath = require.resolve('../src/evolve');
-require.cache[evolvePath] = {
-  id: evolvePath,
-  filename: evolvePath,
-  loaded: true,
-  exports: { checkEvolution: mockCheckEvolution },
-};
-
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
@@ -92,22 +83,6 @@ describe('messages', () => {
       expect(body.tokens_out).toBe(200);
     });
 
-    it('checks evolution on assistant messages', async () => {
-      mockFetchOk({});
-      await messageLog.log('chat-1', 'assistant', 'response 1');
-
-      mockFetchOk({});
-      await messageLog.log('chat-1', 'assistant', 'response 2');
-
-      expect(mockCheckEvolution).toHaveBeenCalledTimes(2);
-    });
-
-    it('does not check evolution on user messages', async () => {
-      mockFetchOk({});
-      await messageLog.log('chat-1', 'user', 'hello');
-
-      expect(mockCheckEvolution).not.toHaveBeenCalled();
-    });
 
     it('does not throw when fetch fails', async () => {
       mockFetch.mockRejectedValueOnce(new Error('network error'));
