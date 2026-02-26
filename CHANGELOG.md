@@ -1,5 +1,8 @@
+## 0.2.30
+- remove github and vercel from onboarding
+
 ## 0.2.29
-- fix silent decrypt failure on hostname change, remove vercel from dynamic tools
+- remove vercel from dynamic tools, fix silent decrypt failure on hostname change
 
 ## 0.2.28
 - fix telegram 429 rate limiting with auto-retry, slower timers, verbose batching
