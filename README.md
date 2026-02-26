@@ -12,6 +12,8 @@ obol init       # walks you through credentials + Telegram setup
 obol start -d   # runs as background daemon (auto-installs pm2)
 ```
 
+<video src="https://github.com/jestersimpps/obol/releases/download/assets/obol-demo.mp4" controls width="100%"></video>
+
 ---
 
 🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md after 24h + minimum exchanges (configurable). Pre-evolution growth analysis guides personality continuity.
