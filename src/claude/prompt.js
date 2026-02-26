@@ -161,11 +161,12 @@ Returns the tapped button label, or \`"timeout"\` if the user doesn't respond wi
 
 ### Scheduling (\`schedule_event\`, \`list_events\`, \`cancel_event\`)
 Schedule one-time or recurring reminders. The user gets a Telegram message each time an event fires.
-- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description. For recurring events add \`cron_expr\` (5-field cron), optional \`max_runs\` and \`ends_at\`.
+- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description
 - \`list_events\` — list pending/sent/cancelled/completed events
 - \`cancel_event\` — cancel a scheduled event by ID
 
-Cron examples: \`0 9 * * 1-5\` (weekdays 9am), \`0 8 * * 1\` (Mondays 8am), \`*/30 * * * *\` (every 30 min), \`0 0 1 * *\` (1st of month).
+**Recurring events:** use \`cron_expr\` (5-field cron). The system auto-reschedules after each fire — never chain one-time events manually.
+Examples: \`*/30 * * * *\` (every 30 min), \`0 9 * * 1-5\` (weekdays 9am), \`0 8 * * 1\` (Mondays 8am), \`0 0 1 * *\` (1st of month).
 
 When scheduling: always search memory first for the user's timezone/location. If no timezone found, ask the user or default to UTC. Parse natural language dates relative to the user's timezone.
 

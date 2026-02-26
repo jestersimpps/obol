@@ -3,7 +3,15 @@ const { toUTC } = require('../utils');
 const definitions = [
   {
     name: 'schedule_event',
-    description: 'Schedule a one-time or recurring reminder/event. For recurring events, provide a cron_expr (standard 5-field cron: minute hour day-of-month month day-of-week). The user will receive a Telegram message each time it fires. Always search memory first for the user\'s timezone/location.',
+    description: `Schedule a one-time or recurring reminder/event. The user will receive a Telegram message each time it fires.
+
+For RECURRING events (e.g. "every 30 minutes", "daily at 9am", "every Monday"):
+- ALWAYS use cron_expr — do NOT schedule one-time events and chain them manually
+- cron_expr is a standard 5-field cron: minute hour day-of-month month day-of-week
+- Examples: "*/30 * * * *" (every 30 min), "0 9 * * 1-5" (weekdays 9am), "0 8 * * 1" (Mondays 8am)
+- The system will auto-reschedule after each fire — no need to re-schedule manually
+
+Always search memory first for the user's timezone/location.`,
     input_schema: {
       type: 'object',
       properties: {
@@ -11,7 +19,7 @@ const definitions = [
         due_at: { type: 'string', description: 'ISO 8601 datetime for the first fire time (e.g. 2026-02-25T15:00:00)' },
         timezone: { type: 'string', description: 'IANA timezone (e.g. Europe/Brussels, America/New_York). Default: UTC' },
         description: { type: 'string', description: 'Context or details about the event' },
-        cron_expr: { type: 'string', description: 'Cron expression for recurring events (5-field: "0 9 * * 1-5" = weekdays 9am). Omit for one-time events.' },
+        cron_expr: { type: 'string', description: 'Cron expression for recurring events (5-field). REQUIRED for any repeating schedule — do not omit and chain one-time events instead.' },
         max_runs: { type: 'number', description: 'Maximum number of times to fire (omit for unlimited)' },
         ends_at: { type: 'string', description: 'ISO 8601 datetime after which the recurring event stops' },
       },
@@ -51,7 +59,7 @@ const handlers = {
     if (input.cron_expr) {
       try {
         const { parseExpression } = require('cron-parser');
-        parseExpression(input.cron_expr, { tz });
+        parseExpression(input.cron_expr, { timezone: tz });
       } catch (e) {
         return `Invalid cron expression "${input.cron_expr}": ${e.message}`;
       }

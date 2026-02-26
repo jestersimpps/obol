@@ -1,5 +1,5 @@
 ## 0.2.31
-- update readme to reflect removed github/vercel onboarding and vercel tool
+- update readme: remove github/vercel from onboarding, remove vercel tool references
 
 ## 0.2.30
 - remove github and vercel from onboarding
