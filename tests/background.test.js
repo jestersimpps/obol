@@ -12,13 +12,17 @@ describe('BackgroundRunner', () => {
     vi.useFakeTimers();
     runner = new BackgroundRunner();
     mockClaude = {
-      chat: vi.fn().mockResolvedValue('done'),
+      chat: vi.fn().mockResolvedValue({ text: 'task result' }),
       clearHistory: vi.fn(),
     };
     mockCtx = {
       chat: { id: 123 },
-      reply: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue({ message_id: 99 }),
       replyWithChatAction: vi.fn().mockResolvedValue(undefined),
+      api: {
+        deleteMessage: vi.fn().mockResolvedValue(undefined),
+        editMessageText: vi.fn().mockResolvedValue(undefined),
+      },
     };
     mockMemory = {
       add: vi.fn().mockResolvedValue(undefined),
@@ -193,6 +197,71 @@ describe('BackgroundRunner', () => {
         expect.stringContaining('my task'),
         expect.objectContaining({ chatId: 'bg-1', userName: 'BackgroundTask' }),
       );
+    });
+  });
+
+  describe('silent mode', () => {
+    it('sends raw result without BG header when silent', async () => {
+      const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory, null, { silent: true });
+      await runner.tasks.get(id).promise;
+
+      const calls = mockCtx.reply.mock.calls;
+      expect(calls.length).toBe(1);
+      expect(calls[0][0]).toBe('task result');
+      expect(calls[0][0]).not.toContain('BG #');
+      expect(calls[0][0]).not.toContain('done');
+    });
+
+    it('sends BG header when not silent', async () => {
+      const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory, null, {});
+      await runner.tasks.get(id).promise;
+
+      const completionCall = mockCtx.reply.mock.calls.find(c => String(c[0]).includes('done') && String(c[0]).includes('BG #'));
+      expect(completionCall).toBeDefined();
+    });
+
+    it('does not send status message when silent', async () => {
+      const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory, null, { silent: true });
+      await runner.tasks.get(id).promise;
+
+      const statusCalls = mockCtx.reply.mock.calls.filter(c =>
+        String(c[0]).includes('Starting') || String(c[0]).includes('BG #')
+      );
+      expect(statusCalls.length).toBe(0);
+    });
+
+    it('sends status message when not silent', async () => {
+      runner.spawn(mockClaude, 'my task', mockCtx, mockMemory, null, {});
+
+      const statusCalls = mockCtx.reply.mock.calls.filter(c =>
+        String(c[0]).includes('Starting') || String(c[1]?.parse_mode) === 'HTML'
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+    });
+
+    it('does not send error message to chat when silent and task fails', async () => {
+      mockClaude.chat.mockRejectedValueOnce(new Error('boom'));
+      const id = runner.spawn(mockClaude, 'failing task', mockCtx, mockMemory, null, { silent: true });
+      await runner.tasks.get(id).promise.catch(() => {});
+
+      const errorCalls = mockCtx.reply.mock.calls.filter(c => String(c[0]).includes('failed'));
+      expect(errorCalls.length).toBe(0);
+    });
+
+    it('sends error message to chat when not silent and task fails', async () => {
+      mockClaude.chat.mockRejectedValueOnce(new Error('boom'));
+      const id = runner.spawn(mockClaude, 'failing task', mockCtx, mockMemory, null, {});
+      await runner.tasks.get(id).promise.catch(() => {});
+
+      const errorCalls = mockCtx.reply.mock.calls.filter(c => String(c[0]).includes('failed'));
+      expect(errorCalls.length).toBe(1);
+    });
+
+    it('still tracks task in tasks map when silent', async () => {
+      const id = runner.spawn(mockClaude, 'my task', mockCtx, mockMemory, null, { silent: true });
+      await runner.tasks.get(id).promise;
+
+      expect(runner.tasks.has(id)).toBe(true);
     });
   });
 });
