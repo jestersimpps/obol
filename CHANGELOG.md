@@ -1,3 +1,6 @@
+## 0.2.32
+- fix cron-parser v5 tz option, enforce cron_expr for recurring events
+
 ## 0.2.31
 - update readme: remove github/vercel from onboarding, remove vercel tool references
 
