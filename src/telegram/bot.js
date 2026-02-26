@@ -25,7 +25,7 @@ function createBot(telegramConfig, config) {
   const processedUpdates = new Map();
   let askIdCounter = 0;
 
-  function createAsk(ctx, message, options, timeoutSecs = 60) {
+  function createAsk(ctx, message, options, timeoutSecs = 120) {
     return new Promise((resolve) => {
       const askId = ++askIdCounter;
       const keyboard = new InlineKeyboard();
@@ -33,14 +33,22 @@ function createBot(telegramConfig, config) {
         keyboard.text(opt, `ask:${askId}:${i}`);
         if ((i + 1) % 3 === 0 && i < options.length - 1) keyboard.row();
       });
+      let sentMsgId = null;
       const timer = setTimeout(() => {
         if (pendingAsks.has(askId)) {
           pendingAsks.delete(askId);
+          if (sentMsgId) {
+            ctx.api.editMessageReplyMarkup(ctx.chat.id, sentMsgId, {
+              reply_markup: { inline_keyboard: [] },
+            }).catch(() => {});
+          }
           resolve('timeout');
         }
       }, timeoutSecs * 1000);
       pendingAsks.set(askId, { resolve, options, timer });
-      sendHtml(ctx, message, { reply_markup: keyboard }).catch(() => {
+      sendHtml(ctx, message, { reply_markup: keyboard }).then((msg) => {
+        sentMsgId = msg.message_id;
+      }).catch(() => {
         clearTimeout(timer);
         pendingAsks.delete(askId);
         resolve('error');
@@ -49,7 +57,8 @@ function createBot(telegramConfig, config) {
   }
 
   bot.use(sequentialize((ctx) => {
-    if (ctx.callbackQuery?.data?.startsWith('stop:') || ctx.callbackQuery?.data?.startsWith('force:')) return undefined;
+    const cbData = ctx.callbackQuery?.data;
+    if (cbData?.startsWith('stop:') || cbData?.startsWith('force:') || cbData?.startsWith('ask:')) return undefined;
     return ctx.chat?.id.toString();
   }));
 

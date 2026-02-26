@@ -4,6 +4,8 @@ const { execSync } = require('child_process');
 const { getTenant } = require('../../tenant');
 const { loadConfig } = require('../../config');
 const { getMaxToolIterations, setMaxToolIterations } = require('../../claude');
+const { createChatContext, createStatusTracker } = require('../handlers/text');
+const { sendHtml, splitMessage, startTyping } = require('../utils');
 const pkg = require('../../../package.json');
 
 function register(bot, config, createAsk) {
@@ -25,25 +27,88 @@ function register(bot, config, createAsk) {
   bot.command('clean', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
-    const { planClean, applyPlan } = require('../../clean');
+    const { planClean } = require('../../clean');
     await ctx.replyWithChatAction('typing');
     try {
       const plan = await planClean(tenant.userDir);
-      if (plan.issues.length === 0) {
+      const testsDir = path.join(plan.baseDir, 'tests');
+      const scriptsDir = path.join(plan.baseDir, 'scripts');
+      const hasTests = fs.existsSync(testsDir) && fs.readdirSync(testsDir).filter(f => !f.startsWith('.')).length > 0;
+      const hasScripts = fs.existsSync(scriptsDir) && fs.readdirSync(scriptsDir).filter(f => !f.startsWith('.')).length > 0;
+
+      if (plan.issues.length === 0 && (hasTests || !hasScripts)) {
         await ctx.reply('✨ Workspace is clean. Nothing out of place.');
         return;
       }
-      const previewLines = plan.issues.map(i => {
-        const src = i.type === 'misplaced' ? `${i.currentDir}/${i.name}` : (i.type === 'dir' ? i.name + '/' : i.name);
-        return i.dest ? `📦 ${src} → ${i.dest}/` : `⚠️ ${src} — unknown type, needs manual move`;
-      });
-      const preview = `🧹 Found ${plan.issues.length} issue(s):\n\n${previewLines.join('\n')}\n\nApply these changes?`;
-      const answer = await createAsk(ctx, preview, ['Apply', 'Cancel']);
-      if (answer !== 'Apply') return;
-      const result = applyPlan(plan.baseDir, plan.issues);
-      const text = `✅ Done — ${result.applied.length} change(s) applied` +
-        (result.errors.length > 0 ? `\n\n⚠️ ${result.errors.length} error(s):\n${result.errors.join('\n')}` : '');
-      await ctx.reply(text);
+
+      const promptParts = [];
+
+      if (plan.issues.length > 0) {
+        const issueLines = plan.issues.map(i => {
+          const src = i.type === 'misplaced' ? `${i.currentDir}/${i.name}` : (i.type === 'dir' ? i.name + '/' : i.name);
+          return i.dest ? `- ${src} → ${i.dest}/` : `- ${src} (unknown type)`;
+        }).join('\n');
+
+        promptParts.push(`Clean up the obol workspace located at: ${plan.baseDir}
+
+## Workspace Structure
+Allowed root directories: personality/, scripts/, tests/, commands/, apps/, logs/, assets/
+Allowed root files: config.json, secrets.json, .evolution-state.json, .first-run-done, .post-setup-done
+- personality/ and commands/ only contain .md files (except personality/traits.json which must stay)
+- Unknown directories at the root should be moved into apps/
+- Script files (.js, .ts, .sh, etc.) go into scripts/
+- Asset files (images, audio, pdf, etc.) go into assets/
+- .DS_Store and other dotfiles should be deleted
+- secrets.json and personality/traits.json must NOT be moved
+
+## Issues Found
+${issueLines}
+
+Resolve all of these issues. Use the exec tool to run shell commands (mv, rm, mkdir) to move or delete files as appropriate.`);
+      }
+
+      promptParts.push(`## Secret Hygiene
+Read every script in ${plan.baseDir}/scripts/. If any script has hardcoded API keys, passwords, tokens, or credentials (e.g. API_KEY = "sk-...", PASSWORD = "..."), refactor it:
+1. Use \`store_secret\` to save each hardcoded value under a descriptive key (e.g. "deepseek-api-key")
+2. Rewrite the script to accept a JSON secrets object as its first argument:
+   \`\`\`python
+   import json, sys
+   secrets = json.loads(sys.argv[1])
+   api_key = secrets.get('deepseek-api-key', '').strip()
+   \`\`\`
+3. Never leave plaintext secrets in script files
+
+## Tests
+Check the tests/ folder at ${plan.baseDir}/tests/. If it has test files, run them — fix any failures and re-run until all pass. If tests/ is empty or missing, read the scripts in ${plan.baseDir}/scripts/ and write a test file for each script, then run them all.
+Summarize what was cleaned, secrets migrated, and final test results.`);
+
+      const taskPrompt = promptParts.join('\n\n');
+
+      const stopTyping = startTyping(ctx);
+      const status = createStatusTracker(ctx);
+      const chatContext = createChatContext(ctx, tenant, config, { allowedUsers: new Set(), bot, createAsk });
+      chatContext._model = 'claude-sonnet-4-6';
+      chatContext._onRouteDecision = (info) => { status.setRouteInfo(info); status.start(); };
+      chatContext._onToolStart = (toolName, inputSummary) => {
+        status.setStatusText('Processing');
+        status.start();
+      };
+
+      try {
+        const { text: response } = await tenant.claude.chat(taskPrompt, chatContext);
+        status.stopTimer();
+        status.updateFormatting();
+        stopTyping();
+        status.deleteMsg();
+        if (response?.trim()) {
+          const chunks = splitMessage(response, 4096);
+          for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
+        }
+      } catch (e) {
+        status.clear();
+        stopTyping();
+        await ctx.reply(`⚠️ Clean failed: ${e.message}`).catch(() => {});
+      }
     } catch (e) {
       await ctx.reply(`⚠️ Clean failed: ${e.message}`);
     }
