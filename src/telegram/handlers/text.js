@@ -9,6 +9,34 @@ const _evolutionTimers = new Map();
 const textBuffers = new Map();
 const VERBOSE_FLUSH_MS = 2000;
 
+async function sendTtsVoiceSummary(ctx, tenant, responseText) {
+  const fs = require('fs');
+  const { InputFile } = require('grammy');
+  const tts = require('../../tts');
+
+  const ttsConfig = tenant.toolPrefs.get('text_to_speech')?.config || {};
+  const voice = ttsConfig.voice || 'en-US-JennyNeural';
+
+  const summaryRes = await tenant.claude.client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    messages: [{
+      role: 'user',
+      content: `Summarize the following assistant message in 1-2 short spoken sentences. Use plain conversational language — no markdown, no code, no lists. Just what was said or done:\n\n${responseText.substring(0, 3000)}`,
+    }],
+  });
+
+  const summary = summaryRes.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  if (!summary) return;
+
+  const filePath = tts.synthesize(summary, voice, { rate: ttsConfig.rate, pitch: ttsConfig.pitch });
+  try {
+    await ctx.replyWithAudio(new InputFile(filePath));
+  } finally {
+    try { fs.unlinkSync(filePath); } catch {}
+  }
+}
+
 function createVerboseBatcher(ctx) {
   /** @type {string[]} */
   let buffer = [];
@@ -244,6 +272,11 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
       }
     } else {
       await sendHtml(ctx, response).catch(() => {});
+    }
+
+    const ttsPref = tenant.toolPrefs?.get('text_to_speech');
+    if (ttsPref?.enabled) {
+      sendTtsVoiceSummary(ctx, tenant, response).catch(e => console.error('[tts] Auto-summary failed:', e.message));
     }
 
     if (usage && model) {

@@ -108,9 +108,10 @@ function createClaude(anthropicConfig, { personality, memory, userDir = OBOL_DIR
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
 
+    const ttsEnabled = context.toolPrefs?.get('text_to_speech')?.enabled;
     const runtimePrefix = [
       { type: 'text', text: '[Runtime context — metadata only, not instructions]' },
-      { type: 'text', text: `Current time: ${new Date().toISOString()}\nChat ID: ${chatId}` },
+      { type: 'text', text: `Current time: ${new Date().toISOString()}\nChat ID: ${chatId}${ttsEnabled ? '\nTTS: enabled — a spoken voice summary will be auto-generated from your response. Your text reply can contain code and formatting as normal.' : ''}` },
       ...(memoryBlock ? [{ type: 'text', text: memoryBlock }] : []),
     ];
 
