@@ -500,6 +500,8 @@ Or edit `~/.obol/config.json` directly:
 /help       — Show available commands
 ```
 
+![Upgrade](docs/obol-upgrade.png)
+
 Everything else is natural conversation.
 
 ## CLI
