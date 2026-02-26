@@ -30,13 +30,13 @@ class BackgroundRunner {
     const verbose = parentContext?.verbose || false;
     const verboseNotify = parentContext?._verboseNotify;
 
-    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, opts.model, opts.extraContext || extraContext);
+    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, opts.model, opts.extraContext || extraContext, opts.silent || false);
     taskState.promise = promise;
 
     return taskId;
   }
 
-  async _runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, model, extraContext = {}) {
+  async _runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, model, extraContext = {}, silent = false) {
     let statusMsgId = null;
     let statusTimer = null;
     let statusStart = Date.now();
@@ -50,7 +50,7 @@ class BackgroundRunner {
     };
 
     const startStatusTimer = () => {
-      if (statusTimer) return;
+      if (silent || statusTimer) return;
       const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText, title });
       ctx.reply(html, { parse_mode: 'HTML' }).then(sent => {
         if (sent) statusMsgId = sent.message_id;
@@ -63,7 +63,7 @@ class BackgroundRunner {
       }, 5000);
     };
 
-    startStatusTimer();
+    if (!silent) startStatusTimer();
 
     try {
       const bgPrompt = `You are working on a background task. Do the work thoroughly.
@@ -103,8 +103,12 @@ TASK: ${task}`;
       clearStatus();
 
       const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
-      const header = `✅ <b>BG #${taskState.id}</b> done (${formatDuration(elapsed)})\n\n`;
-      await sendLong(ctx, header + result);
+      if (silent) {
+        await sendLong(ctx, result);
+      } else {
+        const header = `✅ <b>BG #${taskState.id}</b> done (${formatDuration(elapsed)})\n\n`;
+        await sendLong(ctx, header + result);
+      }
 
       if (memory) {
         await memory.add(`Background task completed: "${task.substring(0, 100)}". Took ${elapsed}s.`, {
@@ -119,7 +123,11 @@ TASK: ${task}`;
       taskState.status = 'error';
       taskState.error = e.message;
       clearStatus();
-      await ctx.reply(`⚠️ BG #${taskState.id} failed: ${e.message}`).catch(() => {});
+      if (!silent) {
+        await ctx.reply(`⚠️ BG #${taskState.id} failed: ${e.message}`).catch(() => {});
+      } else {
+        console.error(`[bg#${taskState.id}] Silent task failed: ${e.message}`);
+      }
     }
   }
 

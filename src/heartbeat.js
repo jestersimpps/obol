@@ -224,7 +224,7 @@ async function runAgenticEvent(bot, config, event) {
     fakeCtx,
     tenant.memory,
     null,
-    {},
+    { silent: true },
     {
       userId: event.user_id,
       chatId: event.chat_id,
