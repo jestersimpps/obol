@@ -1,7 +1,5 @@
-## 0.2.27
-- separate test-writing into phase 2 so it can't be skipped
-- clean up temp dotdirs (.typst, .cache, .tmp)
-- silence false pm2 restart error on upgrade
+## 0.2.28
+- fix telegram 429 rate limiting with auto-retry plugin, slower status/typing timers, verbose log batching
 
 ## 0.2.26
 - show cleaning status instead of processing during /clean
