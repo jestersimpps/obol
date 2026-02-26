@@ -75,7 +75,7 @@ async function runAnalysisForUser(bot, config, userId) {
   try {
     const tenant = await getTenant(userId, config);
     if (!tenant.messageLog || !tenant.scheduler || !tenant.patterns) return;
-    await runAnalysis(tenant.claude.client, tenant.messageLog, tenant.scheduler, tenant.patterns, userId, userId, timezone);
+    await runAnalysis(tenant.claude.client, tenant.messageLog, tenant.scheduler, tenant.patterns, tenant.memory, userId, userId, timezone);
   } catch (e) {
     console.error(`[analysis] Failed for user ${userId}:`, e.message);
   }

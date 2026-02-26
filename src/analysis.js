@@ -2,7 +2,7 @@ const ANALYSIS_WINDOW_MS = 3 * 60 * 60 * 1000;
 const MAX_MESSAGE_CHARS = 1000;
 const MAX_TRANSCRIPT_CHARS = 40000;
 
-async function runAnalysis(client, messageLog, scheduler, patterns, userId, chatId, timezone) {
+async function runAnalysis(client, messageLog, scheduler, patterns, memory, userId, chatId, timezone) {
   const since = new Date(Date.now() - ANALYSIS_WINDOW_MS);
   const messages = await messageLog.getSince(chatId, since);
 
@@ -14,7 +14,7 @@ async function runAnalysis(client, messageLog, scheduler, patterns, userId, chat
   console.log(`[analysis] Analyzing ${messages.length} messages for user ${userId}`);
 
   const transcript = buildTranscript(messages);
-  const report = await generateReport(client, transcript, timezone);
+  const report = await generateReport(client, memory, transcript, timezone);
   if (!report) return;
 
   await structureReport(client, report, scheduler, patterns, chatId, timezone);
@@ -33,12 +33,18 @@ function buildTranscript(messages) {
   return transcript.trim();
 }
 
-async function generateReport(client, transcript, timezone) {
-  try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: `You are an attentive observer analyzing a conversation transcript. Write a free-form analytical report covering:
+async function generateReport(client, memory, transcript, timezone) {
+  const tools = memory ? [{
+    name: 'memory_search',
+    description: 'Search long-term memory for context about a topic in this transcript',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    },
+  }] : [];
+
+  const system = `You are an attentive observer analyzing a conversation transcript. Write a free-form analytical report covering:
 
 1. INTENTIONS & FOLLOW-UPS: Any intentions expressed, upcoming events, pending tasks, or things worth a natural check-in later. Be selective — only things a friend would genuinely remember.
 
@@ -50,11 +56,40 @@ async function generateReport(client, transcript, timezone) {
    - Communication style: message length, formality, response patterns
    - Recurring topics: what keeps coming up, what lights them up, what they avoid
 
-Write candidly and specifically. "Active between 9-11pm" beats "sometimes active at night". Skip categories with no signal. Timezone context: ${timezone}.`,
-      messages: [{ role: 'user', content: `Conversation transcript:\n\n${transcript}` }],
-    });
+Write candidly and specifically. "Active between 9-11pm" beats "sometimes active at night". Skip categories with no signal. Timezone context: ${timezone}.${memory ? ' Use the memory_search tool to look up relevant context about topics in the transcript before writing your report.' : ''}`;
 
-    return response.content.find(b => b.type === 'text')?.text || null;
+  const messages = [{ role: 'user', content: `Conversation transcript:\n\n${transcript}` }];
+
+  try {
+    for (let i = 0; i < 6; i++) {
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system,
+        ...(tools.length ? { tools, tool_choice: { type: 'auto' } } : {}),
+        messages,
+      });
+
+      const text = response.content.find(b => b.type === 'text');
+      if (text) return text.text;
+
+      const toolUses = response.content.filter(b => b.type === 'tool_use');
+      if (!toolUses.length) return null;
+
+      messages.push({ role: 'assistant', content: response.content });
+      const results = [];
+      for (const tu of toolUses) {
+        const hits = await memory.search(tu.input.query, { limit: 5 }).catch(() => []);
+        results.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: hits.length ? hits.map(m => `- ${m.content}`).join('\n') : 'No relevant memories found',
+        });
+      }
+      messages.push({ role: 'user', content: results });
+    }
+
+    return null;
   } catch (e) {
     console.error('[analysis] Report generation failed:', e.message);
     return null;
@@ -62,6 +97,10 @@ Write candidly and specifically. "Active between 9-11pm" beats "sometimes active
 }
 
 async function structureReport(client, report, scheduler, patterns, chatId, timezone) {
+  const formattedPatterns = patterns
+    ? await patterns.format().catch(() => null)
+    : null;
+
   const saveTool = [{
     name: 'save_analysis',
     description: 'Save structured analysis data from the analytical report',
@@ -100,10 +139,14 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
   }];
 
   try {
+    const system = formattedPatterns
+      ? `Existing behavioral patterns for this user:\n${formattedPatterns}\n\n---\n\nConvert this analytical report into structured data using the save_analysis tool. Use existing patterns to calibrate confidence scores (higher if confirming, consider skipping if already well-established at >0.8). Flag contradictions in pattern data.`
+      : 'Convert this analytical report into structured data using the save_analysis tool. Extract all follow-ups and patterns mentioned.';
+
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2000,
-      system: 'Convert this analytical report into structured data using the save_analysis tool. Extract all follow-ups and patterns mentioned.',
+      system,
       tools: saveTool,
       tool_choice: { type: 'tool', name: 'save_analysis' },
       messages: [{ role: 'user', content: report }],
