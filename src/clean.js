@@ -10,6 +10,7 @@ const ALLOWED_ROOT_FILES = new Set([
   '.first-run-done',
   '.post-setup-done',
 ]);
+const TEMP_DOTDIRS = new Set(['.typst', '.cache', '.tmp']);
 
 // Extensions that belong in scripts/
 const SCRIPT_EXTS = new Set(['.js', '.ts', '.sh', '.py', '.rb', '.php', '.go', '.rs', '.pl', '.lua']);
@@ -56,8 +57,9 @@ function scanWorkspace(userDir) {
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      if (!ALLOWED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-        // Unknown root dir — move to apps/ (likely a project/repo)
+      if (TEMP_DOTDIRS.has(entry.name)) {
+        issues.push({ type: 'dir', name: entry.name, dest: null, children: [] });
+      } else if (!ALLOWED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
         issues.push({ type: 'dir', name: entry.name, dest: 'apps', children: safeReaddirAll(path.join(userDir, entry.name)) });
       }
     } else if (entry.isFile()) {
@@ -96,7 +98,7 @@ function applyIssues(baseDir, issues) {
   for (const item of issues) {
     if (item.type === 'dir') {
       const src = path.join(baseDir, item.name);
-      if (item.children.length === 0) {
+      if (!item.dest || item.children.length === 0) {
         try {
           fs.rmSync(src, { recursive: true, force: true });
           applied.push({ path: item.name + '/', action: 'deleted (empty dir)' });

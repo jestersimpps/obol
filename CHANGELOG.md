@@ -1,7 +1,12 @@
+## 0.2.27
+- separate test-writing into phase 2 so it can't be skipped
+- clean up temp dotdirs (.typst, .cache, .tmp)
+- silence false pm2 restart error on upgrade
+
 ## 0.2.26
-- fix ask callback deadlock in sequentialize middleware
-- clean command writes tests and audits scripts for hardcoded secrets
-- remove buttons on ask timeout, increase default to 120s
+- show cleaning status instead of processing during /clean
+- fix ask deadlock, clean writes tests and audits secrets
+- clean confirmation gate, exec sandbox fix, mermaid tool, scheduler always-on
 
 ## 0.2.25
 - changelog

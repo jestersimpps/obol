@@ -78,9 +78,7 @@ Read every script in ${plan.baseDir}/scripts/. If any script has hardcoded API k
    \`\`\`
 3. Never leave plaintext secrets in script files
 
-## Tests
-Check the tests/ folder at ${plan.baseDir}/tests/. If it has test files, run them — fix any failures and re-run until all pass. If tests/ is empty or missing, read the scripts in ${plan.baseDir}/scripts/ and write a test file for each script, then run them all.
-Summarize what was cleaned, secrets migrated, and final test results.`);
+Summarize what was cleaned and secrets migrated.`);
 
       const taskPrompt = promptParts.join('\n\n');
 
@@ -109,6 +107,33 @@ Summarize what was cleaned, secrets migrated, and final test results.`);
         stopTyping();
         await ctx.reply(`⚠️ Clean failed: ${e.message}`).catch(() => {});
       }
+
+      // Phase 2: write and run tests (separate chat so it can't be skipped)
+      const testsAfter = fs.existsSync(testsDir) && fs.readdirSync(testsDir).filter(f => !f.startsWith('.')).length > 0;
+      if (!testsAfter && hasScripts) {
+        const testPrompt = `Read every script in ${plan.baseDir}/scripts/. For each script, write a corresponding test file in ${plan.baseDir}/tests/. Name each test file test-<script-name> (e.g. scripts/gmail-send.py → tests/test-gmail-send.py). After writing all tests, run them and fix any failures until they all pass. Summarize the test results.`;
+        const testStatus = createStatusTracker(ctx);
+        const testCtx = createChatContext(ctx, tenant, config, { allowedUsers: new Set(), bot, createAsk });
+        testCtx._model = 'claude-sonnet-4-6';
+        testCtx._onRouteDecision = (info) => { testStatus.setRouteInfo(info); testStatus.start(); };
+        testCtx._onToolStart = () => { testStatus.setStatusText('Writing tests'); testStatus.start(); };
+        const testTyping = startTyping(ctx);
+        try {
+          const { text: testResponse } = await tenant.claude.chat(testPrompt, testCtx);
+          testStatus.stopTimer();
+          testStatus.updateFormatting();
+          testTyping();
+          testStatus.deleteMsg();
+          if (testResponse?.trim()) {
+            const chunks = splitMessage(testResponse, 4096);
+            for (const chunk of chunks) await sendHtml(ctx, chunk).catch(() => {});
+          }
+        } catch (e) {
+          testStatus.clear();
+          testTyping();
+          await ctx.reply(`⚠️ Test writing failed: ${e.message}`).catch(() => {});
+        }
+      }
     } catch (e) {
       await ctx.reply(`⚠️ Clean failed: ${e.message}`);
     }
@@ -136,7 +161,7 @@ Summarize what was cleaned, secrets migrated, and final test results.`);
       const { OBOL_DIR } = require('../../config');
       const notifyPath = path.join(OBOL_DIR, '.upgrade-notify.json');
       fs.writeFileSync(notifyPath, JSON.stringify({ chatId: ctx.chat.id, version: latest }));
-      execSync('pm2 restart obol', { encoding: 'utf-8', timeout: 15000 });
+      try { execSync('pm2 restart obol', { encoding: 'utf-8', timeout: 15000 }); } catch {}
     } catch (e) {
       await ctx.reply(`Upgrade failed: ${e.message.substring(0, 200)}`);
     }
