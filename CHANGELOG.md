@@ -1,3 +1,12 @@
+## 0.2.35
+- pass full user context to agentic cron tasks so tools can access secrets/config
+
+## 0.2.34
+- fix cron-parser v5 api: parseExpression → CronExpressionParser.parse
+
+## 0.2.33
+- add agentic cron jobs with instructions field and update_event tool
+
 ## 0.2.32
 - fix cron-parser v5 tz option, enforce cron_expr for recurring events
 
