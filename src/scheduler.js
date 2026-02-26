@@ -10,7 +10,7 @@ function createScheduler(supabaseConfig, userId = 0) {
     'Prefer': 'return=representation',
   };
 
-  async function add(chatId, title, dueAt, timezone = 'UTC', description = null, cronExpr = null, maxRuns = null, endsAt = null) {
+  async function add(chatId, title, dueAt, timezone = 'UTC', description = null, cronExpr = null, maxRuns = null, endsAt = null, instructions = null) {
     const body = {
       user_id: userId,
       chat_id: chatId,
@@ -23,6 +23,7 @@ function createScheduler(supabaseConfig, userId = 0) {
     if (cronExpr) body.cron_expr = cronExpr;
     if (maxRuns != null) body.max_runs = maxRuns;
     if (endsAt) body.ends_at = endsAt;
+    if (instructions) body.instructions = instructions;
     const res = await fetch(`${url}/rest/v1/obol_events`, {
       method: 'POST',
       headers,
@@ -56,7 +57,7 @@ function createScheduler(supabaseConfig, userId = 0) {
 
   async function getDue() {
     const now = new Date().toISOString();
-    const fetchUrl = `${url}/rest/v1/obol_events?status=eq.pending&due_at=lte.${now}&select=id,user_id,chat_id,title,description,due_at,timezone,cron_expr,run_count,max_runs,ends_at`;
+    const fetchUrl = `${url}/rest/v1/obol_events?status=eq.pending&due_at=lte.${now}&select=id,user_id,chat_id,title,description,due_at,timezone,cron_expr,run_count,max_runs,ends_at,instructions`;
     const res = await fetch(fetchUrl, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
@@ -105,7 +106,18 @@ function createScheduler(supabaseConfig, userId = 0) {
     }
   }
 
-  return { add, list, cancel, getDue, markSent, reschedule };
+  async function update(eventId, fields) {
+    const res = await fetch(`${url}/rest/v1/obol_events?id=eq.${eventId}&user_id=eq.${userId}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(fields),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+    return data[0];
+  }
+
+  return { add, list, cancel, getDue, markSent, reschedule, update };
 }
 
 module.exports = { createScheduler };

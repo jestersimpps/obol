@@ -197,6 +197,9 @@ async function migrate(supabaseConfig) {
     `DROP FUNCTION IF EXISTS match_obol_messages(VECTOR(384), FLOAT, INT, BIGINT);`,
     `DROP INDEX IF EXISTS obol_messages_embedding_idx;`,
     `ALTER TABLE obol_messages DROP COLUMN IF EXISTS embedding;`,
+
+    // Instructions column for agentic cron jobs
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS instructions TEXT;`,
   ];
 
   // Save SQL file for manual fallback

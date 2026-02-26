@@ -22,6 +22,7 @@ Always search memory first for the user's timezone/location.`,
         cron_expr: { type: 'string', description: 'Cron expression for recurring events (5-field). REQUIRED for any repeating schedule — do not omit and chain one-time events instead.' },
         max_runs: { type: 'number', description: 'Maximum number of times to fire (omit for unlimited)' },
         ends_at: { type: 'string', description: 'ISO 8601 datetime after which the recurring event stops' },
+        instructions: { type: 'string', description: 'LLM instructions to execute when the event fires. If set, the bot will run these as an agentic task instead of sending a plain reminder message. Use for automations like "check email", "fetch weather", etc.' },
       },
       required: ['title', 'due_at'],
     },
@@ -43,6 +44,23 @@ Always search memory first for the user's timezone/location.`,
       type: 'object',
       properties: {
         event_id: { type: 'string', description: 'UUID of the event to cancel' },
+      },
+      required: ['event_id'],
+    },
+  },
+  {
+    name: 'update_event',
+    description: 'Update fields on an existing scheduled event. Only provided fields are changed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'UUID of the event to update' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        instructions: { type: 'string', description: 'LLM instructions to execute when the event fires. Set to empty string to clear.' },
+        timezone: { type: 'string' },
+        cron_expr: { type: 'string' },
+        max_runs: { type: 'number' },
       },
       required: ['event_id'],
     },
@@ -70,19 +88,21 @@ const handlers = {
     const event = await context.scheduler.add(
       context.chatId, input.title, utcDate, tz,
       input.description || null, input.cron_expr || null,
-      input.max_runs || null, endsAtUtc
+      input.max_runs || null, endsAtUtc, input.instructions || null
     );
     const displayTime = new Date(utcDate).toLocaleString('en-US', { timeZone: tz });
 
+    const mode = input.instructions ? 'agentic' : 'reminder';
+
     if (input.cron_expr) {
-      let result = `Recurring event scheduled: "${input.title}"\nFirst run: ${displayTime} (${tz})\nSchedule: ${input.cron_expr}`;
+      let result = `Recurring ${mode} scheduled: "${input.title}"\nFirst run: ${displayTime} (${tz})\nSchedule: ${input.cron_expr}`;
       if (input.max_runs) result += `\nMax runs: ${input.max_runs}`;
       if (input.ends_at) result += `\nEnds: ${new Date(endsAtUtc).toLocaleString('en-US', { timeZone: tz })}`;
       result += `\nID: ${event.id}`;
       return result;
     }
 
-    return `Scheduled: "${input.title}" for ${displayTime} (${tz}) — ID: ${event.id}`;
+    return `Scheduled ${mode}: "${input.title}" for ${displayTime} (${tz}) — ID: ${event.id}`;
   },
 
   async list_events(input, memory, context) {
@@ -94,6 +114,7 @@ const handlers = {
         id: e.id,
         title: e.title,
         description: e.description,
+        instructions: e.instructions || null,
         due_at: e.due_at,
         timezone: e.timezone,
         due_local: new Date(e.due_at).toLocaleString('en-US', { timeZone: e.timezone }),
@@ -115,6 +136,22 @@ const handlers = {
     const cancelled = await context.scheduler.cancel(input.event_id);
     if (!cancelled) return `Event not found or not yours: ${input.event_id}`;
     return `Cancelled: "${cancelled.title}"`;
+  },
+
+  async update_event(input, memory, context) {
+    if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
+    const { event_id, ...rest } = input;
+    const fields = {};
+    if (rest.title !== undefined) fields.title = rest.title;
+    if (rest.description !== undefined) fields.description = rest.description;
+    if (rest.instructions !== undefined) fields.instructions = rest.instructions || null;
+    if (rest.timezone !== undefined) fields.timezone = rest.timezone;
+    if (rest.cron_expr !== undefined) fields.cron_expr = rest.cron_expr;
+    if (rest.max_runs !== undefined) fields.max_runs = rest.max_runs;
+    if (Object.keys(fields).length === 0) return 'No fields to update.';
+    const updated = await context.scheduler.update(event_id, fields);
+    if (!updated) return `Event not found or not yours: ${event_id}`;
+    return `Updated: "${updated.title}"`;
   },
 };
 
