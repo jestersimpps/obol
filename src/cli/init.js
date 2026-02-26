@@ -6,7 +6,7 @@ const { execSync } = require('child_process');
 const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
 const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
 const {
-  validateAnthropic, validateTelegram, validateSupabase, validateVercel,
+  validateAnthropic, validateTelegram, validateSupabase,
 } = require('../validators');
 
 const OBOL_DIR = getConfigDir();
@@ -120,7 +120,7 @@ async function init(opts = {}) {
 
   const config = {};
   let step = 0;
-  const totalSteps = 7;
+  const totalSteps = 5;
   const stepLabel = (name) => `─── Step ${++step}/${totalSteps}: ${name} ───`;
 
   // Step 1: Anthropic
@@ -223,65 +223,7 @@ async function init(opts = {}) {
     console.log('');
   }
 
-  // Step 4: GitHub
-  console.log(stepLabel('GitHub (backup)') + '\n');
-  const { setupGithub } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'setupGithub',
-    message: 'Set up GitHub backup?',
-    default: true,
-  }]);
-  if (setupGithub) {
-    console.log('  OBOL backs up its personality, scripts, and commands to a');
-    console.log('  private GitHub repo daily. This lets you restore on any server.\n');
-    console.log('  How to get a token:');
-    console.log('    1. Go to https://github.com/settings/tokens');
-    console.log('    2. Click "Generate new token (classic)"');
-    console.log('    3. Name it "obol"');
-    console.log('    4. Check the "repo" scope (full control of private repos)');
-    console.log('    5. Click "Generate token" and copy it\n');
-    const { githubToken } = await inquirer.prompt([{
-      type: 'password',
-      name: 'githubToken',
-      message: 'GitHub personal access token:',
-      mask: '*',
-    }]);
-    config.github = await setupGitHub(githubToken);
-  } else {
-    config.github = null;
-    console.log('  Skipped — no backup configured\n');
-  }
-
-  // Step 5: Vercel
-  console.log(stepLabel('Vercel (deploy sites)') + '\n');
-  const { setupVercel } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'setupVercel',
-    message: 'Set up Vercel deployments?',
-    default: true,
-  }]);
-  if (setupVercel) {
-    console.log('  OBOL can deploy websites and apps to Vercel for you.\n');
-    console.log('  How to get a token:');
-    console.log('    1. Go to https://vercel.com (sign up free if needed)');
-    console.log('    2. Go to https://vercel.com/account/tokens');
-    console.log('    3. Click "Create" and name it "obol"');
-    console.log('    4. Copy the token\n');
-    const { vercelToken } = await inquirer.prompt([{
-      type: 'password',
-      name: 'vercelToken',
-      message: 'Vercel token:',
-      mask: '*',
-    }]);
-    config.vercel = { token: vercelToken };
-    await validateCredential('Vercel', () => validateVercel(vercelToken));
-  } else {
-    config.vercel = null;
-    console.log('  Skipped — no deploy target configured\n');
-  }
-  console.log('');
-
-  // Step 6: Identity
+  // Step 4: Identity
   console.log(stepLabel('Identity') + '\n');
   console.log('  Give your bot a name and tell it who you are.');
   console.log('  The bot name appears in personality files. Change later with `obol config`.\n');
@@ -292,7 +234,7 @@ async function init(opts = {}) {
   config.owner = { name: ownerName };
   config.bot = { name: botName };
 
-  // Step 7: Allowed Telegram users
+  // Step 5: Allowed Telegram users
   console.log('\n' + stepLabel('Access control') + '\n');
   console.log('  Each allowed user gets their own isolated brain — separate');
   console.log('  personality, memory, evolution cycle, and workspace.');
