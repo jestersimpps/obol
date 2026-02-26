@@ -3,8 +3,9 @@ const { TERM_SEP } = require('../constants');
 const pkg = require('../../../package.json');
 
 function register(bot, config) {
+  const botName = config.bot?.name || 'OBOL';
   bot.command('start', async (ctx) => {
-    await ctx.reply(`<pre>◈ OBOL v${pkg.version}\n${TERM_SEP}\nSYSTEM ONLINE\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
+    await ctx.reply(`<pre>◈ ${botName} v${pkg.version}\n${TERM_SEP}\nSYSTEM ONLINE\n${TERM_SEP}</pre>`, { parse_mode: 'HTML' });
   });
 
   bot.command('new', async (ctx) => {

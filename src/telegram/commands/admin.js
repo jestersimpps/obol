@@ -9,6 +9,7 @@ const { sendHtml, splitMessage, startTyping } = require('../utils');
 const pkg = require('../../../package.json');
 
 function register(bot, config, createAsk) {
+  const botName = config.bot?.name || 'OBOL';
   bot.command('backup', async (ctx) => {
     if (!ctx.from) return;
     try {
@@ -173,7 +174,7 @@ Summarize what was cleaned and secrets migrated.`);
     const current = getMaxToolIterations();
 
     if (!args[0]) {
-      await ctx.reply(`🔧 Max tool iterations: ${current}\n\nThis limits how many tool calls OBOL can make per message. Higher = more complex tasks, but slower responses.\n\nSet: /toolimit <number>\nExample: /toolimit 50`);
+      await ctx.reply(`🔧 Max tool iterations: ${current}\n\nThis limits how many tool calls ${botName} can make per message. Higher = more complex tasks, but slower responses.\n\nSet: /toolimit <number>\nExample: /toolimit 50`);
       return;
     }
 

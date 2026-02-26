@@ -7,6 +7,7 @@ const { termBar, formatTraits } = require('../utils');
 const { TERM_SEP } = require('../constants');
 
 function register(bot, config) {
+  const botName = config.bot?.name || 'OBOL';
   bot.command('status', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
@@ -18,7 +19,7 @@ function register(bot, config) {
     const pkg = require('../../../package.json');
 
     const lines = [
-      `◈ OBOL SYSTEM STATUS`,
+      `◈ ${botName} SYSTEM STATUS`,
       TERM_SEP,
       ``,
       `RUNTIME`,
@@ -66,7 +67,7 @@ function register(bot, config) {
     const state = loadEvolutionState(tenant.userDir);
 
     const lines = [
-      `◈ OBOL EVOLUTION CYCLE`,
+      `◈ ${botName} EVOLUTION CYCLE`,
       TERM_SEP,
       ``,
       `  ${state.evolutionCount || 0} completed`,
@@ -108,7 +109,7 @@ function register(bot, config) {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
     const running = tenant.bg.getStatus();
-    const lines = [`◈ OBOL ACTIVE TASKS`, TERM_SEP];
+    const lines = [`◈ ${botName} ACTIVE TASKS`, TERM_SEP];
     if (running.length === 0) {
       lines.push(``, `  (none)`);
     } else {

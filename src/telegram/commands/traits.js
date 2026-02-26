@@ -5,6 +5,7 @@ const { formatTraits } = require('../utils');
 const { TERM_SEP } = require('../constants');
 
 function register(bot, config) {
+  const botName = config.bot?.name || 'OBOL';
   bot.command('traits', async (ctx) => {
     if (!ctx.from) return;
     const tenant = await getTenant(ctx.from.id, config);
@@ -15,7 +16,7 @@ function register(bot, config) {
       saveTraits(personalityDir, { ...DEFAULT_TRAITS });
       tenant.claude.reloadPersonality();
       const traits = { ...DEFAULT_TRAITS };
-      const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, `RESET TO DEFAULTS`, ``, formatTraits(traits), TERM_SEP];
+      const lines = [`◈ ${botName} PERSONALITY MATRIX`, TERM_SEP, `RESET TO DEFAULTS`, ``, formatTraits(traits), TERM_SEP];
       await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
       return;
     }
@@ -35,13 +36,13 @@ function register(bot, config) {
       traits[traitName] = value;
       saveTraits(personalityDir, traits);
       tenant.claude.reloadPersonality();
-      const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, `UPDATED ${traitName} → ${value}`, ``, formatTraits(traits), TERM_SEP];
+      const lines = [`◈ ${botName} PERSONALITY MATRIX`, TERM_SEP, `UPDATED ${traitName} → ${value}`, ``, formatTraits(traits), TERM_SEP];
       await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
       return;
     }
 
     const traits = loadTraits(personalityDir);
-    const lines = [`◈ OBOL PERSONALITY MATRIX`, TERM_SEP, ``, formatTraits(traits), ``, `/traits &lt;name&gt; &lt;0-100&gt;`, `/traits reset`, TERM_SEP];
+    const lines = [`◈ ${botName} PERSONALITY MATRIX`, TERM_SEP, ``, formatTraits(traits), ``, `/traits &lt;name&gt; &lt;0-100&gt;`, `/traits reset`, TERM_SEP];
     await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });
   });
 }
