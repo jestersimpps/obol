@@ -162,6 +162,7 @@ async function manageUsers(cfg) {
       choices: [
         { name: 'Add user (detect from bot messages)', value: 'detect' },
         { name: 'Add user (enter ID manually)', value: 'manual' },
+        ...(currentUsers.length > 0 ? [{ name: 'Rename user', value: 'rename' }] : []),
         ...(currentUsers.length > 0 ? [{ name: 'Remove user', value: 'remove' }] : []),
         new inquirer.Separator(),
         { name: 'Back', value: 'back' },
@@ -229,6 +230,35 @@ async function manageUsers(cfg) {
         currentUsers.push(id);
         ensureUserDir(id);
         console.log(`  ✅ Added ${id} — workspace created`);
+      }
+    }
+
+    if (action === 'rename') {
+      const { renameId } = await inquirer.prompt([{
+        type: 'list',
+        name: 'renameId',
+        message: 'Rename which user?',
+        choices: [
+          ...currentUsers.map(id => {
+            const name = cfg.users?.[String(id)]?.name;
+            return { name: name ? `${id} — ${name}` : String(id), value: id };
+          }),
+          new inquirer.Separator(),
+          { name: 'Cancel', value: null },
+        ],
+      }]);
+      if (renameId !== null) {
+        const currentName = cfg.users?.[String(renameId)]?.name || '';
+        const { newName } = await inquirer.prompt([{
+          type: 'input',
+          name: 'newName',
+          message: `Name for user ${renameId}:`,
+          default: currentName,
+          validate: (v) => v.trim().length > 0 ? true : 'Required',
+        }]);
+        if (!cfg.users) cfg.users = {};
+        if (!cfg.users[String(renameId)]) cfg.users[String(renameId)] = {};
+        cfg.users[String(renameId)].name = newName.trim();
       }
     }
 

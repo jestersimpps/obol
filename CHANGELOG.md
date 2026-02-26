@@ -1,3 +1,12 @@
+## 0.2.36
+- changelog and issues updates
+- auto-send tts voice summary when tts is enabled
+- add second demo video side by side
+- Add demo video (#1)
+- add demo video to docs
+- add demo video to readme
+- fix readme inconsistencies and redact user ids
+
 ## 0.2.35
 - pass full user context to agentic cron tasks so tools can access secrets/config
 
