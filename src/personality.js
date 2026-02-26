@@ -4,17 +4,16 @@ const { OBOL_DIR } = require('./config');
 
 const DEFAULT_TRAITS = require('./defaults/traits.json');
 
-function loadPersonality(dir) {
-  dir = dir || path.join(OBOL_DIR, 'personality');
+function loadPersonality(sharedDir, userDir) {
+  sharedDir = sharedDir || path.join(OBOL_DIR, 'personality');
+  userDir = userDir || sharedDir;
   const personality = {};
 
-  const files = {
-    soul: 'SOUL.md',
-    user: 'USER.md',
-    agents: 'AGENTS.md',
-  };
-
-  for (const [key, filename] of Object.entries(files)) {
+  for (const [key, filename, dir] of [
+    ['soul', 'SOUL.md', sharedDir],
+    ['agents', 'AGENTS.md', userDir],
+    ['user', 'USER.md', userDir],
+  ]) {
     const filepath = path.join(dir, filename);
     try {
       personality[key] = fs.readFileSync(filepath, 'utf-8');
@@ -23,7 +22,7 @@ function loadPersonality(dir) {
     }
   }
 
-  personality.traits = loadTraits(dir);
+  personality.traits = loadTraits(userDir);
 
   return personality;
 }

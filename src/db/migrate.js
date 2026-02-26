@@ -286,6 +286,18 @@ async function migrate(supabaseConfig) {
       SET access_count = access_count + 1, accessed_at = NOW()
       WHERE id = ANY(memory_ids);
     $$;`,
+
+    // Soul backup table (one row per file key: 'soul', 'agents')
+    `CREATE TABLE IF NOT EXISTS obol_soul (
+      id TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `ALTER TABLE obol_soul ENABLE ROW LEVEL SECURITY;`,
+    `DO $$ BEGIN
+      CREATE POLICY "service_role_all" ON obol_soul FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;`,
   ];
 
   // Save SQL file for manual fallback

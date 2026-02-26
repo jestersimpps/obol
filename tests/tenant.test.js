@@ -98,9 +98,10 @@ describe('tenant', () => {
       expect(configModule.ensureUserDir).toHaveBeenCalledWith('user-1');
     });
 
-    it('calls loadPersonality with personality dir', async () => {
+    it('calls loadPersonality with shared and user personality dirs', async () => {
       await getTenant('user-1', baseConfig);
       expect(personalityModule.loadPersonality).toHaveBeenCalledWith(
+        expect.stringContaining('personality'),
         '/tmp/mock-users/user-1/personality',
       );
     });

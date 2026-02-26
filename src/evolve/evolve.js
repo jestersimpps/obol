@@ -18,13 +18,14 @@ const MODELS = {
 };
 const MAX_FIX_ATTEMPTS = 1;
 
-async function evolve(claudeClient, messageLog, memory, userDir) {
+async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig = null) {
+  const { PERSONALITY_DIR } = require('../soul');
   const baseDir = userDir || OBOL_DIR;
   const state = loadEvolutionState(userDir);
-  const personalityDir = path.join(baseDir, 'personality');
-  const soulPath = path.join(personalityDir, 'SOUL.md');
-  const userPath = path.join(personalityDir, 'USER.md');
-  const agentsPath = path.join(personalityDir, 'AGENTS.md');
+  const userPersonalityDir = path.join(baseDir, 'personality');
+  const soulPath = path.join(PERSONALITY_DIR, 'SOUL.md');
+  const agentsPath = path.join(userPersonalityDir, 'AGENTS.md');
+  const userPath = path.join(userPersonalityDir, 'USER.md');
   const scriptsDir = path.join(baseDir, 'scripts');
   const testsDir = path.join(baseDir, 'tests');
   const commandsDir = path.join(baseDir, 'commands');
@@ -89,7 +90,7 @@ async function evolve(claudeClient, messageLog, memory, userDir) {
   }
 
   let previousSoul = '';
-  const archiveDir = path.join(personalityDir, 'evolution');
+  const archiveDir = path.join(PERSONALITY_DIR, 'evolution');
   try {
     if (fs.existsSync(archiveDir)) {
       const archives = fs.readdirSync(archiveDir)
@@ -394,6 +395,12 @@ Fix the scripts. Tests define correct behavior.`
   }
 
   fs.writeFileSync(soulPath, result.soul);
+  if (supabaseConfig) {
+    const { backup } = require('../soul');
+    backup(supabaseConfig, 'soul', result.soul).catch(e =>
+      console.error('[evolve] Soul backup failed:', e.message)
+    );
+  }
 
   if (result.user && result.user.length > 50) {
     fs.writeFileSync(userPath, result.user);

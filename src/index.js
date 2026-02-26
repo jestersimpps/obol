@@ -1,9 +1,12 @@
+const fs = require('fs');
+const path = require('path');
 const { loadConfig } = require('./config');
 const { createBot, checkUpgradeNotify } = require('./telegram');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./heartbeat');
 const { migrateToMultiTenant } = require('./legacy-migrate');
 const { isPostSetupDone, runPostSetup } = require('./post-setup');
+const { restoreIfMissing, PERSONALITY_DIR } = require('./soul');
 
 async function main() {
   const config = loadConfig();
@@ -24,7 +27,15 @@ async function main() {
     } catch (e) {
       console.error(`  Database migration failed: ${e.message}`);
     }
+
+    try {
+      await restoreIfMissing(config.supabase);
+    } catch (e) {
+      console.error(`  Soul restore failed: ${e.message}`);
+    }
   }
+
+  fs.mkdirSync(PERSONALITY_DIR, { recursive: true });
 
   if (!isPostSetupDone()) {
     runPostSetup(loadConfig({ resolve: false }), console.log).catch(e =>

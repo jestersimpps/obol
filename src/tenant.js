@@ -1,4 +1,5 @@
 const { ensureUserDir } = require('./config');
+const { PERSONALITY_DIR } = require('./soul');
 const { loadPersonality } = require('./personality');
 const { createMemory } = require('./memory');
 const { createSelfMemory } = require('./memory-self');
@@ -32,8 +33,7 @@ _tenantCleanup.unref();
 
 async function createTenant(userId, config) {
   const userDir = ensureUserDir(userId);
-  const personalityDir = path.join(userDir, 'personality');
-  const personality = loadPersonality(personalityDir);
+  const personality = loadPersonality(PERSONALITY_DIR, path.join(userDir, 'personality'));
   const memory = config.supabase ? await createMemory(config.supabase, userId) : null;
   const selfMemory = config.supabase ? await createSelfMemory(config.supabase, userId) : null;
   const patterns = config.supabase ? await createPatterns(config.supabase, userId) : null;
@@ -82,9 +82,8 @@ async function getTenant(userId, config) {
   if (tenants.has(userId)) {
     const tenant = tenants.get(userId);
     if (Date.now() - (tenant._personalityLoadedAt || 0) > PERSONALITY_CACHE_TTL) {
-      const personalityDir = path.join(tenant.userDir, 'personality');
       try {
-        const soulPath = path.join(personalityDir, 'SOUL.md');
+        const soulPath = path.join(PERSONALITY_DIR, 'SOUL.md');
         const mtime = fs.statSync(soulPath).mtimeMs;
         if (mtime > (tenant._personalityMtime || 0)) {
           tenant.claude.reloadPersonality();

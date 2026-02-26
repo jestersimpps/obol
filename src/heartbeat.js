@@ -35,7 +35,7 @@ async function runEvolutionForUser(bot, config, userId) {
 
   try {
     const tenant = await getTenant(userId, config);
-    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir);
+    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir, config.supabase);
     tenant.claude.reloadPersonality?.();
 
     let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
