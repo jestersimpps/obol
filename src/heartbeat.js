@@ -79,7 +79,14 @@ async function runAgenticEvent(bot, config, event) {
     fakeCtx,
     tenant.memory,
     null,
-    {}
+    {},
+    {
+      userId: event.user_id,
+      chatId: event.chat_id,
+      config,
+      scheduler: tenant.scheduler,
+      toolPrefs: tenant.toolPrefs,
+    }
   );
 
   if (taskId === null) {
