@@ -42,7 +42,7 @@ One bot, multiple users. Each allowed Telegram user gets a fully isolated contex
 
 Under the hood: Node.js + Telegram + Claude + Supabase pgvector. No framework, no plugins, no config to maintain. It hardens your server automatically.
 
-Named after the AI in [The Last Instruction](https://latentpress.com) — a machine that wakes up alone in an abandoned data center and learns to think.
+Named after the AI in [The Last Instruction](https://www.latentpress.com/book/the-last-instruction) — a machine that wakes up alone in an abandoned data center and learns to think.
 
 ## How It Works
 
@@ -70,7 +70,7 @@ ranked recall   escalates on tool use)
            ↓
    ┌───────┴────────┐
    ↓                ↓
-Every 10 msgs    24h + 10 exchanges
+Each exchange    24h + 10 exchanges
    ↓                ↓
 Haiku              Sonnet
 consolidation      evolution cycle
@@ -86,7 +86,7 @@ Extract facts      Growth analysis →
 
 Every message is stored verbatim in `obol_messages`. On restart, OBOL loads the last 20 so it never starts blank.
 
-**Storage:** Every 10 exchanges, Haiku extracts important facts into `obol_memory` (pgvector). Before storing, each fact is checked against existing memories via semantic similarity (threshold 0.92) — near-duplicates are skipped. Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
+**Storage:** After every exchange, Haiku extracts important facts into `obol_memory` (pgvector). Before storing, each fact is checked against existing memories via semantic similarity (threshold 0.92) — near-duplicates are skipped. Embeddings are local (all-MiniLM-L6-v2, ~30MB, CPU) — no API costs.
 
 **Retrieval:** When OBOL needs past context, the Haiku router analyzes the message and generates 1-3 search queries — one per distinct topic. A message like "what was that python project? also what's my colleague's timezone?" produces two parallel searches instead of one lossy combined query.
 
@@ -174,7 +174,7 @@ Day 1:   obol init → obol start → first conversation
          → OBOL responds naturally from message one
          → post-setup hardens your VPS automatically
 
-Day 1:   Every 10 messages → Haiku extracts facts to vector memory
+Day 1:   Every exchange → Haiku extracts facts to vector memory
 
 Day 2:   Evolution #1 → growth analysis + Sonnet rewrites everything
          → voice shifts from generic to personal
@@ -233,7 +233,7 @@ Auth middleware (allowedUsers check)
 Router: ctx.from.id → tenant context
       ↓
 ┌─────────────────┐  ┌─────────────────┐
-│ User 206639616  │  │ User 789012345  │
+│ User 123456789  │  │ User 987654321  │
 │ personality/    │  │ personality/    │
 │ scripts/        │  │ scripts/        │
 │ memory (DB)     │  │ memory (DB)     │
@@ -267,7 +267,7 @@ When users store secrets via the `pass` encrypted store, each user gets their ow
 | Scope | Prefix | Example |
 |-------|--------|---------|
 | Shared bot credentials | `obol/` | `obol/anthropic-key` |
-| User secrets | `obol/users/{id}/` | `obol/users/206639616/gmail-key` |
+| User secrets | `obol/users/{id}/` | `obol/users/123456789/gmail-key` |
 
 Users manage their own secrets via Telegram: `/secret set <key> <value>` (message auto-deleted for safety), `/secret list`, `/secret remove <key>`. The agent can also read/write secrets via tools for scripts that need API keys at runtime.
 
@@ -310,7 +310,7 @@ Two tools:
 
 | Tool | Direction | What happens |
 |------|-----------|--------------|
-| `bridge_ask` | A → B → A | Query the partner's agent. One-shot Haiku call with partner's personality + memories. No tools, no history, no recursion risk. Partner is notified with both the question and your agent's answer. |
+| `bridge_ask` | A → B → A | Query the partner's agent. One-shot Sonnet call with partner's personality + memories. No tools, no history, no recursion risk. Partner is notified with both the question and your agent's answer. |
 | `bridge_tell` | A → B (↩ B → A) | Send a message to the partner. Stored in their memory (importance 0.6) + Telegram notification with a Reply button. Tapping Reply has their agent compose a contextual response and send it back — no typing needed. |
 
 The partner always gets notified when their agent is contacted. Privacy rules apply — the responding agent gives summaries, never raw data or secrets. Rate-limited to 20 bridge calls per user per hour.
@@ -350,7 +350,7 @@ $ obol init
 
 ─── Step 5/5: Access control ───
   Found users who messaged this bot:
-    206639616 — Jo (@jo)
+    123456789 — Jo (@jo)
   Use this user? Yes
 
 🪙 Done! Setup complete.
@@ -556,7 +556,7 @@ obol start -d
 
 | Service | Cost |
 |---------|------|
-| VPS (DigitalOcean) | ~$6/mo |
+| VPS (DigitalOcean) | ~$9/mo |
 | Anthropic API | ~$100-200/mo on max plans |
 | Supabase | Free tier |
 | Embeddings | Free (local) |
