@@ -76,8 +76,8 @@ const handlers = {
 
     if (input.cron_expr) {
       try {
-        const { parseExpression } = require('cron-parser');
-        parseExpression(input.cron_expr, { timezone: tz });
+        const { CronExpressionParser } = require('cron-parser');
+        CronExpressionParser.parse(input.cron_expr, { tz });
       } catch (e) {
         return `Invalid cron expression "${input.cron_expr}": ${e.message}`;
       }

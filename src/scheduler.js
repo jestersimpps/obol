@@ -1,4 +1,4 @@
-const { parseExpression } = require('cron-parser');
+const { CronExpressionParser } = require('cron-parser');
 
 function createScheduler(supabaseConfig, userId = 0) {
   const { url, serviceKey } = supabaseConfig;
@@ -88,7 +88,7 @@ function createScheduler(supabaseConfig, userId = 0) {
     }
 
     try {
-      const nextDate = parseExpression(cronExpr, { currentDate: new Date(), timezone: timezone || 'UTC' }).next().toDate();
+      const nextDate = CronExpressionParser.parse(cronExpr, { currentDate: new Date(), tz: timezone || 'UTC' }).next().toDate();
 
       if (endsAt && nextDate > new Date(endsAt)) {
         return patch(eventId, { status: 'completed', run_count: newRunCount, last_run_at: new Date().toISOString() });
