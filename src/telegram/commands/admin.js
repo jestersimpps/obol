@@ -90,7 +90,7 @@ Summarize what was cleaned, secrets migrated, and final test results.`);
       chatContext._model = 'claude-sonnet-4-6';
       chatContext._onRouteDecision = (info) => { status.setRouteInfo(info); status.start(); };
       chatContext._onToolStart = (toolName, inputSummary) => {
-        status.setStatusText('Processing');
+        status.setStatusText('Cleaning');
         status.start();
       };
 
