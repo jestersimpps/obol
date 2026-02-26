@@ -50,7 +50,7 @@ function startTyping(ctx) {
   ctx.replyWithChatAction('typing').catch(() => {});
   const interval = setInterval(() => {
     ctx.replyWithChatAction('typing').catch(() => {});
-  }, 4000);
+  }, 8000);
   return () => clearInterval(interval);
 }
 

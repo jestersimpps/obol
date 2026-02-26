@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Bot, GrammyError, HttpError, InlineKeyboard } = require('grammy');
 const { run, sequentialize } = require('@grammyjs/runner');
+const { autoRetry } = require('@grammyjs/auto-retry');
 const { getTenant } = require('../tenant');
 const { DEDUP_TTL_MS, DEDUP_MAX_SIZE } = require('./constants');
 const { sendHtml } = require('./utils');
@@ -20,6 +21,7 @@ const { registerCallbackHandler } = require('./handlers/callbacks');
 
 function createBot(telegramConfig, config) {
   const bot = new Bot(telegramConfig.token);
+  bot.api.config.use(autoRetry());
   const allowedUsers = new Set(telegramConfig.allowedUsers || []);
   const pendingAsks = new Map();
   const processedUpdates = new Map();
@@ -133,6 +135,7 @@ function createBot(telegramConfig, config) {
       console.error(`  Unknown error:`, e?.message || e);
     }
 
+    if (e instanceof GrammyError && e.description?.includes('Too Many Requests')) return;
     ctx?.reply?.('⚠️ Something went wrong. I\'m still alive though.').catch(() => {});
   });
 

@@ -60,7 +60,7 @@ class BackgroundRunner {
         const elapsed = Math.round((Date.now() - statusStart) / 1000);
         const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText, title });
         ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
-      }, 1000);
+      }, 5000);
     };
 
     startStatusTimer();

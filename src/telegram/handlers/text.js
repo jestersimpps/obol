@@ -7,6 +7,29 @@ const { EVOLUTION_IDLE_MS, TEXT_BUFFER_GAP_MS, TEXT_BUFFER_MAX_PARTS, TEXT_BUFFE
 
 const _evolutionTimers = new Map();
 const textBuffers = new Map();
+const VERBOSE_FLUSH_MS = 2000;
+
+function createVerboseBatcher(ctx) {
+  /** @type {string[]} */
+  let buffer = [];
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+
+  const flush = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (buffer.length === 0) return;
+    const combined = buffer.join('\n');
+    buffer = [];
+    sendHtml(ctx, `<code>${combined}</code>`).catch(() => {});
+  };
+
+  const notify = (/** @type {string} */ msg) => {
+    buffer.push(msg);
+    if (!timer) timer = setTimeout(flush, VERBOSE_FLUSH_MS);
+  };
+
+  return { notify, flush };
+}
 
 function createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk }) {
   const userId = ctx.from.id;
@@ -23,9 +46,8 @@ function createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk }
     toolPrefs: tenant.toolPrefs,
     config,
     verbose: tenant.verbose,
-    _verboseNotify: tenant.verbose ? (msg) => {
-      sendHtml(ctx, `\`${msg}\``).catch(() => {});
-    } : undefined,
+    _verboseBatcher: null,
+    _verboseNotify: undefined,
     telegramAsk: (message, options, timeout) => createAsk(ctx, message, options, timeout),
     _notifyFn: (targetUserId, message, opts = {}) => {
       if (!allowedUsers.has(targetUserId)) throw new Error('Cannot notify user outside allowed list');
@@ -61,7 +83,7 @@ function createStatusTracker(ctx) {
       const elapsed = Math.round((Date.now() - statusStart) / 1000);
       const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText });
       ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML', reply_markup: stopBtn }).catch(() => {});
-    }, 1000);
+    }, 5000);
   };
 
   return {
@@ -111,10 +133,11 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
   const stopTyping = startTyping(ctx);
   const status = createStatusTracker(ctx);
 
+  const batcher = tenant.verbose ? createVerboseBatcher(ctx) : null;
   try {
     if (tenant.messageLog) {
-      if (tenant.verbose) {
-        tenant.messageLog._verboseCallbacks.set(ctx.chat.id, (msg) => sendHtml(ctx, `\`${msg}\``).catch(() => {}));
+      if (batcher) {
+        tenant.messageLog._verboseCallbacks.set(ctx.chat.id, batcher.notify);
       } else {
         tenant.messageLog._verboseCallbacks.delete(ctx.chat.id);
       }
@@ -122,6 +145,10 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
     tenant.messageLog?.log(ctx.chat.id, 'user', chatMessage);
 
     const chatContext = createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk });
+    if (batcher) {
+      chatContext._verboseNotify = batcher.notify;
+      chatContext._verboseBatcher = batcher;
+    }
     chatContext._onRouteDecision = (info) => {
       status.setRouteInfo(info);
       status.start();
@@ -146,6 +173,7 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
     const { text: response, usage, model } = await tenant.claude.chat(chatMessage, chatContext);
 
+    batcher?.flush();
     status.stopTimer();
     status.updateFormatting();
 
@@ -230,6 +258,7 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
     status.deleteMsg();
   } catch (e) {
+    batcher?.flush();
     status.clear();
     stopTyping();
     console.error('Message handling error:', e.message);

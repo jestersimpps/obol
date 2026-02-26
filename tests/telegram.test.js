@@ -8,6 +8,7 @@ const mockBotInstance = {
   on: vi.fn((event, handler) => { handlers[event] = handler; }),
   command: vi.fn((cmd, handler) => { commands[cmd] = handler; }),
   api: {
+    config: { use: vi.fn() },
     setMyCommands: vi.fn().mockReturnValue({ catch: vi.fn() }),
     sendMessage: vi.fn(),
     getMe: vi.fn().mockResolvedValue({ username: 'testbot' }),
@@ -43,6 +44,15 @@ require.cache[runnerPath] = {
     run: vi.fn(() => ({ stop: vi.fn(), task: () => new Promise(() => {}) })),
     sequentialize: vi.fn(() => (ctx, next) => next()),
   },
+};
+
+const autoRetryPath = require.resolve('@grammyjs/auto-retry');
+const originalAutoRetryCache = require.cache[autoRetryPath];
+require.cache[autoRetryPath] = {
+  id: autoRetryPath,
+  filename: autoRetryPath,
+  loaded: true,
+  exports: { autoRetry: vi.fn(() => vi.fn()) },
 };
 
 const configModule = require('../src/config');
@@ -103,6 +113,7 @@ const { createBot } = require('../src/telegram');
 afterAll(() => {
   if (originalGrammyCache) require.cache[grammyPath] = originalGrammyCache;
   if (originalRunnerCache) require.cache[runnerPath] = originalRunnerCache;
+  if (originalAutoRetryCache) require.cache[autoRetryPath] = originalAutoRetryCache;
 });
 
 const telegramConfig = { token: 'test-token-123', allowedUsers: [123] };
