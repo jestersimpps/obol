@@ -1,3 +1,7 @@
+## 0.2.39
+- use bot name from config in all telegram status messages
+- update changelog
+
 ## 0.2.38
 - use bot name from config in system prompt, backup, and personality files
 
