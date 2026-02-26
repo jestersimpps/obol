@@ -1,5 +1,8 @@
+## 0.2.29
+- fix silent decrypt failure on hostname change, remove vercel from dynamic tools
+
 ## 0.2.28
-- fix telegram 429 rate limiting with auto-retry plugin, slower status/typing timers, verbose log batching
+- fix telegram 429 rate limiting with auto-retry, slower timers, verbose batching
 
 ## 0.2.26
 - show cleaning status instead of processing during /clean
