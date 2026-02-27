@@ -88,6 +88,7 @@ async function processSpecial(ctx, prompt, deps) {
       const ri = status.routeInfo;
       if (!ri) return;
       if (update.memoryCount !== undefined) ri.memoryCount = update.memoryCount;
+      if (update.selfMemoryCount !== undefined) ri.selfMemoryCount = update.selfMemoryCount;
       if (update.model) ri.model = update.model;
     };
     chatCtx._onToolStart = (toolName, inputSummary) => {

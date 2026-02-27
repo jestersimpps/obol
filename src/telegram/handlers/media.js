@@ -76,6 +76,7 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
       const ri = status.routeInfo;
       if (!ri) return;
       if (update.memoryCount !== undefined) ri.memoryCount = update.memoryCount;
+      if (update.selfMemoryCount !== undefined) ri.selfMemoryCount = update.selfMemoryCount;
       if (update.model) ri.model = update.model;
     };
     mediaChatCtx._onToolStart = (toolName, inputSummary) => {

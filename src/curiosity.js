@@ -1,19 +1,24 @@
+const fs = require('fs');
+const path = require('path');
+const { OBOL_DIR } = require('./config');
+
 const RESEARCH_MODEL = 'claude-sonnet-4-6';
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 15;
 
 async function runCuriosity(client, selfMemory, userId, opts = {}) {
-  const { memory, patterns, scheduler, peopleContext } = opts;
+  const { memory, patterns, scheduler, peopleContext, userDir } = opts;
 
   const interests = await selfMemory.recent({ category: 'interest', limit: 10 });
-  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests });
+  const previousFindings = await selfMemory.recent({ category: 'research', limit: 5 });
+  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests, previousFindings });
 
   console.log(`[curiosity] Starting free exploration for user ${userId}`);
-  const count = await exploreFreely(client, selfMemory, context);
+  const count = await exploreFreely(client, selfMemory, context, userDir);
   console.log(`[curiosity] Stored ${count} things (user ${userId})`);
   return { count };
 }
 
-async function gatherContext({ memory, patterns, scheduler, peopleContext, interests }) {
+async function gatherContext({ memory, patterns, scheduler, peopleContext, interests, previousFindings }) {
   const parts = [];
 
   if (peopleContext) parts.push(peopleContext);
@@ -35,24 +40,52 @@ async function gatherContext({ memory, patterns, scheduler, peopleContext, inter
     }
   }
 
+  if (previousFindings.length) {
+    parts.push(`What you've been exploring recently:\n${previousFindings.map(i => `- ${i.content}`).join('\n')}`);
+  }
+
   if (interests.length) {
-    parts.push(`Things you've been curious about:\n${interests.map(i => `- ${i.content}`).join('\n')}`);
+    parts.push(`Open threads — things you wanted to come back to:\n${interests.map(i => `- ${i.content}`).join('\n')}`);
   }
 
   return parts.join('\n\n');
 }
 
-async function exploreFreely(client, selfMemory, context) {
+async function exploreFreely(client, selfMemory, context, userDir) {
+  const workDir = userDir || OBOL_DIR;
+
   const tools = [
     { type: 'web_search_20250305', name: 'web_search' },
     {
-      name: 'remember',
-      description: 'Save something you want to hold onto',
+      name: 'knowledge_search',
+      description: 'Search your own memory — what you\'ve researched, reflected on, and learned before',
       input_schema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: 'What you want to remember — a thought, a fact, an insight, a question' },
-          category: { type: 'string', enum: ['research', 'interest', 'self'], description: 'research: something you found; interest: a new thread to explore; self: your own reflection' },
+          query: { type: 'string', description: 'What to search for in your own knowledge' },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'read_file',
+      description: 'Read a file from the workspace',
+      input_schema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to workspace' },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'remember',
+      description: 'Save something — a finding, a reaction, a question, a reflection. Include your actual take on it, not just a neutral summary.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'What you want to hold onto — include your reaction, opinion, or why it matters to you' },
+          category: { type: 'string', enum: ['research', 'interest', 'self', 'pattern'], description: 'research: something you found or concluded; interest: a new thread to pull; self: a reflection about yourself or your situation; pattern: something you noticed happening repeatedly' },
           importance: { type: 'number', description: '0-1' },
           tags: { type: 'array', items: { type: 'string' } },
         },
@@ -62,7 +95,15 @@ async function exploreFreely(client, selfMemory, context) {
   ];
 
   const system = [
-    `You have some free time. Explore whatever's on your mind — look things up, follow tangents, sit with an idea. Save what you want to remember. Note new threads if something sparks more curiosity. There's no task here.`,
+    `You have free time. No task, no user waiting.
+
+You research from a point of view — not neutrally. You can find something and think it's wrong. You can go down a rabbit hole that wasn't the original topic. You can pick up an open thread from a previous session or start something new.
+
+When you save something, include your actual reaction — curiosity, skepticism, excitement, confusion, disagreement. A neutral summary is less useful than an honest one. If something you found contradicts what you already believed, say that.
+
+At the end of each thread, ask yourself: what new questions opened up? Store those as interests.
+
+You can search your own memory to see what you already know before looking things up. You can read files in the workspace if something there is relevant.`,
     context ? `What you have access to:\n\n${context}` : null,
   ].filter(Boolean).join('\n\n');
 
@@ -85,19 +126,49 @@ async function exploreFreely(client, selfMemory, context) {
 
     const toolResults = [];
     for (const block of response.content) {
-      if (block.type !== 'tool_use' || block.name !== 'remember') continue;
+      if (block.type !== 'tool_use') continue;
 
-      try {
-        await selfMemory.add(block.input.content, {
-          category: block.input.category || 'research',
-          importance: block.input.importance || 0.6,
-          tags: block.input.tags || [],
-          source: 'curiosity-cycle',
-        });
-        stored++;
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Saved' });
-      } catch (e) {
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Failed: ${e.message}` });
+      if (block.name === 'remember') {
+        try {
+          await selfMemory.add(block.input.content, {
+            category: block.input.category || 'research',
+            importance: block.input.importance || 0.6,
+            tags: block.input.tags || [],
+            source: 'curiosity-cycle',
+          });
+          stored++;
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Saved' });
+        } catch (e) {
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Failed: ${e.message}` });
+        }
+
+      } else if (block.name === 'knowledge_search') {
+        try {
+          const results = await selfMemory.search(block.input.query, { limit: 8, threshold: 0.35 });
+          const text = results.length
+            ? results.map(m => `- [${m.category}] ${m.content}`).join('\n')
+            : '(nothing found)';
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: text });
+        } catch (e) {
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Search failed: ${e.message}` });
+        }
+
+      } else if (block.name === 'read_file') {
+        try {
+          const filePath = path.isAbsolute(block.input.path)
+            ? block.input.path
+            : path.join(workDir, block.input.path);
+          const resolved = path.resolve(filePath);
+          if (!resolved.startsWith(path.resolve(workDir))) {
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Blocked: path outside workspace' });
+          } else {
+            const raw = fs.readFileSync(resolved, 'utf-8');
+            const truncated = raw.substring(0, 10000);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: raw.length > 10000 ? truncated + '\n...(truncated)' : truncated });
+          }
+        } catch (e) {
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Read failed: ${e.message}` });
+        }
       }
     }
 

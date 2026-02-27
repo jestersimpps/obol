@@ -178,6 +178,7 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
       const ri = status.routeInfo;
       if (!ri) return;
       if (update.memoryCount !== undefined) ri.memoryCount = update.memoryCount;
+      if (update.selfMemoryCount !== undefined) ri.selfMemoryCount = update.selfMemoryCount;
       if (update.model) ri.model = update.model;
     };
     chatContext._onToolStart = (toolName, inputSummary) => {

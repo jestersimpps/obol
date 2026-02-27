@@ -6,8 +6,11 @@ function buildStatusHtml({ route, elapsed, toolStatus, title = 'OBOL' }) {
   const lines = [`◈ ${title} ${'━'.repeat(pad)}`];
   if (route) {
     lines.push(`⬡ ROUTE  ${(route.model || 'sonnet').toUpperCase()}`);
-    if (route.memoryCount > 0) {
-      lines.push(`⬡ MEMORY ${route.memoryCount} recalled`);
+    if (route.memoryCount > 0 || route.selfMemoryCount > 0) {
+      const parts = [];
+      if (route.memoryCount > 0) parts.push(`${route.memoryCount} recalled`);
+      if (route.selfMemoryCount > 0) parts.push(`${route.selfMemoryCount} self`);
+      lines.push(`⬡ MEMORY ${parts.join(' · ')}`);
     } else if (route.needMemory) {
       lines.push(`⬡ MEMORY scanning`);
     }

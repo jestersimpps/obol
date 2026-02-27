@@ -128,6 +128,7 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
           const selfLines = topSelf.slice(0, 8).map(m => `- [${m.category}] ${m.content}`);
           memoryBlock = (memoryBlock || '') + `\n\n## Self-knowledge\n${selfLines.join('\n')}`;
           vlog(`[memory] +${topSelf.length} self-memory facts`);
+          onRouteUpdate?.({ selfMemoryCount: topSelf.length });
         }
       }
     }
