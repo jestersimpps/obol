@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
-const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets', 'library']);
+const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']);
 const ALLOWED_ROOT_FILES = new Set([
   'config.json',
   'secrets.json',
@@ -10,7 +10,7 @@ const ALLOWED_ROOT_FILES = new Set([
   '.first-run-done',
   '.post-setup-done',
 ]);
-const TEMP_DOTDIRS = new Set(['.typst', '.cache', '.tmp']);
+const TEMP_DOTDIRS = new Set(['.typst', '.tmp']);
 
 // Extensions that belong in scripts/
 const SCRIPT_EXTS = new Set(['.js', '.ts', '.sh', '.py', '.rb', '.php', '.go', '.rs', '.pl', '.lua']);
@@ -19,7 +19,7 @@ const ASSET_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.
 
 // Dirs where only .md files are allowed (with per-dir exceptions)
 const MD_ONLY_DIRS = new Set(['personality', 'commands']);
-const MD_DIR_EXCEPTIONS = { personality: new Set(['traits.json']) };
+const MD_DIR_EXCEPTIONS = {};
 
 function safeReaddir(dir) {
   try {
@@ -100,10 +100,19 @@ function applyIssues(baseDir, issues) {
       const src = path.join(baseDir, item.name);
       if (!item.dest || item.children.length === 0) {
         try {
-          fs.rmSync(src, { recursive: true, force: true });
-          applied.push({ path: item.name + '/', action: 'deleted (empty dir)' });
+          // Use rename to an apps/ subdir first, then attempt rmSync
+          // rmSync may be blocked in sandboxed environments — fall back to moving
+          const emptyDest = path.join(baseDir, 'apps', item.name.replace(/^\./, '_dot_'));
+          try {
+            fs.rmSync(src, { recursive: true, force: true });
+            applied.push({ path: item.name + '/', action: 'deleted (empty dir)' });
+          } catch {
+            fs.mkdirSync(path.join(baseDir, 'apps'), { recursive: true });
+            fs.renameSync(src, emptyDest);
+            applied.push({ path: item.name + '/', action: `moved → apps/${path.basename(emptyDest)}/ (delete blocked)` });
+          }
         } catch (e) {
-          errors.push(`Failed to delete ${item.name}/: ${e.message}`);
+          errors.push(`Failed to clean ${item.name}/: ${e.message}`);
         }
       } else {
         const dest = path.join(baseDir, 'apps', item.name);
