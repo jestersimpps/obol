@@ -41,6 +41,17 @@ function likelyNeedsTools(message) {
   return TOOL_PATTERNS.some(p => p.test(lower));
 }
 
+function recentlyUsedTools(history) {
+  for (let i = history.length - 1; i >= Math.max(0, history.length - 4); i--) {
+    const msg = history[i];
+    if (msg.role === 'assistant' && Array.isArray(msg.content) &&
+        msg.content.some(b => b.type === 'tool_use')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate, recentHistory = [], selfMemory = null }) {
   let memoryBlock = null;
   let model = null;
@@ -80,6 +91,11 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
 
     if (decision.model === 'haiku' && likelyNeedsTools(userMessage)) {
       vlog('[router] haiku overridden → sonnet (tool-need heuristic)');
+      decision.model = 'sonnet';
+    }
+
+    if (decision.model === 'haiku' && recentlyUsedTools(recentHistory)) {
+      vlog('[router] haiku overridden → sonnet (recent tool use in history)');
       decision.model = 'sonnet';
     }
 
