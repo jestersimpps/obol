@@ -1,6 +1,6 @@
 const inquirer = require('inquirer');
 const fs = require('fs');
-const { ensureUserDir, getUserDir } = require('../config');
+const { ensureUserDir, getUserDir, isValidTimezone } = require('../config');
 const { detectTelegramUserId } = require('./init-utils');
 const { setNestedValue } = require('./config-utils');
 
@@ -28,7 +28,10 @@ async function manageUsers(cfg, saveConfig) {
     } else {
       for (const id of currentUsers) {
         const hasDir = fs.existsSync(getUserDir(id));
-        console.log(`    ${id}${hasDir ? ' ✅' : ' (no workspace yet)'}`);
+        const name = cfg.users?.[String(id)]?.name;
+        const tz = cfg.users?.[String(id)]?.timezone;
+        const label = [name, tz].filter(Boolean).join(' — ');
+        console.log(`    ${id}${label ? ` (${label})` : ''}${hasDir ? ' ✅' : ' (no workspace yet)'}`);
       }
     }
     console.log('');
@@ -41,6 +44,7 @@ async function manageUsers(cfg, saveConfig) {
         { name: 'Add user (detect from bot messages)', value: 'detect' },
         { name: 'Add user (enter ID manually)', value: 'manual' },
         ...(currentUsers.length > 0 ? [{ name: 'Rename user', value: 'rename' }] : []),
+        ...(currentUsers.length > 0 ? [{ name: 'Set user timezone', value: 'timezone' }] : []),
         ...(currentUsers.length > 0 ? [{ name: 'Remove user', value: 'remove' }] : []),
         new inquirer.Separator(),
         { name: 'Back', value: 'back' },
@@ -137,6 +141,36 @@ async function manageUsers(cfg, saveConfig) {
         if (!cfg.users) cfg.users = {};
         if (!cfg.users[String(renameId)]) cfg.users[String(renameId)] = {};
         cfg.users[String(renameId)].name = newName.trim();
+      }
+    }
+
+    if (action === 'timezone') {
+      const { tzId } = await inquirer.prompt([{
+        type: 'list',
+        name: 'tzId',
+        message: 'Set timezone for which user?',
+        choices: [
+          ...currentUsers.map(id => {
+            const name = cfg.users?.[String(id)]?.name;
+            const tz = cfg.users?.[String(id)]?.timezone || cfg.timezone || 'UTC';
+            return { name: `${id}${name ? ` — ${name}` : ''} (${tz})`, value: id };
+          }),
+          new inquirer.Separator(),
+          { name: 'Cancel', value: null },
+        ],
+      }]);
+      if (tzId !== null) {
+        const currentTz = cfg.users?.[String(tzId)]?.timezone || cfg.timezone || '';
+        const { newTz } = await inquirer.prompt([{
+          type: 'input',
+          name: 'newTz',
+          message: `Timezone for user ${tzId} (IANA):`,
+          default: currentTz,
+          validate: (v) => isValidTimezone(v.trim()) ? true : 'Invalid IANA timezone (e.g. Europe/Brussels, America/New_York)',
+        }]);
+        if (!cfg.users) cfg.users = {};
+        if (!cfg.users[String(tzId)]) cfg.users[String(tzId)] = {};
+        cfg.users[String(tzId)].timezone = newTz.trim();
       }
     }
 

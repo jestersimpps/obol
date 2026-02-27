@@ -164,6 +164,18 @@ function ensureUserDir(userId) {
   return dir;
 }
 
+/** @param {object} config @param {number|string} userId @returns {string} */
+function getUserTimezone(config, userId) {
+  return config.users?.[String(userId)]?.timezone || config.timezone || 'UTC';
+}
+
+function isValidTimezone(tz) {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch { return false; }
+}
+
 function listUsers() {
   if (!fs.existsSync(USERS_DIR)) return [];
   return fs.readdirSync(USERS_DIR).filter(f =>
@@ -184,4 +196,6 @@ module.exports = {
   getUserDir,
   ensureUserDir,
   listUsers,
+  getUserTimezone,
+  isValidTimezone,
 };

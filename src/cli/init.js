@@ -1,7 +1,7 @@
 const inquirer = require('inquirer');
 const fs = require('fs');
 const path = require('path');
-const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
+const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir, isValidTimezone } = require('../config');
 const { validateAnthropic, validateTelegram, validateSupabase } = require('../auth/validators');
 const { setupAnthropicOAuth } = require('./oauth');
 const { setupSupabaseNew, setupSupabaseExisting } = require('./supabase-setup');
@@ -64,7 +64,7 @@ async function init(opts = {}) {
 
   const config = {};
   let step = 0;
-  const totalSteps = 5;
+  const totalSteps = 6;
   const stepLabel = (name) => `─── Step ${++step}/${totalSteps}: ${name} ───`;
 
   // Step 1: Anthropic
@@ -178,7 +178,20 @@ async function init(opts = {}) {
   config.owner = { name: ownerName };
   config.bot = { name: botName };
 
-  // Step 5: Access control
+  // Step 5: Timezone
+  console.log('\n' + stepLabel('Timezone') + '\n');
+  const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  console.log(`  Your system timezone: ${detectedTz}\n`);
+  const { timezone } = await inquirer.prompt([{
+    type: 'input',
+    name: 'timezone',
+    message: 'Timezone (IANA):',
+    default: detectedTz,
+    validate: (v) => isValidTimezone(v.trim()) ? true : 'Invalid IANA timezone (e.g. Europe/Brussels, America/New_York)',
+  }]);
+  config.timezone = timezone.trim();
+
+  // Step 6: Access control
   console.log('\n' + stepLabel('Access control') + '\n');
   console.log('  Each allowed user gets their own isolated brain — separate');
   console.log('  personality, memory, evolution cycle, and workspace.');
@@ -190,14 +203,23 @@ async function init(opts = {}) {
     console.log('  Since you have multiple users, name each one:\n');
     config.users = {};
     for (const userId of config.telegram.allowedUsers) {
-      const { userName } = await inquirer.prompt([{
-        type: 'input',
-        name: 'userName',
-        message: `Name for user ${userId}:`,
-        default: config.owner.name,
-        validate: (v) => v.length > 0,
-      }]);
-      config.users[String(userId)] = { name: userName };
+      const { userName, userTz } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'userName',
+          message: `Name for user ${userId}:`,
+          default: config.owner.name,
+          validate: (v) => v.length > 0,
+        },
+        {
+          type: 'input',
+          name: 'userTz',
+          message: `Timezone for user ${userId}:`,
+          default: config.timezone,
+          validate: (v) => isValidTimezone(v.trim()) ? true : 'Invalid IANA timezone',
+        },
+      ]);
+      config.users[String(userId)] = { name: userName, timezone: userTz.trim() };
     }
 
     const { bridgeEnabled } = await inquirer.prompt([{

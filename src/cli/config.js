@@ -1,12 +1,18 @@
 const inquirer = require('inquirer');
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, saveConfig, CONFIG_FILE, USERS_DIR } = require('../config');
+const { loadConfig, saveConfig, CONFIG_FILE, USERS_DIR, isValidTimezone } = require('../config');
 const { getNestedValue, setNestedValue, formatValue, updatePassSecret } = require('./config-utils');
 const { manageUsers } = require('./manage-users');
 const { runOAuthFlow } = require('./oauth');
 
 const SECTIONS = [
+  {
+    name: 'General',
+    fields: [
+      { key: 'timezone', label: 'Timezone (IANA)', secret: false, validate: (v) => isValidTimezone(v.trim()) ? true : 'Invalid IANA timezone (e.g. Europe/Brussels, America/New_York)' },
+    ],
+  },
   {
     name: 'Anthropic',
     fields: [
@@ -210,6 +216,7 @@ async function config() {
       } else {
         opts.default = currentVal != null ? String(currentVal) : '';
       }
+      if (field.validate) opts.validate = field.validate;
       const { newVal } = await inquirer.prompt([opts]);
 
       if (isPassRef) {

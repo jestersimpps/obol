@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { createSelfMemory } = require('../memory/self');
 const { getTenant } = require('../tenant');
+const { getUserTimezone } = require('../config');
 
 const IMPULSE_MODEL = 'claude-haiku-4-5-20251001';
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -109,7 +110,7 @@ async function maybeImpulse(bot, config, tenant, chatId, lastUserMsg, lastAssist
   const { text: context, hasSubstance } = await gatherContext(tenant, config.supabase, {
     lastUserMsg,
     lastAssistantMsg,
-    timezone: config.timezone,
+    timezone: getUserTimezone(config, tenant.userId),
   });
   if (!hasSubstance) return;
 
@@ -130,7 +131,7 @@ async function maybePeriodicImpulse(bot, config, userId) {
 
   const { text: context, hasSubstance } = await gatherContext(tenant, config.supabase, {
     periodic: true,
-    timezone: config.timezone,
+    timezone: getUserTimezone(config, userId),
   });
   if (!hasSubstance) return;
 

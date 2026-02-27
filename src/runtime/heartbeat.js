@@ -2,7 +2,7 @@ const cron = require('node-cron');
 const { createScheduler } = require('./scheduler');
 const { getTenant } = require('../tenant');
 const { shouldEvolveNow, evolve } = require('../evolve');
-const { ensureUserDir } = require('../config');
+const { ensureUserDir, getUserTimezone } = require('../config');
 const { runAnalysis } = require('../analysis');
 const { runCuriosity } = require('../curiosity');
 const { runCuriosityDispatch } = require('../curiosity/dispatch');
@@ -34,7 +34,7 @@ function getLocalHour(timezone) {
 async function runEvolutionForUser(bot, config, userId) {
   if (_evolutionRunning.has(userId)) return;
 
-  const timezone = config.timezone || 'UTC';
+  const timezone = getUserTimezone(config, userId);
   const userDir = ensureUserDir(userId);
 
   if (!shouldEvolveNow(userDir, timezone)) return;
@@ -127,7 +127,7 @@ async function runCuriosityOnce(config, allowedUsers) {
           ? await tenant.scheduler.list({ status: 'pending', limit: 5 }).catch(() => [])
           : [];
         const userProfile = tenant.personality?.user || null;
-        return { userId, chatId: userId, timezone: config.timezone || 'UTC', patterns, events, scheduler: tenant.scheduler, userProfile };
+        return { userId, chatId: userId, timezone: getUserTimezone(config, userId), patterns, events, scheduler: tenant.scheduler, userProfile };
       } catch { return null; }
     }));
     await runCuriosityDispatch(client, selfMemory, userDispatchData.filter(Boolean));
@@ -140,7 +140,7 @@ async function runCuriosityOnce(config, allowedUsers) {
 }
 
 async function runAnalysisForUser(bot, config, userId) {
-  const timezone = config.timezone || 'UTC';
+  const timezone = getUserTimezone(config, userId);
   try {
     const tenant = await getTenant(userId, config);
     if (!tenant.messageLog || !tenant.scheduler || !tenant.patterns) return;
@@ -203,34 +203,32 @@ function setupHeartbeat(bot, config) {
   const allowedUsers = config?.telegram?.allowedUsers || [];
   if (allowedUsers.length > 0) {
     cron.schedule('* * * * *', async () => {
-      const timezone = config.timezone || 'UTC';
-      const { hour, minute } = getLocalHour(timezone);
-      if (hour !== 3 || minute !== 0) return;
-
       for (const userId of allowedUsers) {
+        const tz = getUserTimezone(config, userId);
+        const { hour, minute } = getLocalHour(tz);
+        if (hour !== 3 || minute !== 0) continue;
         runEvolutionForUser(bot, config, userId).catch(e =>
           console.error(`[evolution] Unhandled error for user ${userId}:`, e.message)
         );
       }
     });
-    console.log(`  ✅ Evolution cron running (daily 3am ${config.timezone || 'UTC'})`);
+    console.log('  ✅ Evolution cron running (daily 3am per-user timezone)');
 
     cron.schedule('* * * * *', async () => {
-      const timezone = config.timezone || 'UTC';
-      const { hour, minute } = getLocalHour(timezone);
-      if (!ANALYSIS_HOURS.has(hour) || minute !== 0) return;
-
       for (const userId of allowedUsers) {
+        const tz = getUserTimezone(config, userId);
+        const { hour, minute } = getLocalHour(tz);
+        if (!ANALYSIS_HOURS.has(hour) || minute !== 0) continue;
         runAnalysisForUser(bot, config, userId).catch(e =>
           console.error(`[analysis] Unhandled error for user ${userId}:`, e.message)
         );
       }
     });
-    console.log(`  ✅ Analysis cron running (every 3h ${config.timezone || 'UTC'})`);
+    console.log('  ✅ Analysis cron running (every 3h per-user timezone)');
 
     cron.schedule('* * * * *', async () => {
-      const timezone = config.timezone || 'UTC';
-      const { hour, minute } = getLocalHour(timezone);
+      const tz = config.timezone || 'UTC';
+      const { hour, minute } = getLocalHour(tz);
       if (!CURIOSITY_HOURS.has(hour) || minute !== 0) return;
 
       runCuriosityOnce(config, allowedUsers).catch(e =>
@@ -240,17 +238,16 @@ function setupHeartbeat(bot, config) {
     console.log(`  ✅ Curiosity cron running (every 6h ${config.timezone || 'UTC'})`);
 
     cron.schedule('* * * * *', async () => {
-      const timezone = config.timezone || 'UTC';
-      const { hour, minute } = getLocalHour(timezone);
-      if (!IMPULSE_HOURS.has(hour) || minute !== 0) return;
-
       for (const userId of allowedUsers) {
+        const tz = getUserTimezone(config, userId);
+        const { hour, minute } = getLocalHour(tz);
+        if (!IMPULSE_HOURS.has(hour) || minute !== 0) continue;
         maybePeriodicImpulse(bot, config, userId).catch(e =>
           console.error(`[impulse] Periodic error for user ${userId}:`, e.message)
         );
       }
     });
-    console.log(`  ✅ Impulse cron running (every 6h ${config.timezone || 'UTC'})`);
+    console.log('  ✅ Impulse cron running (every 6h per-user timezone)');
   }
 
   console.log('  ✅ Heartbeat running (every 1min)');
@@ -301,7 +298,7 @@ async function buildProactiveContext(tenant, timezone, query) {
 
 async function runAgenticEvent(bot, config, event) {
   const tenant = await getTenant(event.user_id, config);
-  const timezone = event.timezone || config.timezone || 'UTC';
+  const timezone = event.timezone || getUserTimezone(config, event.user_id);
 
   const query = event.description || event.instructions;
   const context = await buildProactiveContext(tenant, timezone, query).catch(() => '');
