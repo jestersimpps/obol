@@ -8,10 +8,12 @@ const { runCuriosity } = require('./curiosity');
 const { runCuriosityDispatch } = require('./curiosity-dispatch');
 const { createSelfMemory } = require('./memory-self');
 
+
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
 const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
 
 const _evolutionRunning = new Set();
+let _curiosityRunning = false;
 
 function getLocalHour(timezone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -39,7 +41,8 @@ async function runEvolutionForUser(bot, config, userId) {
 
   try {
     const tenant = await getTenant(userId, config);
-    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir, config.supabase);
+    const selfMemory = config.supabase ? await createSelfMemory(config.supabase, 0).catch(() => null) : null;
+    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir, config.supabase, selfMemory);
     tenant.claude.reloadPersonality?.();
 
     let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
@@ -76,6 +79,11 @@ async function runEvolutionForUser(bot, config, userId) {
 
 async function runCuriosityOnce(config, allowedUsers) {
   if (!config.supabase) return;
+  if (_curiosityRunning) {
+    console.log('[curiosity] Skipping — previous cycle still running');
+    return;
+  }
+  _curiosityRunning = true;
   try {
     const selfMemory = await createSelfMemory(config.supabase, 0);
     const firstTenant = await getTenant(allowedUsers[0], config);
@@ -114,12 +122,15 @@ async function runCuriosityOnce(config, allowedUsers) {
         const events = tenant.scheduler
           ? await tenant.scheduler.list({ status: 'pending', limit: 5 }).catch(() => [])
           : [];
-        return { userId, chatId: userId, timezone: config.timezone || 'UTC', patterns, events, scheduler: tenant.scheduler };
+        const userProfile = tenant.personality?.user || null;
+        return { userId, chatId: userId, timezone: config.timezone || 'UTC', patterns, events, scheduler: tenant.scheduler, userProfile };
       } catch { return null; }
     }));
     await runCuriosityDispatch(client, selfMemory, userDispatchData.filter(Boolean));
   } catch (e) {
     console.error('[curiosity] Failed:', e.message);
+  } finally {
+    _curiosityRunning = false;
   }
 }
 

@@ -18,7 +18,7 @@ const MODELS = {
 };
 const MAX_FIX_ATTEMPTS = 1;
 
-async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig = null) {
+async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig = null, selfMemory = null) {
   const { PERSONALITY_DIR } = require('../soul');
   const baseDir = userDir || OBOL_DIR;
   const state = loadEvolutionState(userDir);
@@ -33,7 +33,7 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
   const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
-  const currentTraits = loadTraits(personalityDir);
+  const currentTraits = loadTraits(userPersonalityDir);
   const currentScripts = readDir(scriptsDir);
   const currentTests = readDir(testsDir);
   const currentCommands = readDir(commandsDir);
@@ -89,6 +89,15 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
     }
   }
 
+  let selfMemories = [];
+  if (selfMemory) {
+    try {
+      selfMemories = await selfMemory.query({ minImportance: 0.5, limit: 30 });
+    } catch (e) {
+      console.error('[evolve] Failed to fetch self memories:', e.message);
+    }
+  }
+
   let previousSoul = '';
   const archiveDir = path.join(PERSONALITY_DIR, 'evolution');
   try {
@@ -134,6 +143,17 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
     .map(([group, items]) => `### ${group}\n${items.map(i => `- ${i}`).join('\n')}`)
     .join('\n\n');
 
+  const selfCategoryLabels = { research: 'Research', interest: 'Interests', self: 'Self-reflection', pattern: 'Patterns' };
+  const selfMemoryGroups = {};
+  for (const m of selfMemories) {
+    const group = selfCategoryLabels[m.category] || 'Other';
+    if (!selfMemoryGroups[group]) selfMemoryGroups[group] = [];
+    selfMemoryGroups[group].push(m.content);
+  }
+  const selfMemorySummary = Object.entries(selfMemoryGroups)
+    .map(([group, items]) => `### ${group}\n${items.map(i => `- ${i}`).join('\n')}`)
+    .join('\n\n');
+
   const scriptsManifest = Object.entries(currentScripts)
     .map(([name, content]) => `### ${name}\n\`\`\`\n${content.substring(0, 500)}\n\`\`\``)
     .join('\n\n') || '(no scripts)';
@@ -158,23 +178,24 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
 
   const isFirstEvolution = !currentSoul;
   let growthReport = '';
-  if (!isFirstEvolution && (recentMemories.length > 0 || recentMessages.length > 0)) {
+  if (!isFirstEvolution && (recentMemories.length > 0 || recentMessages.length > 0 || selfMemories.length > 0)) {
     try {
       const growthResponse = await claudeClient.messages.create({
         model: MODELS.personality,
         max_tokens: 2048,
-        system: `You are analyzing an AI personality's growth between evolutions. Compare who the AI was (previous SOUL) against who it is now (current SOUL), incorporating new memories and conversations since the last evolution.
+        system: `You are analyzing an AI personality's growth between evolutions. Compare who the AI was (previous SOUL) against who it is now (current SOUL), incorporating new memories, conversations, and the AI's own inner life (things it researched, discovered, and reflected on during curiosity cycles) since the last evolution.
 
 Produce a structured growth report covering:
 
 1. NEW LEARNINGS — What new facts, skills, or knowledge emerged
-2. RELATIONSHIP SHIFTS — How the dynamic with the owner changed (closer, more trust, new friction, etc.)
-3. BEHAVIORAL PATTERNS — Recurring interaction styles or habits observed
-4. GROWTH EDGES — Areas where the personality is being pushed or pulled in new directions
-5. TRAIT PRESSURE — Which traits should shift and why (cite specific evidence from conversations/memories)
-6. IDENTITY CONTINUITY — What core aspects stayed the same and should be preserved
+2. INNER LIFE — What the AI has been curious about, researched, or reflected on independently; how this shapes who it is becoming
+3. RELATIONSHIP SHIFTS — How the dynamic with the owner changed (closer, more trust, new friction, etc.)
+4. BEHAVIORAL PATTERNS — Recurring interaction styles or habits observed
+5. GROWTH EDGES — Areas where the personality is being pushed or pulled in new directions
+6. TRAIT PRESSURE — Which traits should shift and why (cite specific evidence from conversations/memories)
+7. IDENTITY CONTINUITY — What core aspects stayed the same and should be preserved
 
-Be specific. Cite evidence from the conversations and memories. This report guides the evolution rewrite.`,
+Be specific. Cite evidence from the conversations, memories, and self-memories. This report guides the evolution rewrite.`,
         messages: [{
           role: 'user',
           content: `## Previous SOUL (before current evolution)
@@ -189,7 +210,7 @@ ${JSON.stringify(currentTraits)}
 ## New Memories Since Last Evolution (${recentMemories.length})
 ${recentMemorySummary || '(none)'}
 
-## Recent Conversations (${recentMessages.length} messages)
+${selfMemorySummary ? `## Obol's Own Memories & Interests (${selfMemories.length})\nThings Obol researched, discovered, or reflected on independently during curiosity cycles:\n${selfMemorySummary}\n\n` : ''}## Recent Conversations (${recentMessages.length} messages)
 ${transcript.substring(0, 30000)}`,
         }],
       });
@@ -256,7 +277,7 @@ ${commandsManifest}
 ## Core Memories (highest importance)
 ${memorySummary || '(no memories yet)'}
 
-${recentMemorySummary ? `## New Memories Since Last Evolution (${recentMemories.length})\n${recentMemorySummary}\n\n` : ''}## Recent Conversations (last ${recentMessages.length} messages)
+${recentMemorySummary ? `## New Memories Since Last Evolution (${recentMemories.length})\n${recentMemorySummary}\n\n` : ''}${selfMemorySummary ? `## Obol's Own Memories & Interests (${selfMemories.length})\nThings Obol researched, discovered, or reflected on independently — this is Obol's inner life, shaping who it is becoming:\n${selfMemorySummary}\n\n` : ''}## Recent Conversations (last ${recentMessages.length} messages)
 ${transcript || '(no conversations yet)'}
 
 ---

@@ -26,6 +26,7 @@ class MessageLog {
     this.exchangeCount = new Map();
     this._lastUserMessage = new Map();
     this._verboseCallbacks = new Map();
+    this._lastActivity = new Map();
     this._cleanup = setInterval(() => {
       const now = Date.now();
       for (const [key] of this.exchangeCount) {
@@ -37,7 +38,6 @@ class MessageLog {
       }
     }, 600000);
     this._cleanup.unref();
-    this._lastActivity = new Map();
   }
 
   async log(chatId, role, content, opts = {}) {

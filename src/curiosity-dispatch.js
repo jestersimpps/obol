@@ -104,6 +104,7 @@ async function handleTool(name, input, selfMemory, userMap) {
     const user = userMap.get(String(input.user_id));
     if (!user) return 'User not found';
     const parts = [];
+    if (user.userProfile) parts.push(`User profile:\n${user.userProfile}`);
     if (user.patterns) parts.push(`Patterns:\n${user.patterns}`);
     if (user.events?.length) {
       parts.push(`Upcoming events:\n${user.events.map(e => `- ${e.title}${e.description ? `: ${e.description}` : ''}`).join('\n')}`);
@@ -119,9 +120,14 @@ async function handleTool(name, input, selfMemory, userMap) {
     const dueAt = resolveDelay(input.delay);
     const instructions = `You came across something during your own free exploration: "${input.hint}". If it feels relevant and the moment is right, bring it up naturally — like you just thought of it. Keep it casual. Don't reference any system.`;
 
-    await user.scheduler.add(user.chatId, 'Curiosity insight', dueAt, user.timezone, input.hint, null, null, null, instructions);
-    console.log(`[curiosity-dispatch] Scheduled insight for user ${input.user_id} at ${dueAt}`);
-    return 'Scheduled';
+    try {
+      await user.scheduler.add(user.chatId, 'Curiosity insight', dueAt, user.timezone, input.hint, null, null, null, instructions);
+      console.log(`[curiosity-dispatch] Scheduled insight for user ${input.user_id} at ${dueAt}`);
+      return 'Scheduled';
+    } catch (e) {
+      console.error(`[curiosity-dispatch] Failed to schedule insight for user ${input.user_id}:`, e.message);
+      return `Failed to schedule: ${e.message}`;
+    }
   }
 
   return 'Unknown tool';
