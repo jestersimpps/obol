@@ -39,10 +39,11 @@ function createToolPrefs(supabaseConfig, userId) {
     return data[0];
   }
 
-  async function toggle(toolName) {
+  async function toggle(toolName, defaultEnabled = false) {
     const all = await getAll();
     const current = all.get(toolName);
-    const newEnabled = !(current?.enabled);
+    const currentEnabled = current ? current.enabled : defaultEnabled;
+    const newEnabled = !currentEnabled;
     await set(toolName, newEnabled, current?.config || {});
     return newEnabled;
   }

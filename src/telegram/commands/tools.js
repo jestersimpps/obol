@@ -4,11 +4,14 @@ const { OPTIONAL_TOOLS } = require('../../claude');
 const { clearVoiceFlow, sendVoiceLanguagePicker } = require('../voice');
 const { TERM_SEP } = require('../constants');
 
+function isEnabled(pref, feature) {
+  return pref ? pref.enabled : (feature.defaultEnabled || false);
+}
+
 function buildToolsMessage(toolPrefs) {
   const lines = [`◈ TOOLS`, TERM_SEP, ``];
   for (const [key, feature] of Object.entries(OPTIONAL_TOOLS)) {
-    const pref = toolPrefs.get(key);
-    const enabled = pref?.enabled || false;
+    const enabled = isEnabled(toolPrefs.get(key), feature);
     lines.push(`  ${enabled ? '◉' : '○'} ${feature.label}`);
   }
   lines.push(``, TERM_SEP);
@@ -20,8 +23,7 @@ function buildToolsKeyboard(toolPrefs) {
   const entries = Object.entries(OPTIONAL_TOOLS);
   for (let i = 0; i < entries.length; i++) {
     const [key, feature] = entries[i];
-    const pref = toolPrefs.get(key);
-    const enabled = pref?.enabled || false;
+    const enabled = isEnabled(toolPrefs.get(key), feature);
     keyboard.text(`${enabled ? '◉' : '○'} ${feature.label}`, `tool:${key}`);
     if ((i + 1) % 2 === 0 && i < entries.length - 1) keyboard.row();
   }
@@ -49,10 +51,10 @@ async function handleToolCallback(ctx, featureKey, answer, { getTenant: gt, conf
   const tenant = await gt(ctx.from.id, cfg);
   if (!tenant.toolPrefsApi) return answer({ text: 'Not available' });
 
-  const newEnabled = await tenant.toolPrefsApi.toggle(featureKey);
+  const feature = OPTIONAL_TOOLS[featureKey];
+  const newEnabled = await tenant.toolPrefsApi.toggle(featureKey, feature.defaultEnabled);
   await tenant.reloadToolPrefs();
 
-  const feature = OPTIONAL_TOOLS[featureKey];
   await answer({ text: `${feature.label}: ${newEnabled ? 'ON' : 'OFF'}` });
 
   const text = buildToolsMessage(tenant.toolPrefs);

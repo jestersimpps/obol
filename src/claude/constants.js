@@ -29,6 +29,12 @@ const OPTIONAL_TOOLS = {
     tools: ['mermaid_chart'],
     config: {},
   },
+  model_stats: {
+    label: 'Model Stats',
+    tools: [],
+    config: {},
+    defaultEnabled: true,
+  },
 };
 
 const BLOCKED_EXEC_PATTERNS = [

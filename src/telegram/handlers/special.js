@@ -120,7 +120,9 @@ async function processSpecial(ctx, prompt, deps) {
       await sendHtml(ctx, response).catch(() => {});
     }
 
-    if (usage && model) {
+    const statsPref = tenant.toolPrefs?.get('model_stats');
+    const showStats = statsPref ? statsPref.enabled : true;
+    if (showStats && usage && model) {
       const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
       const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens / 1000).toFixed(1)}k` : usage.input_tokens;
       const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens / 1000).toFixed(1)}k` : usage.output_tokens;
