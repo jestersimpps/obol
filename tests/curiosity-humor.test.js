@@ -125,6 +125,47 @@ describe('curiosity-humor', () => {
     });
   });
 
+  describe('handleTool — list_pending_events', () => {
+    it('returns formatted pending events', async () => {
+      const scheduler = {
+        list: vi.fn().mockResolvedValue([
+          { due_at: '2024-01-16T12:00:00.000Z', title: 'Curiosity humor', description: 'dark mode pun' },
+          { due_at: '2024-01-17T09:00:00.000Z', title: 'Curiosity insight', description: null },
+        ]),
+      };
+      const userMap = new Map([['5', { scheduler }]]);
+
+      const result = await handleTool('list_pending_events', { user_id: '5' }, null, userMap);
+
+      expect(scheduler.list).toHaveBeenCalledWith({ status: 'pending', limit: 20 });
+      expect(result).toContain('Curiosity humor: dark mode pun');
+      expect(result).toContain('Curiosity insight');
+    });
+
+    it('returns fallback when no pending events', async () => {
+      const scheduler = { list: vi.fn().mockResolvedValue([]) };
+      const userMap = new Map([['5', { scheduler }]]);
+
+      const result = await handleTool('list_pending_events', { user_id: '5' }, null, userMap);
+
+      expect(result).toBe('No pending events');
+    });
+
+    it('returns error when user not found', async () => {
+      const result = await handleTool('list_pending_events', { user_id: '99' }, null, new Map());
+
+      expect(result).toBe('User not found');
+    });
+
+    it('returns error when user has no scheduler', async () => {
+      const userMap = new Map([['1', { scheduler: null }]]);
+
+      const result = await handleTool('list_pending_events', { user_id: '1' }, null, userMap);
+
+      expect(result).toBe('No scheduler');
+    });
+  });
+
   describe('handleTool — schedule_humor', () => {
     beforeEach(() => {
       vi.useFakeTimers();

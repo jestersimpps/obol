@@ -38,6 +38,17 @@ async function runCuriosityHumor(client, selfMemory, users) {
       },
     },
     {
+      name: 'list_pending_events',
+      description: 'List already-scheduled pending events for a user — check this before scheduling to avoid duplicates',
+      input_schema: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'string', description: 'The user ID to list events for' },
+        },
+        required: ['user_id'],
+      },
+    },
+    {
       name: 'schedule_humor',
       description: 'Schedule a humorous moment to be delivered to a user at a future time',
       input_schema: {
@@ -111,6 +122,15 @@ async function handleTool(name, input, selfMemory, userMap) {
       parts.push(`Upcoming events:\n${user.events.map(e => `- ${e.title}${e.description ? `: ${e.description}` : ''}`).join('\n')}`);
     }
     return parts.length ? parts.join('\n\n') : 'No context available';
+  }
+
+  if (name === 'list_pending_events') {
+    const user = userMap.get(String(input.user_id));
+    if (!user) return 'User not found';
+    if (!user.scheduler) return 'No scheduler';
+    const events = await user.scheduler.list({ status: 'pending', limit: 20 });
+    if (!events.length) return 'No pending events';
+    return events.map(e => `[${e.due_at}] ${e.title}${e.description ? `: ${e.description}` : ''}`).join('\n');
   }
 
   if (name === 'schedule_humor') {
