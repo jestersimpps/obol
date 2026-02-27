@@ -31,4 +31,29 @@ function withCacheBreakpoints(messages) {
   return result;
 }
 
-module.exports = { withCacheBreakpoints, sanitizeMessages };
+function stripToolBlocks(messages) {
+  const result = [];
+  for (const msg of messages) {
+    let text = '';
+    if (typeof msg.content === 'string') {
+      text = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      text = msg.content
+        .filter(b => b.type === 'text' && b.text)
+        .map(b => b.text)
+        .join('\n');
+    }
+    if (!text.trim()) continue;
+    if (result.length > 0 && result[result.length - 1].role === msg.role) {
+      result[result.length - 1].content += '\n' + text;
+    } else {
+      result.push({ role: msg.role, content: text });
+    }
+  }
+  while (result.length > 0 && result[0].role !== 'user') {
+    result.shift();
+  }
+  return result;
+}
+
+module.exports = { withCacheBreakpoints, sanitizeMessages, stripToolBlocks };

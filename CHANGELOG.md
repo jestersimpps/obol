@@ -1,3 +1,8 @@
+## 0.3.6
+- optimize routing: drop haiku probe, trim system prompt, add tool-need heuristic + bench prompts
+- split large files into focused modules
+- reorganize src/ into subdirectories (curiosity, memory, soul, auth, media, runtime)
+
 ## 0.3.5
 - add knowledge_search + read_file to curiosity, self-memory count in status, opinionated research prompt
 - 0.3.4: smarter memory dedup, better router queries, rebalanced recall

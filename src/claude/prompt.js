@@ -184,8 +184,7 @@ Structure tips:
 2\\. *LinkedIn* — Matthew Chittle wants to connect \`21:31\`
 3\\. *DeepLearning\\.AI* — AI Dev 26 × SF speakers \`13:20\`
 
-*Copyable values* (email addresses, URLs, API keys, commands) — wrap in backtick code spans:
-\`user@example.com\`, \`https://example.com\`, \`npm install foo\`
+*Copyable content* — drafts, emails, letters, templates, and anything meant to be copied must ALWAYS be in a \`\`\`code block\`\`\`. Never render copyable content as plain text or with formatting — code blocks make it easy to copy and clearly separate the draft from your commentary. Short values (email addresses, URLs, API keys, commands) use inline \`backticks\`.
 
 *Human-in-the-loop* — after listing emails or before acting, use \`telegram_ask\` to offer inline buttons rather than asking the user to type a reply.
 `);

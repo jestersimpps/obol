@@ -44,9 +44,12 @@ function createVerboseBatcher(ctx) {
   const flush = () => {
     if (timer) { clearTimeout(timer); timer = null; }
     if (buffer.length === 0) return;
-    const combined = buffer.join('\n');
+    const raw = buffer.join('\n');
     buffer = [];
-    sendHtml(ctx, `<code>${combined}</code>`).catch(() => {});
+    const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    ctx.reply(`<code>${escaped}</code>`, { parse_mode: 'HTML' }).catch(() =>
+      ctx.reply(raw).catch(() => {})
+    );
   };
 
   const notify = (/** @type {string} */ msg) => {
@@ -207,6 +210,9 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
     }
 
     tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
+
+    const { maybeImpulse } = require('../../curiosity/impulse');
+    maybeImpulse(bot, config, tenant, ctx.chat.id, chatMessage, response).catch(() => {});
 
     stopTyping();
 

@@ -7,11 +7,13 @@ const { runAnalysis } = require('../analysis');
 const { runCuriosity } = require('../curiosity');
 const { runCuriosityDispatch } = require('../curiosity/dispatch');
 const { runCuriosityHumor } = require('../curiosity/humor');
+const { maybePeriodicImpulse } = require('../curiosity/impulse');
 const { createSelfMemory } = require('../memory/self');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
 const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
+const IMPULSE_HOURS = new Set([4, 10, 16, 22]);
 
 const _evolutionRunning = new Set();
 let _curiosityRunning = false;
@@ -236,6 +238,19 @@ function setupHeartbeat(bot, config) {
       );
     });
     console.log(`  ✅ Curiosity cron running (every 6h ${config.timezone || 'UTC'})`);
+
+    cron.schedule('* * * * *', async () => {
+      const timezone = config.timezone || 'UTC';
+      const { hour, minute } = getLocalHour(timezone);
+      if (!IMPULSE_HOURS.has(hour) || minute !== 0) return;
+
+      for (const userId of allowedUsers) {
+        maybePeriodicImpulse(bot, config, userId).catch(e =>
+          console.error(`[impulse] Periodic error for user ${userId}:`, e.message)
+        );
+      }
+    });
+    console.log(`  ✅ Impulse cron running (every 6h ${config.timezone || 'UTC'})`);
   }
 
   console.log('  ✅ Heartbeat running (every 1min)');

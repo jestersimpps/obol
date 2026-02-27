@@ -5,7 +5,7 @@ const { createAnthropicClient, ensureFreshToken } = require('./client');
 const { routeMessage } = require('./router');
 const { buildSystemPrompt, buildSystemBlock, buildRuntimePrefix, withRuntimeContext } = require('./prompt');
 const { buildTools, buildRunnableTools, addToolCache } = require('./tool-registry');
-const { withCacheBreakpoints, sanitizeMessages } = require('./cache');
+const { withCacheBreakpoints, sanitizeMessages, stripToolBlocks } = require('./cache');
 const { getMaxToolIterations } = require('./constants');
 
 function createClaude(anthropicConfig, { personality, memory, selfMemory, userDir = OBOL_DIR, bridgeEnabled, botName }) {
@@ -126,7 +126,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
     }
 
     if (activeModel.includes('haiku')) {
-      const haikuMessages = withCacheBreakpoints(withRuntimeContext([...history], runtimePrefix));
+      const haikuMessages = withCacheBreakpoints(withRuntimeContext(stripToolBlocks([...history]), runtimePrefix));
       context._onPromptReady?.({ system: systemPrompt, messages: haikuMessages, model: activeModel, tools: [] });
 
       const haikuResponse = await client.messages.create({
