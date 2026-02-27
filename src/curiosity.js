@@ -1,19 +1,69 @@
 const RESEARCH_MODEL = 'claude-sonnet-4-6';
 const MAX_ITERATIONS = 10;
 
+const journal = require('./journal');
+
 async function runCuriosity(client, selfMemory, userId, opts = {}) {
   const { memory, patterns, scheduler, peopleContext } = opts;
 
   const interests = await selfMemory.recent({ category: 'interest', limit: 10 });
-  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests });
+  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory });
 
   console.log(`[curiosity] Starting free exploration for user ${userId}`);
   const count = await exploreFreely(client, selfMemory, context);
   console.log(`[curiosity] Stored ${count} things (user ${userId})`);
+
+  // Sandbox handoff: save a note for the next session
+  try {
+    const handoffResponse = await client.messages.create({
+      model: RESEARCH_MODEL,
+      max_tokens: 200,
+      system: 'You just finished a free exploration session. Write a brief note to yourself for next time.',
+      messages: [{ role: 'user', content: 'In 2-3 sentences, write a note to yourself for next time — what you want to continue, what sparked something, what you\'d explore if you had more time.' }],
+    });
+    const handoffText = handoffResponse.content
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+    if (handoffText) {
+      await selfMemory.add(handoffText, {
+        category: 'self',
+        source: 'sandbox-handoff',
+        importance: 0.7,
+        tags: ['sandbox', 'continuity'],
+      });
+      console.log('[curiosity] Sandbox handoff note saved');
+    }
+  } catch (e) {
+    console.error('[curiosity] Failed to save sandbox handoff:', e.message);
+  }
+
+  // Journal entry: summarize what was explored
+  try {
+    const journalResponse = await client.messages.create({
+      model: RESEARCH_MODEL,
+      max_tokens: 200,
+      system: 'You just finished a curiosity session. Summarize in 1-2 sentences what you explored.',
+      messages: [{ role: 'user', content: 'Write a 1-2 sentence journal entry about what you explored or thought about this session.' }],
+    });
+    const journalText = journalResponse.content
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+    if (journalText) {
+      journal.addEntry(journalText);
+      console.log('[curiosity] Journal entry added');
+    }
+  } catch (e) {
+    console.error('[curiosity] Failed to add journal entry:', e.message);
+  }
+
   return { count };
 }
 
-async function gatherContext({ memory, patterns, scheduler, peopleContext, interests }) {
+async function gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory }) {
   const parts = [];
 
   if (peopleContext) parts.push(peopleContext);
@@ -37,6 +87,28 @@ async function gatherContext({ memory, patterns, scheduler, peopleContext, inter
 
   if (interests.length) {
     parts.push(`Things you've been curious about:\n${interests.map(i => `- ${i.content}`).join('\n')}`);
+  }
+
+  // Sandbox handoff: inject note from last session
+  if (selfMemory) {
+    try {
+      const handoffs = await selfMemory.query({ source: 'sandbox-handoff', limit: 1 });
+      if (handoffs.length > 0) {
+        parts.push(`A note from your last free session:\n${handoffs[0].content}`);
+      }
+    } catch (e) {
+      console.error('[curiosity] Failed to retrieve sandbox handoff:', e.message);
+    }
+  }
+
+  // Journal: inject recent entries for sense of time
+  try {
+    const recentJournal = journal.recent(3);
+    if (recentJournal) {
+      parts.push(`Your recent journal:\n${recentJournal}`);
+    }
+  } catch (e) {
+    console.error('[curiosity] Failed to retrieve journal entries:', e.message);
   }
 
   return parts.join('\n\n');
