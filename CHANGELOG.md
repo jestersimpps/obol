@@ -1,5 +1,11 @@
-## 0.3.9
-- fix pattern analysis: enforce factual user observations, use incrementObservation for existing patterns
+## 0.3.11
+- per-user timezone support for all engagement cycles
+- add model stats toggle to /tools menu
+- timezone setup in obol init and obol config
+
+## 0.3.10
+- add CLI commands for evolve and curiosity, verbose logging
+- fix pattern analysis: enforce factual observations, use incrementObservation
 
 ## 0.3.8
 - override haiku to sonnet when recent history has tool use
