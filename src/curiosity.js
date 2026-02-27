@@ -1,13 +1,14 @@
 const RESEARCH_MODEL = 'claude-sonnet-4-6';
 const MAX_ITERATIONS = 10;
 
-const journal = require('./journal');
+const { createJournal } = require('./journal');
 
 async function runCuriosity(client, selfMemory, userId, opts = {}) {
-  const { memory, patterns, scheduler, peopleContext } = opts;
+  const { memory, patterns, scheduler, peopleContext, supabaseConfig } = opts;
 
   const interests = await selfMemory.recent({ category: 'interest', limit: 10 });
-  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory });
+  const journal = supabaseConfig ? createJournal(supabaseConfig) : null;
+  const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory, journal });
 
   console.log(`[curiosity] Starting free exploration for user ${userId}`);
   const count = await exploreFreely(client, selfMemory, context);
@@ -19,7 +20,7 @@ async function runCuriosity(client, selfMemory, userId, opts = {}) {
       model: RESEARCH_MODEL,
       max_tokens: 200,
       system: 'You just finished a free exploration session. Write a brief note to yourself for next time.',
-      messages: [{ role: 'user', content: 'In 2-3 sentences, write a note to yourself for next time — what you want to continue, what sparked something, what you\'d explore if you had more time.' }],
+      messages: [{ role: 'user', content: "In 2-3 sentences, write a note to yourself for next time — what you want to continue, what sparked something, what you'd explore if you had more time." }],
     });
     const handoffText = handoffResponse.content
       .filter(b => b.type === 'text')
@@ -40,30 +41,32 @@ async function runCuriosity(client, selfMemory, userId, opts = {}) {
   }
 
   // Journal entry: summarize what was explored
-  try {
-    const journalResponse = await client.messages.create({
-      model: RESEARCH_MODEL,
-      max_tokens: 200,
-      system: 'You just finished a curiosity session. Summarize in 1-2 sentences what you explored.',
-      messages: [{ role: 'user', content: 'Write a 1-2 sentence journal entry about what you explored or thought about this session.' }],
-    });
-    const journalText = journalResponse.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n')
-      .trim();
-    if (journalText) {
-      journal.addEntry(journalText);
-      console.log('[curiosity] Journal entry added');
+  if (journal) {
+    try {
+      const journalResponse = await client.messages.create({
+        model: RESEARCH_MODEL,
+        max_tokens: 200,
+        system: 'You just finished a curiosity session. Summarize in 1-2 sentences what you explored.',
+        messages: [{ role: 'user', content: 'Write a 1-2 sentence journal entry about what you explored or thought about this session.' }],
+      });
+      const journalText = journalResponse.content
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('\n')
+        .trim();
+      if (journalText) {
+        await journal.addEntry(journalText);
+        console.log('[curiosity] Journal entry added');
+      }
+    } catch (e) {
+      console.error('[curiosity] Failed to add journal entry:', e.message);
     }
-  } catch (e) {
-    console.error('[curiosity] Failed to add journal entry:', e.message);
   }
 
   return { count };
 }
 
-async function gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory }) {
+async function gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory, journal }) {
   const parts = [];
 
   if (peopleContext) parts.push(peopleContext);
@@ -102,13 +105,15 @@ async function gatherContext({ memory, patterns, scheduler, peopleContext, inter
   }
 
   // Journal: inject recent entries for sense of time
-  try {
-    const recentJournal = journal.recent(3);
-    if (recentJournal) {
-      parts.push(`Your recent journal:\n${recentJournal}`);
+  if (journal) {
+    try {
+      const recentJournal = await journal.recent(3);
+      if (recentJournal) {
+        parts.push(`Your recent journal:\n${recentJournal}`);
+      }
+    } catch (e) {
+      console.error('[curiosity] Failed to retrieve journal entries:', e.message);
     }
-  } catch (e) {
-    console.error('[curiosity] Failed to retrieve journal entries:', e.message);
   }
 
   return parts.join('\n\n');
