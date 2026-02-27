@@ -1,4 +1,4 @@
-const { getEmbedding } = require('./memory');
+const { getEmbedding } = require('./index');
 
 const VALID_CATEGORIES = new Set(['research', 'interest', 'self', 'pattern']);
 

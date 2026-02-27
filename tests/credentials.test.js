@@ -17,7 +17,7 @@ let credentials;
 async function loadModule() {
   vi.resetModules();
   process.env.HOME = tmpRoot;
-  const mod = await import('../src/credentials.js');
+  const mod = await import('../src/auth/credentials.js');
   process.env.HOME = REAL_HOME;
   return mod;
 }

@@ -1,5 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const { refreshTokens, isExpired } = require('../oauth');
+const { refreshTokens, isExpired } = require('../auth/oauth');
 const { saveConfig, loadConfig } = require('../config');
 
 function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {

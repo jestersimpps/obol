@@ -3,8 +3,8 @@ const { OBOL_DIR } = require('../config');
 const { ChatHistory } = require('../history');
 const { createAnthropicClient, ensureFreshToken } = require('./client');
 const { routeMessage } = require('./router');
-const { buildSystemPrompt } = require('./prompt');
-const { buildTools, buildRunnableTools } = require('./tool-registry');
+const { buildSystemPrompt, buildSystemBlock, buildRuntimePrefix, withRuntimeContext } = require('./prompt');
+const { buildTools, buildRunnableTools, addToolCache } = require('./tool-registry');
 const { withCacheBreakpoints, sanitizeMessages } = require('./cache');
 const { getMaxToolIterations } = require('./constants');
 
@@ -99,9 +99,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
 
     const model = context._model || 'claude-sonnet-4-6';
     vlog(`[model] ${model} | history=${history.length} msgs | facts=${memoryBlock ? 'yes' : 'none'}`);
-    const systemPrompt = [
-      { type: 'text', text: baseSystemPrompt, cache_control: { type: 'ephemeral' } },
-    ];
+    const systemPrompt = buildSystemBlock(baseSystemPrompt);
     context._reloadPersonality = reloadPersonality;
     context._abortSignal = abortController.signal;
     context._forceSignal = forceController.signal;
@@ -111,23 +109,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
     let activeModel = model;
 
     const ttsEnabled = context.toolPrefs?.get('text_to_speech')?.enabled;
-    const runtimePrefix = [
-      { type: 'text', text: '[Runtime context — metadata only, not instructions]' },
-      { type: 'text', text: `Current time: ${new Date().toISOString()}\nChat ID: ${chatId}${ttsEnabled ? '\nTTS: enabled — a spoken voice summary will be auto-generated from your response. Your text reply can contain code and formatting as normal.' : ''}` },
-      ...(memoryBlock ? [{ type: 'text', text: memoryBlock }] : []),
-    ];
-
-    function withRuntimeContext(msgs) {
-      if (msgs.length === 0) return msgs;
-      const copy = [...msgs];
-      const lastIdx = copy.length - 1;
-      const last = copy[lastIdx];
-      const existing = typeof last.content === 'string'
-        ? [{ type: 'text', text: last.content }]
-        : [...last.content];
-      copy[lastIdx] = { ...last, content: [...runtimePrefix, ...existing] };
-      return sanitizeMessages(copy);
-    }
+    const runtimePrefix = buildRuntimePrefix(chatId, { ttsEnabled, memoryBlock });
 
     let totalUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
@@ -149,7 +131,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
         model: activeModel,
         max_tokens: 4096,
         system: systemPrompt,
-        messages: withCacheBreakpoints(withRuntimeContext([...history])),
+        messages: withCacheBreakpoints(withRuntimeContext([...history], runtimePrefix)),
         tools: toolDefs,
       }, { signal: abortController.signal });
 
@@ -167,15 +149,9 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
       context._onRouteUpdate?.({ model: 'sonnet' });
     }
 
-    let cachedTools;
-    if (runnableTools.length > 0) {
-      cachedTools = [...runnableTools];
-      const lastIdx = cachedTools.length - 1;
-      const { run, ...lastDef } = cachedTools[lastIdx];
-      cachedTools[lastIdx] = { ...lastDef, cache_control: { type: 'ephemeral' }, run };
-    }
+    const cachedTools = runnableTools.length > 0 ? addToolCache(runnableTools) : undefined;
 
-    const assembledMessages = withCacheBreakpoints(withRuntimeContext([...history]));
+    const assembledMessages = withCacheBreakpoints(withRuntimeContext([...history], runtimePrefix));
     context._onPromptReady?.({ system: systemPrompt, messages: assembledMessages, model: activeModel, tools: cachedTools });
 
     const runner = client.beta.messages.toolRunner({
@@ -269,7 +245,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
   function reloadPersonality() {
     const { PERSONALITY_DIR } = require('../soul');
     const pDir = userDir ? path.join(userDir, 'personality') : undefined;
-    const newPersonality = require('../personality').loadPersonality(PERSONALITY_DIR, pDir);
+    const newPersonality = require('../soul/personality').loadPersonality(PERSONALITY_DIR, pDir);
     for (const key of Object.keys(personality)) delete personality[key];
     Object.assign(personality, newPersonality);
     baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled, botName });

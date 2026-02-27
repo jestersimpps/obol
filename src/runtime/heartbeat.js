@@ -1,13 +1,13 @@
 const cron = require('node-cron');
 const { createScheduler } = require('./scheduler');
-const { getTenant } = require('./tenant');
-const { shouldEvolveNow, evolve } = require('./evolve');
-const { ensureUserDir } = require('./config');
-const { runAnalysis } = require('./analysis');
-const { runCuriosity } = require('./curiosity');
-const { runCuriosityDispatch } = require('./curiosity-dispatch');
-const { runCuriosityHumor } = require('./curiosity-humor');
-const { createSelfMemory } = require('./memory-self');
+const { getTenant } = require('../tenant');
+const { shouldEvolveNow, evolve } = require('../evolve');
+const { ensureUserDir } = require('../config');
+const { runAnalysis } = require('../analysis');
+const { runCuriosity } = require('../curiosity');
+const { runCuriosityDispatch } = require('../curiosity/dispatch');
+const { runCuriosityHumor } = require('../curiosity/humor');
+const { createSelfMemory } = require('../memory/self');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);

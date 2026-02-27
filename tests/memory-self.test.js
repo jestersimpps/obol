@@ -14,7 +14,7 @@ require.cache[transformersPath] = {
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-const { createSelfMemory } = require('../src/memory-self');
+const { createSelfMemory } = require('../src/memory/self');
 
 const SUPABASE_CONFIG = {
   url: 'https://test.supabase.co',

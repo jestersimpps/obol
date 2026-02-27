@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { getConfigDir, saveConfig, loadConfig, CONFIG_FILE, ensureUserDir } = require('../config');
-const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
+const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../auth/oauth');
 const {
   validateAnthropic, validateTelegram, validateSupabase,
-} = require('../validators');
+} = require('../auth/validators');
 
 const OBOL_DIR = getConfigDir();
 

@@ -30,7 +30,7 @@ const definitions = [
 
 const handlers = {
   async text_to_speech(input, memory, context) {
-    const tts = require('../../tts');
+    const tts = require('../../media/tts');
     const telegramCtx = context.ctx;
     if (!telegramCtx) return 'Cannot send voice messages in this context.';
     const toolPrefs = context.toolPrefs;
@@ -50,7 +50,7 @@ const handlers = {
   },
 
   async tts_voices(input) {
-    const tts = require('../../tts');
+    const tts = require('../../media/tts');
     const voices = tts.getVoices(input.language, input.gender);
     if (voices.length === 0) return 'No voices found matching that filter.';
     return JSON.stringify(voices.slice(0, 30));

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { loadPersonality } = require('../src/personality');
+const { loadPersonality } = require('../src/soul/personality');
 
 describe('loadPersonality', () => {
   let sharedDir;

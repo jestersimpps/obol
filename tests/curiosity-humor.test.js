@@ -1,6 +1,6 @@
 const { describe, it, expect, vi, beforeEach, afterEach } = globalThis;
 
-const { resolveDelay, handleTool } = require('../src/curiosity-humor');
+const { resolveDelay, handleTool } = require('../src/curiosity/humor');
 
 describe('curiosity-humor', () => {
   describe('resolveDelay', () => {

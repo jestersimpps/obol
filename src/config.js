@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { deriveKey, encrypt, decrypt } = require('./encrypt');
+const { deriveKey, encrypt, decrypt } = require('./auth/encrypt');
 
 const OBOL_DIR = path.join(os.homedir(), '.obol');
 const USERS_DIR = path.join(OBOL_DIR, 'users');

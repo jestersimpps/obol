@@ -14,7 +14,7 @@ const definitions = [
 
 const handlers = {
   async transcribe_audio(input) {
-    const { transcribe } = require('../../stt');
+    const { transcribe } = require('../../media/stt');
     const text = await transcribe(input.path);
     if (!text) return 'Transcription failed or returned empty result.';
     return text;

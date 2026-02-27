@@ -1,4 +1,4 @@
-const { buildStatusHtml, describeToolCall } = require('./status');
+const { buildStatusHtml, describeToolCall } = require('../status');
 
 const MAX_CONCURRENT_TASKS = 3;
 

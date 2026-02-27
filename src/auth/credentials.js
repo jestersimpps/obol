@@ -1,7 +1,7 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { getUserDir } = require('./config');
+const { getUserDir } = require('../config');
 const { deriveKey, encrypt, decrypt } = require('./encrypt');
 
 const KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;

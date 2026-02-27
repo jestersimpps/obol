@@ -1,3 +1,8 @@
+## 0.3.5
+- add knowledge_search + read_file to curiosity, self-memory count in status, opinionated research prompt
+- 0.3.4: smarter memory dedup, better router queries, rebalanced recall
+- fix shared soul path, backup on tool write, show bot name in status
+
 ## 0.3.3
 - update changelog
 - improve memory retrieval quality: tighter dedup, wider window, recency boost, self-memory, jaccard dedup

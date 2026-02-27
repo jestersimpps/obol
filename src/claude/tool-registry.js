@@ -139,4 +139,13 @@ function buildRunnableTools(tools, memory, context, vlog) {
     }));
 }
 
-module.exports = { buildTools, buildRunnableTools, OPTIONAL_TOOLS, summarizeInput };
+function addToolCache(runnableTools) {
+  if (!runnableTools?.length) return runnableTools;
+  const cached = [...runnableTools];
+  const lastIdx = cached.length - 1;
+  const { run, ...lastDef } = cached[lastIdx];
+  cached[lastIdx] = { ...lastDef, cache_control: { type: 'ephemeral' }, run };
+  return cached;
+}
+
+module.exports = { buildTools, buildRunnableTools, addToolCache, OPTIONAL_TOOLS, summarizeInput };

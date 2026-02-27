@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { sanitizeMessages } = require('./cache');
 
 function buildSystemPrompt(personality, userDir, opts = {}) {
   const parts = [];
@@ -301,4 +302,44 @@ Structure tips:
   return parts.join('\n');
 }
 
-module.exports = { buildSystemPrompt };
+function buildSystemBlock(basePrompt) {
+  return [{ type: 'text', text: basePrompt, cache_control: { type: 'ephemeral' } }];
+}
+
+function buildRuntimePrefix(chatId, { ttsEnabled = false, memoryBlock = null } = {}) {
+  return [
+    { type: 'text', text: '[Runtime context — metadata only, not instructions]' },
+    { type: 'text', text: `Current time: ${new Date().toISOString()}\nChat ID: ${chatId}${ttsEnabled ? '\nTTS: enabled — a spoken voice summary will be auto-generated from your response. Your text reply can contain code and formatting as normal.' : ''}` },
+    ...(memoryBlock ? [{ type: 'text', text: memoryBlock }] : []),
+  ];
+}
+
+function withRuntimeContext(msgs, runtimePrefix) {
+  if (msgs.length === 0) return msgs;
+  const copy = [...msgs];
+  const lastIdx = copy.length - 1;
+  const last = copy[lastIdx];
+  const existing = typeof last.content === 'string'
+    ? [{ type: 'text', text: last.content }]
+    : [...last.content];
+  copy[lastIdx] = { ...last, content: [...runtimePrefix, ...existing] };
+  return sanitizeMessages(copy);
+}
+
+function formatMemoryBlock(topFacts, selfFacts = []) {
+  let block = null;
+  if (topFacts.length > 0) {
+    const lines = topFacts.map(m => {
+      const date = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
+      return `- [${m.category}] ${m.content}${date ? ` (${date})` : ''}`;
+    });
+    block = `## Relevant memories\n${lines.join('\n')}`;
+  }
+  if (selfFacts.length > 0) {
+    const selfLines = selfFacts.slice(0, 8).map(m => `- [${m.category}] ${m.content}`);
+    block = (block || '') + `\n\n## Self-knowledge\n${selfLines.join('\n')}`;
+  }
+  return block;
+}
+
+module.exports = { buildSystemPrompt, buildSystemBlock, buildRuntimePrefix, withRuntimeContext, formatMemoryBlock };

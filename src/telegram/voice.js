@@ -64,7 +64,7 @@ async function handleVoiceCallback(ctx, data, answer, { getTenant, config }) {
   if (action === 'lang') {
     const langCode = parts[2];
     await answer({ text: langCode });
-    const tts = require('../tts');
+    const tts = require('../media/tts');
     try {
       const voices = tts.getVoices(langCode);
       if (voices.length === 0) return sendHtml(ctx, 'No voices found for that language.');
@@ -97,7 +97,7 @@ async function handleVoiceCallback(ctx, data, answer, { getTenant, config }) {
   if (action === 'pick') {
     const voiceName = parts[2];
     await answer({ text: `Sampling ${voiceName}...` });
-    const tts = require('../tts');
+    const tts = require('../media/tts');
     const fs = require('fs');
     try {
       const langPrefix = voiceName.split('-').slice(0, 2).join('-');

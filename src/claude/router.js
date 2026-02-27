@@ -1,3 +1,5 @@
+const { formatMemoryBlock } = require('./prompt');
+
 function buildRouterMessages(recentHistory, userMessage) {
   const context = recentHistory.slice(-20).map(m => ({
     role: m.role,
@@ -107,30 +109,22 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       vlog(`[memory] ${topFacts.length} facts (${recentMemories.length} recent, ${semanticMemories.length} semantic, budget=${budget})`);
       onRouteUpdate?.({ memoryCount: topFacts.length });
 
-      if (topFacts.length > 0) {
-        const lines = topFacts.map(m => {
-          const date = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
-          return `- [${m.category}] ${m.content}${date ? ` (${date})` : ''}`;
-        });
-        memoryBlock = `## Relevant memories\n${lines.join('\n')}`;
-      }
-
+      let selfFacts = [];
       if (selfMemory) {
         const selfResults = await Promise.all(
           searchQueries.map(q => selfMemory.search(q, { limit: 5, threshold: 0.4 }))
         );
         const seen2 = new Set();
-        const topSelf = [];
         for (const m of selfResults.flat()) {
-          if (!seen2.has(m.id)) { seen2.add(m.id); topSelf.push(m); }
+          if (!seen2.has(m.id)) { seen2.add(m.id); selfFacts.push(m); }
         }
-        if (topSelf.length > 0) {
-          const selfLines = topSelf.slice(0, 8).map(m => `- [${m.category}] ${m.content}`);
-          memoryBlock = (memoryBlock || '') + `\n\n## Self-knowledge\n${selfLines.join('\n')}`;
-          vlog(`[memory] +${topSelf.length} self-memory facts`);
-          onRouteUpdate?.({ selfMemoryCount: topSelf.length });
+        if (selfFacts.length > 0) {
+          vlog(`[memory] +${selfFacts.length} self-memory facts`);
+          onRouteUpdate?.({ selfMemoryCount: selfFacts.length });
         }
       }
+
+      memoryBlock = formatMemoryBlock(topFacts, selfFacts);
     }
   } catch (e) {
     console.error('[router] Memory/routing decision failed:', e.message);

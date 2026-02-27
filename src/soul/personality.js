@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { OBOL_DIR } = require('./config');
+const { OBOL_DIR } = require('../config');
 
 function loadPersonality(sharedDir, userDir) {
   sharedDir = sharedDir || path.join(OBOL_DIR, 'personality');

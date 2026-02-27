@@ -1,12 +1,12 @@
 const { describe, it, expect, vi, beforeEach, afterEach } = globalThis;
 
 const configModule = require('../src/config');
-const personalityModule = require('../src/personality');
+const personalityModule = require('../src/soul/personality');
 const memoryModule = require('../src/memory');
 const claudeModule = require('../src/claude');
 const messagesModule = require('../src/messages');
 const bridgeModule = require('../src/bridge');
-const bgModule = require('../src/background');
+const bgModule = require('../src/runtime/background');
 
 vi.spyOn(configModule, 'ensureUserDir').mockImplementation((id) => `/tmp/mock-users/${id}`);
 vi.spyOn(personalityModule, 'loadPersonality').mockReturnValue({

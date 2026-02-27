@@ -2,7 +2,7 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const inquirer = require('inquirer');
 const { OBOL_DIR } = require('../config');
-const { hasPassStore } = require('../credentials');
+const { hasPassStore } = require('../auth/credentials');
 const { stop } = require('./stop');
 
 async function deleteAll() {

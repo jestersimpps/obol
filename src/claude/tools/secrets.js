@@ -34,20 +34,20 @@ const definitions = [
 
 const handlers = {
   async store_secret(input, memory, context) {
-    const credentials = require('../../credentials');
+    const credentials = require('../../auth/credentials');
     credentials.storeSecret(context.userId, input.key, input.value);
     return `Stored secret: ${input.key}`;
   },
 
   async read_secret(input, memory, context) {
-    const credentials = require('../../credentials');
+    const credentials = require('../../auth/credentials');
     const val = credentials.readSecret(context.userId, input.key);
     if (val === null) return `Secret not found: ${input.key}`;
     return val;
   },
 
   async list_secrets(input, memory, context) {
-    const credentials = require('../../credentials');
+    const credentials = require('../../auth/credentials');
     const keys = credentials.listSecrets(context.userId);
     if (keys.length === 0) return 'No secrets stored.';
     return keys.join('\n');

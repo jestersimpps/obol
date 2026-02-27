@@ -1,6 +1,6 @@
 const inquirer = require('inquirer');
 const { loadConfig, saveConfig, CONFIG_FILE, ensureUserDir, getUserDir, USERS_DIR } = require('../config');
-const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../oauth');
+const { generatePKCE, buildAuthorizationUrl, exchangeCodeForTokens } = require('../auth/oauth');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');

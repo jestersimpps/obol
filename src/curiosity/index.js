@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { OBOL_DIR } = require('./config');
+const { OBOL_DIR } = require('../config');
 
 const RESEARCH_MODEL = 'claude-sonnet-4-6';
 const MAX_ITERATIONS = 15;

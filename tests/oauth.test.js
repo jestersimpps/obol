@@ -8,7 +8,7 @@ const {
   refreshTokens,
   isExpired,
   isOAuthToken,
-} = await import('../src/oauth.js');
+} = await import('../src/auth/oauth.js');
 
 describe('oauth', () => {
   describe('generatePKCE', () => {

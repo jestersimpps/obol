@@ -1,6 +1,6 @@
 const { describe, it, expect, vi, beforeEach, afterEach } = globalThis;
 
-const { BackgroundRunner } = require('../src/background');
+const { BackgroundRunner } = require('../src/runtime/background');
 
 describe('BackgroundRunner', () => {
   let runner;

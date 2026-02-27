@@ -1,4 +1,4 @@
-const credentials = require('../../credentials');
+const credentials = require('../../auth/credentials');
 const { getTenant } = require('../../tenant');
 
 function register(bot, config) {
