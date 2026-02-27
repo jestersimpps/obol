@@ -1,9 +1,8 @@
+## 0.3.8
+- prevent haiku from hallucinating tool actions: override to sonnet when recent history has tool use
+
 ## 0.3.7
-- add impulse system (spontaneous check-ins with cooldown + periodic cron)
-- fix haiku context: strip tool blocks from history so haiku sees clean conversation
-- enforce code block formatting for all copyable content (drafts, emails, templates)
-- expand prompt bench to ~90 test cases
-- fix verbose batcher HTML escaping
+- add impulse system, fix haiku context, enforce code block formatting
 
 ## 0.3.6
 - optimize routing: drop haiku probe, trim system prompt, add tool-need heuristic + bench prompts
