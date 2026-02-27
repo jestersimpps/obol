@@ -14,6 +14,8 @@ function validateKey(key) {
 }
 
 function hasPassStore() {
+  // Allow tests and CI environments to force JSON fallback mode
+  if (process.env.OBOL_NO_PASS === '1') return false;
   try {
     execFileSync('which', ['pass'], { encoding: 'utf-8', stdio: 'pipe' });
     return true;
@@ -31,6 +33,10 @@ function secretsKey(userId) {
 }
 
 function secretsJsonPath(userId) {
+  // Allow tests to override the base users directory via env var
+  if (process.env.OBOL_USERS_DIR) {
+    return path.join(process.env.OBOL_USERS_DIR, String(userId), 'secrets.json');
+  }
   const dir = getUserDir(userId);
   return path.join(dir, 'secrets.json');
 }

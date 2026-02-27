@@ -3,34 +3,41 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obol-cred-test-'));
-const OBOL_DIR = path.join(tmpRoot, '.obol');
-const USERS_DIR = path.join(OBOL_DIR, 'users');
-const REAL_HOME = os.homedir();
+// Use a temp directory for all secrets in this test suite.
+// We set OBOL_NO_PASS=1 and OBOL_USERS_DIR to point at the temp dir
+// so credentials.js uses JSON fallback and writes to an isolated location.
+// This avoids the CJS/ESM mock boundary issue with child_process interception.
 
-vi.mock('child_process', () => ({
-  execFileSync: vi.fn(() => { throw new Error('not found'); }),
-}));
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obol-cred-test-'));
+const USERS_DIR = path.join(tmpRoot, 'users');
 
 let credentials;
 
 async function loadModule() {
   vi.resetModules();
-  process.env.HOME = tmpRoot;
   const mod = await import('../src/credentials.js');
-  process.env.HOME = REAL_HOME;
   return mod;
 }
 
 describe('credentials', () => {
   beforeEach(async () => {
+    // Isolate each test: fresh temp users dir + force JSON fallback
     fs.mkdirSync(path.join(USERS_DIR, '123'), { recursive: true });
+    process.env.OBOL_NO_PASS = '1';
+    process.env.OBOL_USERS_DIR = USERS_DIR;
     credentials = await loadModule();
   });
 
   afterEach(() => {
-    if (fs.existsSync(OBOL_DIR)) {
-      fs.rmSync(OBOL_DIR, { recursive: true, force: true });
+    delete process.env.OBOL_NO_PASS;
+    delete process.env.OBOL_USERS_DIR;
+    // Clean up secrets written during the test
+    const userDir = path.join(USERS_DIR, '123');
+    const secretsFile = path.join(userDir, 'secrets.json');
+    if (fs.existsSync(secretsFile)) fs.unlinkSync(secretsFile);
+    const userDir456 = path.join(USERS_DIR, '456');
+    if (fs.existsSync(userDir456)) {
+      fs.rmSync(userDir456, { recursive: true, force: true });
     }
   });
 
@@ -126,7 +133,8 @@ describe('credentials', () => {
   });
 
   describe('hasPassStore', () => {
-    it('returns false when pass CLI is unavailable', () => {
+    it('returns false when OBOL_NO_PASS=1', () => {
+      // OBOL_NO_PASS is set in beforeEach — this confirms the env var controls the behaviour
       expect(credentials.hasPassStore()).toBe(false);
     });
   });
