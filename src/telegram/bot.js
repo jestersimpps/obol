@@ -11,7 +11,6 @@ const memoryCommands = require('./commands/memory');
 const statusCommands = require('./commands/status');
 const conversationCommands = require('./commands/conversation');
 const adminCommands = require('./commands/admin');
-const traitsCommands = require('./commands/traits');
 const secretsCommands = require('./commands/secrets');
 const toolsCommands = require('./commands/tools');
 const { registerTextHandler } = require('./handlers/text');
@@ -97,7 +96,6 @@ function createBot(telegramConfig, config) {
     { command: 'status', description: 'Bot status and uptime' },
     { command: 'backup', description: 'Trigger GitHub backup now' },
     { command: 'clean', description: 'Audit and fix workspace' },
-    { command: 'traits', description: 'View or adjust personality traits' },
     { command: 'secret', description: 'Manage per-user secrets' },
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
@@ -112,7 +110,6 @@ function createBot(telegramConfig, config) {
   memoryCommands.register(bot, config);
   statusCommands.register(bot, config);
   adminCommands.register(bot, config, createAsk);
-  traitsCommands.register(bot, config);
   secretsCommands.register(bot, config);
   toolsCommands.register(bot, config);
 

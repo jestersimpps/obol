@@ -19,7 +19,7 @@ const ASSET_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.
 
 // Dirs where only .md files are allowed (with per-dir exceptions)
 const MD_ONLY_DIRS = new Set(['personality', 'commands']);
-const MD_DIR_EXCEPTIONS = { personality: new Set(['traits.json']) };
+const MD_DIR_EXCEPTIONS = {};
 
 function safeReaddir(dir) {
   try {

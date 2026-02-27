@@ -54,14 +54,6 @@ function startTyping(ctx) {
   return () => clearInterval(interval);
 }
 
-function formatTraits(traits) {
-  const maxLen = Math.max(...Object.keys(traits).map(k => k.length));
-  return Object.entries(traits).map(([name, val]) => {
-    const label = (name.charAt(0).toUpperCase() + name.slice(1)).padEnd(maxLen + 1);
-    return `  ${label}${termBar(val)} ${val}`;
-  }).join('\n');
-}
-
 function splitMessage(text, maxLength) {
   const chunks = [];
   let remaining = text;
@@ -78,4 +70,4 @@ function splitMessage(text, maxLength) {
   return chunks;
 }
 
-module.exports = { termBar, markdownToTelegramHtml, sendHtml, editHtml, startTyping, formatTraits, splitMessage };
+module.exports = { termBar, markdownToTelegramHtml, sendHtml, editHtml, startTyping, splitMessage };

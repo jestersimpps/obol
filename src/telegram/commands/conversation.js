@@ -46,7 +46,6 @@ function register(bot, config) {
 /events — Upcoming scheduled events
 /tasks — Running background tasks
 /tools — Toggle optional tools on/off
-/traits — View/adjust personality traits
 /secret — Manage per-user secrets
 /evolution — Evolution progress
 /status — Bot status and uptime

@@ -1,9 +1,7 @@
-const path = require('path');
 const { getTenant } = require('../../tenant');
-const { loadTraits } = require('../../personality');
 const { loadEvolutionState } = require('../../evolve');
 const { getMaxToolIterations } = require('../../claude');
-const { termBar, formatTraits } = require('../utils');
+const { termBar } = require('../utils');
 const { TERM_SEP } = require('../constants');
 
 function register(bot, config) {
@@ -52,10 +50,6 @@ function register(bot, config) {
       lines.push(`  last ${new Date(evoState.lastEvolution).toLocaleDateString()}`);
     }
 
-    const personalityDir = path.join(tenant.userDir, 'personality');
-    const traits = loadTraits(personalityDir);
-    lines.push(``, `TRAITS`);
-    lines.push(formatTraits(traits));
     lines.push(TERM_SEP);
 
     await ctx.reply(`<pre>${lines.join('\n')}</pre>`, { parse_mode: 'HTML' });

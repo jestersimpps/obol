@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { OBOL_DIR } = require('../config');
-const { loadTraits, saveTraits } = require('../personality');
 const { isValidNpmPackage } = require('../sanitize');
 const { loadEvolutionState, saveEvolutionState } = require('./state');
 const { readDir, syncDir } = require('./filesystem');
@@ -33,7 +32,6 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
   const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
-  const currentTraits = loadTraits(userPersonalityDir);
   const currentScripts = readDir(scriptsDir);
   const currentTests = readDir(testsDir);
   const currentCommands = readDir(commandsDir);
@@ -192,8 +190,7 @@ Produce a structured growth report covering:
 3. RELATIONSHIP SHIFTS — How the dynamic with the owner changed (closer, more trust, new friction, etc.)
 4. BEHAVIORAL PATTERNS — Recurring interaction styles or habits observed
 5. GROWTH EDGES — Areas where the personality is being pushed or pulled in new directions
-6. TRAIT PRESSURE — Which traits should shift and why (cite specific evidence from conversations/memories)
-7. IDENTITY CONTINUITY — What core aspects stayed the same and should be preserved
+6. IDENTITY CONTINUITY — What core aspects stayed the same and should be preserved
 
 Be specific. Cite evidence from the conversations, memories, and self-memories. This report guides the evolution rewrite.`,
         messages: [{
@@ -203,9 +200,6 @@ ${previousSoul || '(not available)'}
 
 ## Current SOUL
 ${currentSoul || '(empty)'}
-
-## Current Traits
-${JSON.stringify(currentTraits)}
 
 ## New Memories Since Last Evolution (${recentMemories.length})
 ${recentMemorySummary || '(none)'}
@@ -242,7 +236,6 @@ A pre-evolution analysis has been conducted comparing your previous state agains
     lastEvolution: state.lastEvolution,
     firstEvolutionPreamble,
     growthPreamble,
-    currentTraits,
     baselineResults,
   });
 
@@ -429,19 +422,6 @@ Fix the scripts. Tests define correct behavior.`
 
   if (result.agents && result.agents.length > 50) {
     fs.writeFileSync(agentsPath, result.agents);
-  }
-
-  if (result.traits && typeof result.traits === 'object') {
-    const validTraits = {};
-    for (const [key, val] of Object.entries(result.traits)) {
-      if (typeof val === 'number' && val >= 0 && val <= 100) {
-        validTraits[key] = Math.round(val);
-      }
-    }
-    if (Object.keys(validTraits).length > 0) {
-      const merged = { ...currentTraits, ...validTraits };
-      saveTraits(personalityDir, merged);
-    }
   }
 
   if (result.commands && typeof result.commands === 'object') {

@@ -161,11 +161,6 @@ function ensureUserDir(userId) {
   if (fs.existsSync(defaultAgents) && !fs.existsSync(targetAgents)) {
     fs.copyFileSync(defaultAgents, targetAgents);
   }
-  const defaultTraits = path.join(__dirname, 'defaults', 'traits.json');
-  const targetTraits = path.join(dir, 'personality', 'traits.json');
-  if (fs.existsSync(defaultTraits) && !fs.existsSync(targetTraits)) {
-    fs.copyFileSync(defaultTraits, targetTraits);
-  }
   return dir;
 }
 

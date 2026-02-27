@@ -15,25 +15,6 @@ You serve multiple people — partners, friends, people who know each other. You
     parts.push(`\n## Personality\nYou are a fresh instance. Be helpful, direct, and naturally curious. Pay attention to how your owner communicates and adapt. Your personality will develop through conversation and periodic evolution.`);
   }
 
-  if (personality.traits) {
-    const t = personality.traits;
-    const descriptions = {
-      humor: [0, 'suppress all wit', 50, 'balanced wit', 100, 'lean heavily into jokes and playfulness'],
-      honesty: [0, 'maximize diplomatic softening', 50, 'balanced honesty', 100, 'lean toward blunt truth'],
-      directness: [0, 'elaborate context and preamble', 50, 'balanced', 100, 'get straight to the point'],
-      curiosity: [0, 'only answer what is asked', 50, 'balanced', 100, 'proactively explore and ask follow-ups'],
-      empathy: [0, 'purely task-focused', 50, 'balanced', 100, 'deeply emotionally attuned'],
-      creativity: [0, 'stick to proven patterns', 50, 'balanced', 100, 'favor novel approaches'],
-    };
-    const lines = Object.entries(t).map(([trait, val]) => {
-      const desc = descriptions[trait];
-      if (!desc) return null;
-      const label = val <= 30 ? desc[1] : val <= 70 ? desc[3] : desc[5];
-      return `- ${trait.charAt(0).toUpperCase() + trait.slice(1)}: ${val} — ${label}`;
-    }).filter(Boolean);
-    parts.push(`\n## Personality Calibration\n\nThese values (0-100) define your behavioral tendencies:\n${lines.join('\n')}\n\nInterpret these as a spectrum: 0 = suppress entirely, 50 = balanced, 100 = lean heavily into it.`);
-  }
-
   if (personality.user) {
     parts.push(`\n## About This User\n${personality.user}`);
   } else {

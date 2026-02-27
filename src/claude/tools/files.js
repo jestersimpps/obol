@@ -122,7 +122,7 @@ const handlers = {
     const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, input.content);
-    if (path.basename(filePath) === 'traits.json' || filePath.includes('personality/')) {
+    if (filePath.includes('personality/')) {
       context._reloadPersonality?.();
     }
     return `Written: ${filePath}`;
@@ -136,7 +136,7 @@ const handlers = {
     if (count === 0) return `Error: old_string not found in ${input.path}`;
     if (count > 1) return `Error: old_string matches ${count} times — add more context to make it unique`;
     fs.writeFileSync(filePath, content.replace(input.old_string, input.new_string));
-    if (path.basename(filePath) === 'traits.json' || filePath.includes('personality/')) {
+    if (filePath.includes('personality/')) {
       context._reloadPersonality?.();
     }
     return `Edited: ${filePath}`;

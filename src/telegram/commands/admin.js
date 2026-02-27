@@ -55,12 +55,12 @@ function register(bot, config, createAsk) {
 ## Workspace Structure
 Allowed root directories: personality/, scripts/, tests/, commands/, apps/, logs/, assets/
 Allowed root files: config.json, secrets.json, .evolution-state.json, .first-run-done, .post-setup-done
-- personality/ and commands/ only contain .md files (except personality/traits.json which must stay)
+- personality/ and commands/ only contain .md files
 - Unknown directories at the root should be moved into apps/
 - Script files (.js, .ts, .sh, etc.) go into scripts/
 - Asset files (images, audio, pdf, etc.) go into assets/
 - .DS_Store and other dotfiles should be deleted
-- secrets.json and personality/traits.json must NOT be moved
+- secrets.json must NOT be moved
 
 ## Issues Found
 ${issueLines}

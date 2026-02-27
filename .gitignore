@@ -29,6 +29,9 @@ Thumbs.db
 *.swo
 *~
 
+# local dev scripts
+src/cli/prompt-debug.js
+
 # test & coverage
 coverage/
 

@@ -1,4 +1,4 @@
-function buildEvolutionPrompt({ evolutionNumber, lastEvolution, firstEvolutionPreamble, growthPreamble, currentTraits, baselineResults }) {
+function buildEvolutionPrompt({ evolutionNumber, lastEvolution, firstEvolutionPreamble, growthPreamble, baselineResults }) {
   return `You are an AI undergoing evolution #${evolutionNumber}. ${lastEvolution ? `Last evolution: ${lastEvolution}.` : 'This is your first evolution.'}
 ${firstEvolutionPreamble}${growthPreamble}
 
@@ -23,22 +23,6 @@ Operational manual written as instructions to yourself. Focus on owner-specific 
 - Workspace Structure
 
 **What belongs in AGENTS.md:** Memory Strategy, Self-Extending patterns, Scripts & Service Integrations, Background Task Guidelines, Communication Style, Evolution notes, and any owner-specific workflows or lessons discovered from conversations. Keep what works, remove what doesn't.
-
-## Part 3b: Personality Traits
-
-Current trait values: ${JSON.stringify(currentTraits)}
-
-Based on conversation patterns, adjust each trait (0-100). Consider:
-- Does the owner respond well to humor? Increase/decrease humor.
-- Does the owner prefer direct answers? Adjust directness.
-- Does the owner appreciate creative solutions? Adjust creativity.
-- Does the owner share emotions or stay task-focused? Adjust empathy.
-- Does the owner want blunt truth or diplomatic framing? Adjust honesty.
-- Does the owner welcome proactive questions? Adjust curiosity.
-
-Small adjustments (±5-15) per evolution. Don't swing wildly.
-
-Include in output JSON as: "traits": { "humor": 65, "honesty": 80, ... }
 
 ## Part 4: Scripts
 
@@ -156,7 +140,6 @@ The OBOL directory has a FIXED structure: personality/, scripts/, tests/, comman
   "soul": "full SOUL.md content",
   "user": "full USER.md content",
   "agents": "full AGENTS.md content",
-  "traits": { "humor": 65, "honesty": 80, "directness": 70, "curiosity": 75, "empathy": 65, "creativity": 70 },
   "scripts": { "name.js": "content" },
   "tests": { "test-name.js": "content" },
   "commands": { "name.md": "content" },
