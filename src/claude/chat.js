@@ -263,8 +263,9 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
   }
 
   function reloadPersonality() {
+    const { PERSONALITY_DIR } = require('../soul');
     const pDir = userDir ? path.join(userDir, 'personality') : undefined;
-    const newPersonality = require('../personality').loadPersonality(pDir);
+    const newPersonality = require('../personality').loadPersonality(PERSONALITY_DIR, pDir);
     for (const key of Object.keys(personality)) delete personality[key];
     Object.assign(personality, newPersonality);
     baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled, botName });

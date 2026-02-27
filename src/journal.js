@@ -4,17 +4,13 @@ const MAX_ENTRY_LENGTH = 600;
  * Create a Supabase-backed journal for OBOL's thought log.
  * Table: obol_journal
  *   id          uuid primary key default gen_random_uuid()
+ *   user_id     bigint not null default 0
  *   content     text not null
  *   created_at  timestamptz default now()
  *
- * Migration (run once in Supabase SQL editor):
- *   create table if not exists obol_journal (
- *     id         uuid primary key default gen_random_uuid(),
- *     content    text not null,
- *     created_at timestamptz default now()
- *   );
+ * Migration is included in src/db/migrate.js (obol_journal statement).
  */
-function createJournal(supabaseConfig) {
+function createJournal(supabaseConfig, userId = 0) {
   const { url, serviceKey } = supabaseConfig;
 
   const headers = {
@@ -33,7 +29,7 @@ function createJournal(supabaseConfig) {
       const res = await fetch(`${url}/rest/v1/obol_journal`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ content: trimmed }),
+        body: JSON.stringify({ content: trimmed, user_id: userId }),
       });
 
       if (!res.ok) {
@@ -47,8 +43,9 @@ function createJournal(supabaseConfig) {
 
   async function recent(n = 3) {
     try {
+      const userFilter = `&user_id=eq.${userId}`;
       const res = await fetch(
-        `${url}/rest/v1/obol_journal?select=content,created_at&order=created_at.desc&limit=${n}`,
+        `${url}/rest/v1/obol_journal?select=content,created_at&order=created_at.desc&limit=${n}${userFilter}`,
         { headers: { ...headers, 'Prefer': 'return=representation' } }
       );
       if (!res.ok) return '';

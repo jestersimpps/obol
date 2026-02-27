@@ -98,12 +98,12 @@ const handlers = {
       // Log failure is non-fatal
     }
 
-    if (context.reloadPersonality) {
-      try { context.reloadPersonality(); } catch {}
+    if (context._reloadPersonality) {
+      try { context._reloadPersonality(); } catch {}
     }
 
     console.log(`[personality] Applied edit to ${file}.md — ${reason}`);
-    return `${file}.md updated.${context.reloadPersonality ? ' Personality reloaded.' : ' Reload will happen at next evolution.'}`;
+    return `${file}.md updated.${context._reloadPersonality ? ' Personality reloaded.' : ' Reload will happen at next evolution.'}`;
   },
 };
 

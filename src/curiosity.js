@@ -7,15 +7,35 @@ async function runCuriosity(client, selfMemory, userId, opts = {}) {
   const { memory, patterns, scheduler, peopleContext, supabaseConfig } = opts;
 
   const interests = await selfMemory.recent({ category: 'interest', limit: 10 });
-  const journal = supabaseConfig ? createJournal(supabaseConfig) : null;
+  const journal = supabaseConfig ? createJournal(supabaseConfig, userId) : null;
   const context = await gatherContext({ memory, patterns, scheduler, peopleContext, interests, selfMemory, journal });
 
   console.log(`[curiosity] Starting free exploration for user ${userId}`);
   const count = await exploreFreely(client, selfMemory, context);
   console.log(`[curiosity] Stored ${count} things (user ${userId})`);
 
-  // Sandbox handoff: save a note for the next session
+  // Only write handoff/journal entries when actual exploration happened
+  if (count === 0) {
+    console.log('[curiosity] No items stored — skipping handoff note and journal entry');
+    return { count };
+  }
+
+  // Sandbox handoff: save a note for the next session (cap to last 3 entries)
   try {
+    // Prune old handoff notes — keep only the most recent 3
+    try {
+      const oldHandoffs = await selfMemory.query({ source: 'sandbox-handoff', limit: 20 });
+      if (oldHandoffs.length >= 3) {
+        const toRemove = oldHandoffs.slice(3); // oldest are last (query returns newest first)
+        for (const entry of toRemove) {
+          await selfMemory.forget(entry.id).catch(() => {});
+        }
+        console.log(`[curiosity] Pruned ${toRemove.length} old handoff note(s)`);
+      }
+    } catch (e) {
+      console.error('[curiosity] Failed to prune old handoff notes:', e.message);
+    }
+
     const handoffResponse = await client.messages.create({
       model: RESEARCH_MODEL,
       max_tokens: 200,

@@ -57,7 +57,7 @@ const INPUT_SUMMARIES = {
   text_to_speech: (i) => i.text?.substring(0, 60),
   tts_voices: (i) => i.language || 'all',
   chat_history: (i) => `${i.date}${i.role ? ` [${i.role}]` : ''}`,
-  propose_personality_edit: (i) => `${i.file}${i.section ? `: ${i.section}` : ''}`,
+  edit_personality: (i) => `${i.file}${i.section ? `: ${i.section}` : ''}`,
 };
 
 function summarizeInput(toolName, input) {
