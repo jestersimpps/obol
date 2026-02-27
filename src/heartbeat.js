@@ -5,6 +5,7 @@ const { shouldEvolveNow, evolve } = require('./evolve');
 const { ensureUserDir } = require('./config');
 const { runAnalysis } = require('./analysis');
 const { runCuriosity } = require('./curiosity');
+const { runCuriosityDispatch } = require('./curiosity-dispatch');
 const { createSelfMemory } = require('./memory-self');
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
@@ -105,6 +106,18 @@ async function runCuriosityOnce(config, allowedUsers) {
 
     const peopleContext = contexts.filter(Boolean).join('\n\n---\n\n');
     await runCuriosity(client, selfMemory, 0, { peopleContext });
+
+    const userDispatchData = await Promise.all(allowedUsers.map(async (userId) => {
+      try {
+        const tenant = await getTenant(userId, config);
+        const patterns = tenant.patterns ? await tenant.patterns.format().catch(() => null) : null;
+        const events = tenant.scheduler
+          ? await tenant.scheduler.list({ status: 'pending', limit: 5 }).catch(() => [])
+          : [];
+        return { userId, chatId: userId, timezone: config.timezone || 'UTC', patterns, events, scheduler: tenant.scheduler };
+      } catch { return null; }
+    }));
+    await runCuriosityDispatch(client, selfMemory, userDispatchData.filter(Boolean));
   } catch (e) {
     console.error('[curiosity] Failed:', e.message);
   }
