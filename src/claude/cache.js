@@ -7,7 +7,15 @@ function sanitizeMessages(messages) {
       return msg;
     }
     if (Array.isArray(msg.content)) {
-      const filtered = msg.content.filter(b => !(b.type === 'text' && b.text === ''));
+      const filtered = msg.content
+        .filter(b => !(b.type === 'text' && b.text === ''))
+        .map(b => {
+          if (b.citations) {
+            const { citations, ...rest } = b;
+            return rest;
+          }
+          return b;
+        });
       return { ...msg, content: filtered.length ? filtered : null };
     }
     return msg;

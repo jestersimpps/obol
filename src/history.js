@@ -245,6 +245,17 @@ function repair(messages) {
   }
 }
 
+function stripCitations(content) {
+  if (!Array.isArray(content)) return content;
+  return content.map(b => {
+    if (b.citations) {
+      const { citations, ...rest } = b;
+      return rest;
+    }
+    return b;
+  });
+}
+
 class ChatHistory {
   constructor(maxMessages = 50) {
     this._store = new Map();
@@ -276,14 +287,16 @@ class ChatHistory {
 
   pushAssistant(chatId, content) {
     const history = this.get(chatId);
-    history.push({ role: 'assistant', content });
+    history.push({ role: 'assistant', content: stripCitations(content) });
     this._validateAndRepair(chatId);
   }
 
   pushMessages(chatId, msgs) {
     const history = this.get(chatId);
     for (const msg of msgs) {
-      history.push(msg);
+      history.push(msg.role === 'assistant'
+        ? { ...msg, content: stripCitations(msg.content) }
+        : msg);
     }
     this._validateAndRepair(chatId);
   }

@@ -206,7 +206,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, patter
       if (e.message === 'Request was aborted.' || e.constructor?.name === 'APIUserAbortError') {
         return { text: null, usage: null, model: null };
       }
-      if (e.status === 400 && e.message?.includes('tool_use')) {
+      if (e.status === 400 && (e.message?.includes('tool_use') || e.message?.includes('citation'))) {
         console.error('[claude] Repairing corrupted history after 400 error');
         histories.repair(chatId);
       }
