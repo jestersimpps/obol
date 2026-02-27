@@ -1,9 +1,3 @@
-## 0.3.4
-- supersede contradictory memories on extraction (3-tier dedup: exact/update/new)
-- allow up to 5 router search queries, fixed per-query pool size independent of query count
-- rebalance recent memory ceiling to budget/3, leaving more room for semantic results
-- prompt-debug: show tools, highlight runtime/memory blocks, obol self-memory section
-
 ## 0.3.3
 - update changelog
 - improve memory retrieval quality: tighter dedup, wider window, recency boost, self-memory, jaccard dedup
