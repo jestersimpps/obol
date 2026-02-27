@@ -5,7 +5,7 @@ const { createBot, checkUpgradeNotify } = require('./telegram');
 const { setupBackup } = require('./backup');
 const { setupHeartbeat } = require('./runtime/heartbeat');
 const { migrateToMultiTenant } = require('./legacy-migrate');
-const { isPostSetupDone, runPostSetup } = require('./post-setup');
+const { isPostSetupDone, runPostSetup } = require('./post-setup/index');
 const { restoreIfMissing, PERSONALITY_DIR } = require('./soul');
 
 async function main() {
