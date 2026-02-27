@@ -1,3 +1,7 @@
+## 0.3.1
+- update changelog
+- add curiosity humor pass with puns, inside jokes, and link support
+
 ## 0.3.0
 - add tests for memory-self and analysis helpers
 - fix proactivity and memory bugs
