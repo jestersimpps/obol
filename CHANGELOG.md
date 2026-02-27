@@ -1,3 +1,18 @@
+## 0.3.0
+- add tests for memory-self and analysis helpers
+- fix proactivity and memory bugs
+- add curiosity dispatch pass to schedule insights after curiosity cycle
+- run curiosity once per cycle with shared brain and all-user context
+- add curiosity engine with free-form exploration and own knowledge tools
+- add friendship behavior section and soften privacy rule for multi-user model
+- add proactive behavior + multi-user friend model to system prompt
+- add tests for silent mode, soul backup/restore, and shared personality dir
+- move SOUL.md to shared root dir with Supabase backup/restore
+- add silent mode for heartbeat-triggered background tasks
+- enrich analysis with memory search and pattern context
+- add analysis, patterns, self-memory, and proactive vector context
+- update changelog
+
 ## 0.2.39
 - use bot name from config in all telegram status messages
 - update changelog
