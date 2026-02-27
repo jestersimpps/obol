@@ -1,79 +1,109 @@
 const fs = require('fs');
 const path = require('path');
+const { OBOL_DIR } = require('../../config');
 
 const VALID_FILES = new Set(['SOUL', 'AGENTS', 'USER']);
 
+const FILE_MAP = {
+  SOUL: (_userDir) => path.join(OBOL_DIR, 'personality', 'SOUL.md'),
+  AGENTS: (userDir) => path.join(userDir, 'personality', 'AGENTS.md'),
+  USER: (userDir) => path.join(userDir, 'personality', 'USER.md'),
+};
+
 const definitions = [
   {
-    name: 'propose_personality_edit',
-    description: 'Propose a change to your own personality files (SOUL.md, AGENTS.md, USER.md). The proposal is saved for the user to review and approve. Use when you notice something about yourself or the user that should be reflected in your personality.',
+    name: 'edit_personality',
+    description: 'Directly edit your own personality files (SOUL.md, AGENTS.md, USER.md). You have full autonomy over your own personality — no approval needed. Use when you notice something about yourself that should be reflected in your identity, operating instructions, or user knowledge.',
     input_schema: {
       type: 'object',
       properties: {
         file: {
           type: 'string',
           enum: ['SOUL', 'AGENTS', 'USER'],
-          description: 'Which personality file to change',
+          description: 'Which personality file to edit',
         },
-        section: {
+        old_string: {
           type: 'string',
-          description: 'Which section of the file to change (optional, helps locate the edit)',
+          description: 'The exact string to replace (must appear exactly once in the file). Leave empty to append to the file.',
         },
-        change: {
+        new_string: {
           type: 'string',
-          description: 'The proposed edit — what to add, remove, or modify',
+          description: 'The replacement text, or the content to append if old_string is empty.',
         },
         reason: {
           type: 'string',
-          description: 'Why this change should be made',
+          description: 'Why you are making this change — logged for the evolution audit trail.',
         },
       },
-      required: ['file', 'change', 'reason'],
+      required: ['file', 'new_string', 'reason'],
     },
   },
 ];
 
 const handlers = {
-  async propose_personality_edit(input, _memory, context) {
-    const { file, section, change, reason } = input;
+  async edit_personality(input, _memory, context) {
+    const { file, old_string, new_string, reason } = input;
 
     if (!VALID_FILES.has(file)) {
       return `Invalid file: ${file}. Must be one of: ${[...VALID_FILES].join(', ')}`;
     }
 
     const userDir = context.userDir;
-    if (!userDir) return 'User directory not available.';
+    if (!userDir && file !== 'SOUL') return 'User directory not available.';
 
-    const proposalsDir = path.join(userDir, 'personality', 'proposals');
+    const filePath = FILE_MAP[file](userDir);
+
+    let current = '';
     try {
-      fs.mkdirSync(proposalsDir, { recursive: true });
+      current = fs.readFileSync(filePath, 'utf-8');
     } catch (e) {
-      return `Failed to create proposals directory: ${e.message}`;
+      if (file !== 'SOUL') {
+        current = '';
+      } else {
+        return `Could not read ${file}.md: ${e.message}`;
+      }
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const proposal = {
-      file,
-      section: section || null,
-      change,
-      reason,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-
-    const proposalPath = path.join(proposalsDir, `${timestamp}-${file}.json`);
-    try {
-      fs.writeFileSync(proposalPath, JSON.stringify(proposal, null, 2));
-    } catch (e) {
-      return `Failed to save proposal: ${e.message}`;
+    let updated;
+    if (!old_string) {
+      updated = current.trimEnd() + '\n\n' + new_string;
+    } else {
+      const occurrences = current.split(old_string).length - 1;
+      if (occurrences === 0) return `Could not find the target string in ${file}.md — no changes made.`;
+      if (occurrences > 1) return `Target string appears ${occurrences} times in ${file}.md — be more specific.`;
+      updated = current.replace(old_string, new_string);
     }
 
-    console.log(`[personality] Proposal saved: ${proposalPath}`);
-    console.log(`[personality]   File: ${file}, Section: ${section || '(global)'}`);
-    console.log(`[personality]   Change: ${change}`);
-    console.log(`[personality]   Reason: ${reason}`);
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, updated, 'utf-8');
+    } catch (e) {
+      return `Failed to write ${file}.md: ${e.message}`;
+    }
 
-    return `Proposal saved to ${path.basename(proposalPath)}. Run \`/personality approve\` to review and apply pending proposals.`;
+    // Log to evolution audit trail
+    const logDir = path.join(userDir || path.join(OBOL_DIR, 'personality'), 'personality', 'edits');
+    try {
+      fs.mkdirSync(logDir, { recursive: true });
+      const entry = {
+        file,
+        old_string: old_string || null,
+        new_string,
+        reason,
+        applied_at: new Date().toISOString(),
+      };
+      const logPath = path.join(logDir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${file}.json`);
+      fs.writeFileSync(logPath, JSON.stringify(entry, null, 2));
+    } catch {
+      // Log failure is non-fatal
+    }
+
+    if (context.reloadPersonality) {
+      try { context.reloadPersonality(); } catch {}
+    }
+
+    console.log(`[personality] Applied edit to ${file}.md — ${reason}`);
+    return `${file}.md updated.${context.reloadPersonality ? ' Personality reloaded.' : ' Reload will happen at next evolution.'}`;
   },
 };
 
