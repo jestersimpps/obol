@@ -5,6 +5,7 @@ const { shouldEvolveNow, evolve } = require('./evolve');
 const { ensureUserDir } = require('./config');
 const { runAnalysis } = require('./analysis');
 const { runCuriosity } = require('./curiosity');
+const { createSelfMemory } = require('./memory-self');
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
 const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
@@ -72,18 +73,40 @@ async function runEvolutionForUser(bot, config, userId) {
   }
 }
 
-async function runCuriosityForUser(config, userId) {
+async function runCuriosityOnce(config, allowedUsers) {
+  if (!config.supabase) return;
   try {
-    const tenant = await getTenant(userId, config);
-    if (!tenant.selfMemory) return;
-    await runCuriosity(tenant.claude.client, tenant.selfMemory, userId, {
-      memory: tenant.memory,
-      patterns: tenant.patterns,
-      scheduler: tenant.scheduler,
-      peopleContext: tenant.personality?.user || null,
-    });
+    const selfMemory = await createSelfMemory(config.supabase, 0);
+    const firstTenant = await getTenant(allowedUsers[0], config);
+    const client = firstTenant.claude.client;
+
+    const contexts = await Promise.all(allowedUsers.map(async (userId) => {
+      try {
+        const tenant = await getTenant(userId, config);
+        const parts = [];
+        if (tenant.personality?.user) parts.push(tenant.personality.user);
+        if (tenant.patterns) {
+          const fmt = await tenant.patterns.format().catch(() => null);
+          if (fmt) parts.push(fmt);
+        }
+        if (tenant.memory) {
+          const recent = await tenant.memory.recent({ limit: 3 }).catch(() => []);
+          if (recent.length) parts.push(recent.map(m => `- ${m.content}`).join('\n'));
+        }
+        if (tenant.scheduler) {
+          const events = await tenant.scheduler.list({ status: 'pending', limit: 3 }).catch(() => []);
+          if (events.length) parts.push(events.map(e => `- ${e.title}`).join('\n'));
+        }
+        return parts.join('\n');
+      } catch {
+        return null;
+      }
+    }));
+
+    const peopleContext = contexts.filter(Boolean).join('\n\n---\n\n');
+    await runCuriosity(client, selfMemory, 0, { peopleContext });
   } catch (e) {
-    console.error(`[curiosity] Failed for user ${userId}:`, e.message);
+    console.error('[curiosity] Failed:', e.message);
   }
 }
 
@@ -181,11 +204,9 @@ function setupHeartbeat(bot, config) {
       const { hour, minute } = getLocalHour(timezone);
       if (!CURIOSITY_HOURS.has(hour) || minute !== 0) return;
 
-      for (const userId of allowedUsers) {
-        runCuriosityForUser(config, userId).catch(e =>
-          console.error(`[curiosity] Unhandled error for user ${userId}:`, e.message)
-        );
-      }
+      runCuriosityOnce(config, allowedUsers).catch(e =>
+        console.error('[curiosity] Unhandled error:', e.message)
+      );
     });
     console.log(`  ✅ Curiosity cron running (every 6h ${config.timezone || 'UTC'})`);
   }
