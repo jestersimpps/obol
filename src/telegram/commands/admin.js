@@ -84,7 +84,7 @@ Summarize what was cleaned and secrets migrated.`);
       const taskPrompt = promptParts.join('\n\n');
 
       const stopTyping = startTyping(ctx);
-      const status = createStatusTracker(ctx);
+      const status = createStatusTracker(ctx, config.bot?.name);
       const chatContext = createChatContext(ctx, tenant, config, { allowedUsers: new Set(), bot, createAsk });
       chatContext._model = 'claude-sonnet-4-6';
       chatContext._onRouteDecision = (info) => { status.setRouteInfo(info); status.start(); };
@@ -113,7 +113,7 @@ Summarize what was cleaned and secrets migrated.`);
       const testsAfter = fs.existsSync(testsDir) && fs.readdirSync(testsDir).filter(f => !f.startsWith('.')).length > 0;
       if (!testsAfter && hasScripts) {
         const testPrompt = `Read every script in ${plan.baseDir}/scripts/. For each script, write a corresponding test file in ${plan.baseDir}/tests/. Name each test file test-<script-name> (e.g. scripts/gmail-send.py → tests/test-gmail-send.py). After writing all tests, run them and fix any failures until they all pass. Summarize the test results.`;
-        const testStatus = createStatusTracker(ctx);
+        const testStatus = createStatusTracker(ctx, config.bot?.name);
         const testCtx = createChatContext(ctx, tenant, config, { allowedUsers: new Set(), bot, createAsk });
         testCtx._model = 'claude-sonnet-4-6';
         testCtx._onRouteDecision = (info) => { testStatus.setRouteInfo(info); testStatus.start(); };

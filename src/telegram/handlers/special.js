@@ -74,7 +74,7 @@ async function processSpecial(ctx, prompt, deps) {
   if (!ctx.from) return;
   const userId = ctx.from.id;
   const stopTyping = startTyping(ctx);
-  const status = createStatusTracker(ctx);
+  const status = createStatusTracker(ctx, deps.config?.bot?.name);
 
   try {
     const tenant = await getTenant(userId, deps.config);

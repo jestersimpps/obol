@@ -96,7 +96,10 @@ const definitions = [
 const handlers = {
   async read_file(input, memory, context) {
     const { userDir } = context;
-    const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+    const { PERSONALITY_DIR } = require('../../soul');
+    const filePath = path.basename(input.path) === 'SOUL.md'
+      ? path.join(PERSONALITY_DIR, 'SOUL.md')
+      : (userDir ? resolveUserPath(input.path, userDir) : input.path);
     if (filePath.toLowerCase().endsWith('.pdf')) {
       const pdfParse = require('pdf-parse');
       const { text } = await pdfParse(fs.readFileSync(filePath));
@@ -119,25 +122,36 @@ const handlers = {
 
   async write_file(input, memory, context) {
     const { userDir } = context;
-    const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+    const { PERSONALITY_DIR, backup } = require('../../soul');
+    const isSoul = path.basename(input.path) === 'SOUL.md';
+    const filePath = isSoul ? path.join(PERSONALITY_DIR, 'SOUL.md') : (userDir ? resolveUserPath(input.path, userDir) : input.path);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, input.content);
     if (filePath.includes('personality/')) {
       context._reloadPersonality?.();
+      if (isSoul && context.config?.supabase) {
+        backup(context.config.supabase, 'soul', input.content).catch(() => {});
+      }
     }
     return `Written: ${filePath}`;
   },
 
   async edit_file(input, memory, context) {
     const { userDir } = context;
-    const filePath = userDir ? resolveUserPath(input.path, userDir) : input.path;
+    const { PERSONALITY_DIR, backup } = require('../../soul');
+    const isSoul = path.basename(input.path) === 'SOUL.md';
+    const filePath = isSoul ? path.join(PERSONALITY_DIR, 'SOUL.md') : (userDir ? resolveUserPath(input.path, userDir) : input.path);
     const content = fs.readFileSync(filePath, 'utf-8');
     const count = content.split(input.old_string).length - 1;
     if (count === 0) return `Error: old_string not found in ${input.path}`;
     if (count > 1) return `Error: old_string matches ${count} times — add more context to make it unique`;
-    fs.writeFileSync(filePath, content.replace(input.old_string, input.new_string));
+    const updated = content.replace(input.old_string, input.new_string);
+    fs.writeFileSync(filePath, updated);
     if (filePath.includes('personality/')) {
       context._reloadPersonality?.();
+      if (isSoul && context.config?.supabase) {
+        backup(context.config.supabase, 'soul', updated).catch(() => {});
+      }
     }
     return `Edited: ${filePath}`;
   },

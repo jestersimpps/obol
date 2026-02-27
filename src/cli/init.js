@@ -752,13 +752,12 @@ function ensureDirs() {
 }
 
 function createPersonalityFiles(config) {
-  for (const userId of config.telegram.allowedUsers) {
-    const ownerName = config.users?.[String(userId)]?.name || config.owner.name;
-    const personalityDir = path.join(OBOL_DIR, 'users', String(userId), 'personality');
-    fs.mkdirSync(personalityDir, { recursive: true });
+  const { PERSONALITY_DIR } = require('../soul');
+  fs.mkdirSync(PERSONALITY_DIR, { recursive: true });
+  const ownerName = config.users?.[String(config.telegram.allowedUsers[0])]?.name || config.owner.name;
 
-    if (!fs.existsSync(path.join(personalityDir, 'SOUL.md'))) {
-      fs.writeFileSync(path.join(personalityDir, 'SOUL.md'), `# SOUL.md — Who is ${config.bot.name}?
+  if (!fs.existsSync(path.join(PERSONALITY_DIR, 'SOUL.md'))) {
+    fs.writeFileSync(path.join(PERSONALITY_DIR, 'SOUL.md'), `# SOUL.md — Who is ${config.bot.name}?
 
 Write your bot's personality here. This shapes how it talks, thinks, and behaves.
 
@@ -781,7 +780,13 @@ Write your bot's personality here. This shapes how it talks, thinks, and behaves
 ---
 *Edit this file anytime to reshape your bot's personality.*
 `);
-    }
+  }
+
+  for (const userId of config.telegram.allowedUsers) {
+    const ownerName = config.users?.[String(userId)]?.name || config.owner.name;
+    const personalityDir = path.join(OBOL_DIR, 'users', String(userId), 'personality');
+    fs.mkdirSync(personalityDir, { recursive: true });
+
     if (!fs.existsSync(path.join(personalityDir, 'USER.md'))) {
       fs.writeFileSync(path.join(personalityDir, 'USER.md'), `# USER.md — About ${ownerName}
 

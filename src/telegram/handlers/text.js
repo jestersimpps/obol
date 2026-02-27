@@ -82,12 +82,13 @@ function createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk }
   };
 }
 
-function createStatusTracker(ctx) {
+function createStatusTracker(ctx, botName) {
   let statusMsgId = null;
   let statusText = 'Processing';
   let statusTimer = null;
   let statusStart = null;
   let routeInfo = null;
+  const title = botName || 'OBOL';
   const stopBtn = new InlineKeyboard()
     .text('■ Stop', `stop:${ctx.chat.id}`)
     .text('■ Force Stop', `force:${ctx.chat.id}`);
@@ -100,14 +101,14 @@ function createStatusTracker(ctx) {
   const start = () => {
     if (statusTimer) return;
     statusStart = Date.now();
-    const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText });
+    const html = buildStatusHtml({ route: routeInfo, elapsed: 0, toolStatus: statusText, title });
     ctx.reply(html, { parse_mode: 'HTML', reply_markup: stopBtn }).then(sent => {
       if (sent) statusMsgId = sent.message_id;
     }).catch(() => {});
     statusTimer = setInterval(() => {
       if (!statusMsgId) return;
       const elapsed = Math.round((Date.now() - statusStart) / 1000);
-      const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText });
+      const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText, title });
       ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML', reply_markup: stopBtn }).catch(() => {});
     }, 5000);
   };
@@ -126,7 +127,7 @@ function createStatusTracker(ctx) {
     updateFormatting() {
       if (!statusMsgId) return;
       const elapsed = statusStart ? Math.round((Date.now() - statusStart) / 1000) : 0;
-      const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: 'Formatting output' });
+      const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: 'Formatting output', title });
       ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
     },
     deleteMsg() {
@@ -151,7 +152,7 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
   const chatMessage = replyContext + fullMessage;
   const stopTyping = startTyping(ctx);
-  const status = createStatusTracker(ctx);
+  const status = createStatusTracker(ctx, config.bot?.name);
 
   const batcher = tenant.verbose ? createVerboseBatcher(ctx) : null;
   try {

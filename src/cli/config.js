@@ -353,36 +353,38 @@ async function runOAuthFlow(cfg) {
 }
 
 function updatePersonalityNames(oldBotName, newBotName, oldOwnerName, newOwnerName) {
+  const { PERSONALITY_DIR } = require('../soul');
+
+  if (oldBotName !== newBotName) {
+    const soulPath = path.join(PERSONALITY_DIR, 'SOUL.md');
+    if (fs.existsSync(soulPath)) {
+      let content = fs.readFileSync(soulPath, 'utf-8');
+      content = content.replace(new RegExp(`# SOUL\\.md — Who is ${oldBotName}\\?`, 'g'), `# SOUL.md — Who is ${newBotName}?`);
+      content = content.replace(new RegExp(`\\*\\*Name:\\*\\* ${oldBotName}`, 'g'), `**Name:** ${newBotName}`);
+      fs.writeFileSync(soulPath, content, 'utf-8');
+    }
+  }
+
+  if (oldOwnerName !== newOwnerName) {
+    const soulPath = path.join(PERSONALITY_DIR, 'SOUL.md');
+    if (fs.existsSync(soulPath)) {
+      let content = fs.readFileSync(soulPath, 'utf-8');
+      content = content.replace(new RegExp(`\\*\\*Created by:\\*\\* ${oldOwnerName}`, 'g'), `**Created by:** ${newOwnerName}`);
+      fs.writeFileSync(soulPath, content, 'utf-8');
+    }
+  }
+
   if (!fs.existsSync(USERS_DIR)) return;
   const users = fs.readdirSync(USERS_DIR).filter(u => {
     try { return fs.statSync(path.join(USERS_DIR, u)).isDirectory(); } catch { return false; }
   });
   for (const userId of users) {
-    const personalityDir = path.join(USERS_DIR, userId, 'personality');
-    if (!fs.existsSync(personalityDir)) continue;
-
     if (oldBotName !== newBotName) {
-      const soulPath = path.join(personalityDir, 'SOUL.md');
-      if (fs.existsSync(soulPath)) {
-        let content = fs.readFileSync(soulPath, 'utf-8');
-        content = content.replace(new RegExp(`# SOUL\\.md — Who is ${oldBotName}\\?`, 'g'), `# SOUL.md — Who is ${newBotName}?`);
-        content = content.replace(new RegExp(`\\*\\*Name:\\*\\* ${oldBotName}`, 'g'), `**Name:** ${newBotName}`);
-        fs.writeFileSync(soulPath, content, 'utf-8');
-      }
-      const agentsPath = path.join(personalityDir, 'AGENTS.md');
+      const agentsPath = path.join(USERS_DIR, userId, 'personality', 'AGENTS.md');
       if (fs.existsSync(agentsPath)) {
         let content = fs.readFileSync(agentsPath, 'utf-8');
         content = content.replace(new RegExp(`# AGENTS\\.md — How ${oldBotName} Works`, 'g'), `# AGENTS.md — How ${newBotName} Works`);
         fs.writeFileSync(agentsPath, content, 'utf-8');
-      }
-    }
-
-    if (oldOwnerName !== newOwnerName) {
-      const soulPath = path.join(personalityDir, 'SOUL.md');
-      if (fs.existsSync(soulPath)) {
-        let content = fs.readFileSync(soulPath, 'utf-8');
-        content = content.replace(new RegExp(`\\*\\*Created by:\\*\\* ${oldOwnerName}`, 'g'), `**Created by:** ${newOwnerName}`);
-        fs.writeFileSync(soulPath, content, 'utf-8');
       }
     }
   }

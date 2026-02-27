@@ -19,7 +19,7 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
   if (!ctx.from) return;
   const userId = ctx.from.id;
   const stopTyping = startTyping(ctx);
-  const status = createStatusTracker(ctx);
+  const status = createStatusTracker(ctx, config.bot?.name);
 
   try {
     const tenant = await getTenant(userId, config);
