@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OBOL_DIR } = require('./config');
 
-const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets', 'library']);
+const ALLOWED_DIRS = new Set(['personality', 'scripts', 'tests', 'commands', 'apps', 'logs', 'assets']);
 const ALLOWED_ROOT_FILES = new Set([
   'config.json',
   'secrets.json',
@@ -10,7 +10,7 @@ const ALLOWED_ROOT_FILES = new Set([
   '.first-run-done',
   '.post-setup-done',
 ]);
-const TEMP_DOTDIRS = new Set(['.typst', '.cache', '.tmp']);
+const TEMP_DOTDIRS = new Set(['.typst', '.tmp']);
 
 // Extensions that belong in scripts/
 const SCRIPT_EXTS = new Set(['.js', '.ts', '.sh', '.py', '.rb', '.php', '.go', '.rs', '.pl', '.lua']);
@@ -102,8 +102,16 @@ function applyIssues(baseDir, issues) {
         try {
           fs.rmSync(src, { recursive: true, force: true });
           applied.push({ path: item.name + '/', action: 'deleted (empty dir)' });
-        } catch (e) {
-          errors.push(`Failed to delete ${item.name}/: ${e.message}`);
+        } catch {
+          // rmSync may be blocked in sandboxed environments — fall back to moving
+          try {
+            const fallbackName = item.name.replace(/^\./, '_dot_');
+            fs.mkdirSync(path.join(baseDir, 'apps'), { recursive: true });
+            fs.renameSync(src, path.join(baseDir, 'apps', fallbackName));
+            applied.push({ path: item.name + '/', action: `moved → apps/${fallbackName}/ (delete blocked)` });
+          } catch (e2) {
+            errors.push(`Failed to clean ${item.name}/: ${e2.message}`);
+          }
         }
       } else {
         const dest = path.join(baseDir, 'apps', item.name);
