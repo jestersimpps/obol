@@ -188,4 +188,4 @@ function resolveDelay(delay) {
   return new Date(now + parseInt(match[1]) * units[match[2]]).toISOString();
 }
 
-module.exports = { runAnalysis };
+module.exports = { runAnalysis, buildTranscript, resolveDelay };
