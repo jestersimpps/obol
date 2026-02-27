@@ -1,3 +1,10 @@
+## 0.3.7
+- add impulse system (spontaneous check-ins with cooldown + periodic cron)
+- fix haiku context: strip tool blocks from history so haiku sees clean conversation
+- enforce code block formatting for all copyable content (drafts, emails, templates)
+- expand prompt bench to ~90 test cases
+- fix verbose batcher HTML escaping
+
 ## 0.3.6
 - optimize routing: drop haiku probe, trim system prompt, add tool-need heuristic + bench prompts
 - split large files into focused modules
