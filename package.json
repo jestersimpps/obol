@@ -1,6 +1,6 @@
 {
   "name": "obol-ai",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Self-evolving AI assistant that learns, remembers, and acts on its own. Persistent vector memory, self-rewriting personality, proactive heartbeats.",
   "main": "src/index.js",
   "bin": {

@@ -1,7 +1,9 @@
+## 0.3.12
+- add patterns_view, patterns_delete, knowledge_remove, memory_stats tools
+
 ## 0.3.11
-- per-user timezone support for all engagement cycles
 - add model stats toggle to /tools menu
-- timezone setup in obol init and obol config
+- per-user timezone support for all engagement cycles
 
 ## 0.3.10
 - add CLI commands for evolve and curiosity, verbose logging
