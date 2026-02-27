@@ -195,24 +195,32 @@ Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.`,
       if (Array.isArray(facts) && facts.length > 0) {
         const validCategories = new Set(['fact','preference','decision','lesson','person','project','event','conversation','resource','pattern','context','email']);
         let stored = 0;
+        let updated = 0;
         let duped = 0;
 
         for (const fact of facts.slice(0, 5)) {
           if (!fact.content || fact.content.length <= 10) continue;
-          try {
-            const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.82 });
-            if (existing.length > 0) { duped++; continue; }
-          } catch {}
           const category = validCategories.has(fact.category) ? fact.category : 'fact';
           const importance = typeof fact.importance === 'number' ? Math.min(1, Math.max(0, fact.importance)) : 0.5;
           const tags = Array.isArray(fact.tags) ? fact.tags.slice(0, 5) : [];
+          try {
+            const related = await this.memory.search(fact.content, { limit: 1, threshold: 0.65 });
+            if (related.length > 0) {
+              const top = related[0];
+              if (top.similarity >= 0.82) { duped++; continue; }
+              await this.memory.update(top.id, { content: fact.content, category, importance, tags });
+              updated++;
+              vlog?.(`[extract] ~[${category}] ${fact.content}`);
+              continue;
+            }
+          } catch {}
           await this.memory.add(fact.content, { category, tags, importance, source: 'turn-extraction' });
           stored++;
           vlog?.(`[extract] +[${category}] ${fact.content}`);
         }
 
-        if (stored > 0 || duped > 0) {
-          vlog?.(`[extract] ${stored} stored, ${duped} duped, ${facts.length} extracted`);
+        if (stored > 0 || updated > 0 || duped > 0) {
+          vlog?.(`[extract] ${stored} stored, ${updated} updated, ${duped} duped, ${facts.length} extracted`);
         }
       } else {
         vlog?.('[extract] 0 facts (trivial exchange)');

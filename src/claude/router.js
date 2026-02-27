@@ -36,7 +36,7 @@ async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision
 Reply with ONLY a JSON object:
 {"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "haiku|sonnet|opus"}
 
-search_queries: 1-3 optimized search queries based on the full conversation context. Cover distinct topics, people, or entities referenced. Single-topic messages need just one query.
+search_queries: 1-5 optimized search queries based on the full conversation context. Cover distinct topics, people, entities, time periods, or projects referenced. Single-topic messages need just one query. Use more queries when the message references multiple people, projects, or threads.
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
@@ -73,12 +73,13 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
 
     if (decision.need_memory && memory) {
       const budget = decision.model === 'opus' ? 40 : decision.model === 'haiku' ? 15 : 25;
+      const poolPerQuery = decision.model === 'opus' ? 20 : decision.model === 'haiku' ? 10 : 15;
       const searchQueries = queries.length > 0 ? queries : [userMessage];
 
       const recentMemories = await memory.byDate('7d', { limit: Math.ceil(budget / 3) });
 
       const semanticResults = await Promise.all(
-        searchQueries.map(q => memory.search(q, { limit: Math.ceil(budget / searchQueries.length), threshold: 0.4 }))
+        searchQueries.map(q => memory.search(q, { limit: poolPerQuery, threshold: 0.4 }))
       );
       const semanticMemories = semanticResults.flat();
 
