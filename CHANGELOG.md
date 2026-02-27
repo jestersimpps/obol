@@ -1,3 +1,9 @@
+## 0.3.14
+- rewrite impulse prompt to sound like a friend, not an assistant
+
+## 0.3.13
+- strip citations from history to fix 400 replay errors
+
 ## 0.3.12
 - add patterns_view, patterns_delete, knowledge_remove, memory_stats tools
 
