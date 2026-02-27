@@ -4,8 +4,10 @@ const { getTenant } = require('./tenant');
 const { shouldEvolveNow, evolve } = require('./evolve');
 const { ensureUserDir } = require('./config');
 const { runAnalysis } = require('./analysis');
+const { runCuriosity } = require('./curiosity');
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
+const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
 
 const _evolutionRunning = new Set();
 
@@ -67,6 +69,21 @@ async function runEvolutionForUser(bot, config, userId) {
     console.error(`[evolution] Failed for user ${userId}:`, e.message);
   } finally {
     _evolutionRunning.delete(userId);
+  }
+}
+
+async function runCuriosityForUser(config, userId) {
+  try {
+    const tenant = await getTenant(userId, config);
+    if (!tenant.selfMemory) return;
+    await runCuriosity(tenant.claude.client, tenant.selfMemory, userId, {
+      memory: tenant.memory,
+      patterns: tenant.patterns,
+      scheduler: tenant.scheduler,
+      peopleContext: tenant.personality?.user || null,
+    });
+  } catch (e) {
+    console.error(`[curiosity] Failed for user ${userId}:`, e.message);
   }
 }
 
@@ -158,6 +175,19 @@ function setupHeartbeat(bot, config) {
       }
     });
     console.log(`  ✅ Analysis cron running (every 3h ${config.timezone || 'UTC'})`);
+
+    cron.schedule('* * * * *', async () => {
+      const timezone = config.timezone || 'UTC';
+      const { hour, minute } = getLocalHour(timezone);
+      if (!CURIOSITY_HOURS.has(hour) || minute !== 0) return;
+
+      for (const userId of allowedUsers) {
+        runCuriosityForUser(config, userId).catch(e =>
+          console.error(`[curiosity] Unhandled error for user ${userId}:`, e.message)
+        );
+      }
+    });
+    console.log(`  ✅ Curiosity cron running (every 6h ${config.timezone || 'UTC'})`);
   }
 
   console.log('  ✅ Heartbeat running (every 1min)');
