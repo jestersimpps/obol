@@ -83,6 +83,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
         onRouteDecision: context._onRouteDecision,
         onRouteUpdate: context._onRouteUpdate,
         recentHistory: history,
+        selfMemory,
       });
       memoryBlock = result.memoryBlock;
       if (result.model) context._model = result.model;
@@ -174,11 +175,14 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
       cachedTools[lastIdx] = { ...lastDef, cache_control: { type: 'ephemeral' }, run };
     }
 
+    const assembledMessages = withCacheBreakpoints(withRuntimeContext([...history]));
+    context._onPromptReady?.({ system: systemPrompt, messages: assembledMessages, model: activeModel, tools: cachedTools });
+
     const runner = client.beta.messages.toolRunner({
       model: activeModel,
       max_tokens: 128000,
       system: systemPrompt,
-      messages: withCacheBreakpoints(withRuntimeContext([...history])),
+      messages: assembledMessages,
       tools: cachedTools ?? undefined,
       max_iterations: getMaxToolIterations(),
       stream: true,

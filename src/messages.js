@@ -41,7 +41,8 @@ class MessageLog {
   }
 
   async log(chatId, role, content, opts = {}) {
-    const truncated = content.substring(0, 50000);
+    const serialized = typeof content === 'string' ? content : JSON.stringify(content);
+    const truncated = serialized.substring(0, 50000);
 
     try {
       await fetch(`${this.url}/rest/v1/obol_messages`, {
@@ -60,7 +61,7 @@ class MessageLog {
       console.error('[messages] Log failed:', e.message);
     }
 
-    if (role === 'user') {
+    if (role === 'user' && typeof content === 'string') {
       this._lastUserMessage.set(chatId, truncated);
     }
 
@@ -83,7 +84,12 @@ class MessageLog {
         { headers: this.headers }
       );
       const data = await res.json();
-      const rows = data.reverse();
+      const rows = data.reverse().map(row => {
+        if (typeof row.content === 'string' && row.content.startsWith('[')) {
+          try { row.content = JSON.parse(row.content); } catch {}
+        }
+        return row;
+      });
       const firstUserIdx = rows.findIndex(r => r.role === 'user');
       return firstUserIdx > 0 ? rows.slice(firstUserIdx) : rows;
     } catch {
@@ -194,7 +200,7 @@ Importance: 0.3 minor, 0.5 useful, 0.7 important, 0.9 critical.`,
         for (const fact of facts.slice(0, 5)) {
           if (!fact.content || fact.content.length <= 10) continue;
           try {
-            const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.92 });
+            const existing = await this.memory.search(fact.content, { limit: 1, threshold: 0.82 });
             if (existing.length > 0) { duped++; continue; }
           } catch {}
           const category = validCategories.has(fact.category) ? fact.category : 'fact';

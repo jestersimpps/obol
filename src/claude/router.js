@@ -1,22 +1,34 @@
-async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate, recentHistory = [] }) {
+function buildRouterMessages(recentHistory, userMessage) {
+  const context = recentHistory.slice(-20).map(m => ({
+    role: m.role,
+    content: typeof m.content === 'string'
+      ? m.content.substring(0, 500)
+      : m.content.filter(b => b.type === 'text').map(b => b.text).join('').substring(0, 500),
+  })).filter(m => m.content);
+
+  const firstUserIdx = context.findIndex(m => m.role === 'user');
+  const trimmed = firstUserIdx > 0 ? context.slice(firstUserIdx) : context;
+
+  return [...trimmed, { role: 'user', content: userMessage }];
+}
+
+function jaccardSim(a, b) {
+  const words = s => new Set(s.toLowerCase().split(/\W+/).filter(Boolean));
+  const setA = words(a), setB = words(b);
+  let inter = 0;
+  for (const w of setA) if (setB.has(w)) inter++;
+  return inter / (setA.size + setB.size - inter);
+}
+
+async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate, recentHistory = [], selfMemory = null }) {
   let memoryBlock = null;
   let model = null;
 
   try {
-    const lastAssistantMsgs = recentHistory
-      .filter(m => m.role === 'assistant')
-      .slice(-3)
-      .map(m => typeof m.content === 'string' ? m.content : m.content.filter(b => b.type === 'text').map(b => b.text).join(''))
-      .filter(Boolean);
-
-    const contextNote = lastAssistantMsgs.length > 0
-      ? `\n\nRecent assistant context (last ${lastAssistantMsgs.length} turns):\n${lastAssistantMsgs.map((t, i) => `[${i + 1}] ${t.substring(0, 300)}`).join('\n')}`
-      : '';
-
     const routerDecision = await client.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 200,
-      system: `You are a router. Analyze this user message and decide:
+      system: `You are a router. Analyze the conversation and decide:
 
 1. Does it need memory context? (past conversations, facts, preferences, people, events)
 2. What model complexity does it need?
@@ -24,14 +36,14 @@ async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision
 Reply with ONLY a JSON object:
 {"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "haiku|sonnet|opus"}
 
-search_queries: 1-3 optimized search queries covering different topics in the message. One query per distinct topic/entity. Single-topic messages need just one query.
+search_queries: 1-3 optimized search queries based on the full conversation context. Cover distinct topics, people, or entities referenced. Single-topic messages need just one query.
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
 Model: Default to "sonnet". Use "haiku" for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, quick yes/no questions, and short single-turn exchanges that don't need any tool calling. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.
 
-If recent context shows an ongoing task (sonnet/opus was just used, multi-step work in progress), bias toward that model even for short follow-up messages.${contextNote}`,
-      messages: [{ role: 'user', content: userMessage }],
+If recent context shows an ongoing task (sonnet/opus was just used, multi-step work in progress), bias toward that model even for short follow-up messages.`,
+      messages: buildRouterMessages(recentHistory, userMessage),
     });
 
     const decisionText = routerDecision.content[0]?.text || '';
@@ -63,7 +75,7 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       const budget = decision.model === 'opus' ? 40 : decision.model === 'haiku' ? 15 : 25;
       const searchQueries = queries.length > 0 ? queries : [userMessage];
 
-      const recentMemories = await memory.byDate('2d', { limit: Math.ceil(budget / 3) });
+      const recentMemories = await memory.byDate('7d', { limit: Math.ceil(budget / 3) });
 
       const semanticResults = await Promise.all(
         searchQueries.map(q => memory.search(q, { limit: Math.ceil(budget / searchQueries.length), threshold: 0.4 }))
@@ -75,14 +87,21 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       for (const m of [...recentMemories, ...semanticMemories]) {
         if (!seen.has(m.id)) {
           seen.add(m.id);
-          const recencyBonus = m.created_at ? Math.max(0, 1 - (Date.now() - new Date(m.created_at).getTime()) / (7 * 86400000)) * 0.15 : 0;
-          m._score = (m.similarity || 0.5) * 0.6 + (m.importance || 0.5) * 0.25 + recencyBonus;
+          const ageDays = m.created_at ? (Date.now() - new Date(m.created_at).getTime()) / 86400000 : 7;
+          const recencyBonus = Math.max(0, 1 - ageDays / 7) * 0.3;
+          m._score = (m.similarity || 0.5) * 0.5 + (m.importance || 0.5) * 0.2 + recencyBonus;
           combined.push(m);
         }
       }
 
       combined.sort((a, b) => b._score - a._score);
-      const topFacts = combined.slice(0, budget);
+
+      const topFacts = [];
+      for (const m of combined) {
+        if (topFacts.length >= budget) break;
+        const isDup = topFacts.some(kept => jaccardSim(kept.content, m.content) > 0.7);
+        if (!isDup) topFacts.push(m);
+      }
 
       vlog(`[memory] ${topFacts.length} facts (${recentMemories.length} recent, ${semanticMemories.length} semantic, budget=${budget})`);
       onRouteUpdate?.({ memoryCount: topFacts.length });
@@ -93,6 +112,22 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
           return `- [${m.category}] ${m.content}${date ? ` (${date})` : ''}`;
         });
         memoryBlock = `## Relevant memories\n${lines.join('\n')}`;
+      }
+
+      if (selfMemory) {
+        const selfResults = await Promise.all(
+          searchQueries.map(q => selfMemory.search(q, { limit: 5, threshold: 0.4 }))
+        );
+        const seen2 = new Set();
+        const topSelf = [];
+        for (const m of selfResults.flat()) {
+          if (!seen2.has(m.id)) { seen2.add(m.id); topSelf.push(m); }
+        }
+        if (topSelf.length > 0) {
+          const selfLines = topSelf.slice(0, 8).map(m => `- [${m.category}] ${m.content}`);
+          memoryBlock = (memoryBlock || '') + `\n\n## Self-knowledge\n${selfLines.join('\n')}`;
+          vlog(`[memory] +${topSelf.length} self-memory facts`);
+        }
       }
     }
   } catch (e) {
