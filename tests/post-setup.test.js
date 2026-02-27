@@ -13,6 +13,8 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  // Restore process.platform to its real value after each test
+  Object.defineProperty(process, 'platform', { value: os.platform(), writable: false, configurable: true });
 });
 
 describe('isPostSetupDone', () => {
@@ -57,6 +59,9 @@ describe('runPostSetup', () => {
   });
 
   it('skips on non-linux and calls reportFn with skip message', async () => {
+    // Simulate a non-linux platform so runPostSetup exits early with skip message
+    Object.defineProperty(process, 'platform', { value: 'darwin', writable: false, configurable: true });
+
     const reportFn = vi.fn();
     const result = await runPostSetup({}, reportFn, tmpDir);
     expect(reportFn).toHaveBeenCalledWith(

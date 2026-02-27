@@ -440,7 +440,7 @@ Fix the scripts. Tests define correct behavior.`
     }
     if (Object.keys(validTraits).length > 0) {
       const merged = { ...currentTraits, ...validTraits };
-      saveTraits(personalityDir, merged);
+      saveTraits(userPersonalityDir, merged);
     }
   }
 

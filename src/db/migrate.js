@@ -287,6 +287,20 @@ async function migrate(supabaseConfig) {
       WHERE id = ANY(memory_ids);
     $$;`,
 
+    // Journal table (OBOL's thought log — one entry per curiosity cycle)
+    `CREATE TABLE IF NOT EXISTS obol_journal (
+      id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      user_id    BIGINT NOT NULL DEFAULT 0,
+      content    TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_obol_journal_user ON obol_journal (user_id, created_at DESC);`,
+    `ALTER TABLE obol_journal ENABLE ROW LEVEL SECURITY;`,
+    `DO $ BEGIN
+      CREATE POLICY "service_role_all" ON obol_journal FOR ALL TO service_role USING (true) WITH CHECK (true);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $;`,
+
     // Soul backup table (one row per file key: 'soul', 'agents')
     `CREATE TABLE IF NOT EXISTS obol_soul (
       id TEXT PRIMARY KEY,

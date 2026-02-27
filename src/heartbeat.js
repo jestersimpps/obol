@@ -114,7 +114,7 @@ async function runCuriosityOnce(config, allowedUsers) {
     }));
 
     const peopleContext = contexts.filter(Boolean).join('\n\n---\n\n');
-    await runCuriosity(client, selfMemory, 0, { peopleContext });
+    await runCuriosity(client, selfMemory, 0, { peopleContext, supabaseConfig: config.supabase });
 
     const userDispatchData = await Promise.all(allowedUsers.map(async (userId) => {
       try {
@@ -317,3 +317,4 @@ async function runAgenticEvent(bot, config, event) {
 }
 
 module.exports = { setupHeartbeat };
+

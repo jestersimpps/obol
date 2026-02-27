@@ -60,7 +60,7 @@ async function createTenant(userId, config) {
 
   let personalityMtime = 0;
   try {
-    personalityMtime = fs.statSync(path.join(personalityDir, 'SOUL.md')).mtimeMs;
+    personalityMtime = fs.statSync(path.join(userDir, 'personality', 'SOUL.md')).mtimeMs;
   } catch {}
 
   return {

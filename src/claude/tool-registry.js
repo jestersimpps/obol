@@ -15,6 +15,7 @@ const historyTool = require('./tools/history');
 const agentTool = require('./tools/agent');
 const sttTool = require('./tools/stt');
 const mermaidTool = require('./tools/mermaid');
+const personalityTool = require('./tools/personality');
 
 const TOOL_MODULES = [
   execTool,
@@ -29,6 +30,7 @@ const TOOL_MODULES = [
   agentTool,
   sttTool,
   mermaidTool,
+  personalityTool,
 ];
 
 const INPUT_SUMMARIES = {
@@ -55,6 +57,7 @@ const INPUT_SUMMARIES = {
   text_to_speech: (i) => i.text?.substring(0, 60),
   tts_voices: (i) => i.language || 'all',
   chat_history: (i) => `${i.date}${i.role ? ` [${i.role}]` : ''}`,
+  edit_personality: (i) => `${i.file}${i.section ? `: ${i.section}` : ''}`,
 };
 
 function summarizeInput(toolName, input) {
