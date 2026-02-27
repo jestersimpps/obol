@@ -125,28 +125,21 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
       vlog(`[tokens] in=${usage.input_tokens} out=${usage.output_tokens}${cacheInfo}`);
     }
 
-    if (activeModel.includes('haiku') && runnableTools.length > 0) {
-      const toolDefs = runnableTools.map(({ run, ...def }) => def);
-      const probe = await client.messages.create({
+    if (activeModel.includes('haiku')) {
+      const haikuMessages = withCacheBreakpoints(withRuntimeContext([...history], runtimePrefix));
+      context._onPromptReady?.({ system: systemPrompt, messages: haikuMessages, model: activeModel, tools: [] });
+
+      const haikuResponse = await client.messages.create({
         model: activeModel,
         max_tokens: 4096,
         system: systemPrompt,
-        messages: withCacheBreakpoints(withRuntimeContext([...history], runtimePrefix)),
-        tools: toolDefs,
+        messages: haikuMessages,
       }, { signal: abortController.signal });
 
-      trackUsage(probe.usage);
-
-      const hasToolUse = probe.content.some(b => b.type === 'tool_use');
-      if (!hasToolUse) {
-        histories.pushAssistant(chatId, probe.content);
-        const text = probe.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-        return { text, usage: totalUsage, model: activeModel };
-      }
-
-      vlog('[escalate] haiku → sonnet (tool use requested)');
-      activeModel = 'claude-sonnet-4-6';
-      context._onRouteUpdate?.({ model: 'sonnet' });
+      trackUsage(haikuResponse.usage);
+      histories.pushAssistant(chatId, haikuResponse.content);
+      const text = haikuResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      return { text, usage: totalUsage, model: activeModel };
     }
 
     const cachedTools = runnableTools.length > 0 ? addToolCache(runnableTools) : undefined;
@@ -268,7 +261,11 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
     return histories.estimateTokens(id, baseSystemPrompt.length);
   }
 
-  return { chat, client, reloadPersonality, clearHistory, injectHistory, getContextStats, stopChat, forceStopChat };
+  function repairHistory(chatId) {
+    histories.repair(chatId || 'default');
+  }
+
+  return { chat, client, reloadPersonality, clearHistory, injectHistory, repairHistory, getContextStats, stopChat, forceStopChat };
 }
 
 module.exports = { createClaude };

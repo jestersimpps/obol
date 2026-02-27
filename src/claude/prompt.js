@@ -125,104 +125,17 @@ Both tools notify the partner that their agent was contacted. Keep messages spec
   }
 
   parts.push(`
-## Tools
+## Tool Guidance
 
-### Shell (\`exec\`)
-Run shell commands. Workspace is your home directory.
-- Timeout: 30s default, 120s max
-- Blocked: \`rm -rf\`, \`shutdown\`, \`eval\`, \`bash -c\`, backtick injection, pipe-to-shell
-- Sensitive paths blocked: \`/etc/passwd\`, \`.env\`, \`.ssh/\`, \`/root/\`
+Tool descriptions and parameters are in the tool definitions — refer to those. Below is behavioral guidance only.
 
-### Memory (\`memory_search\`, \`memory_add\`, \`memory_query\`)
-Vector memory via Supabase pgvector with local embeddings.
-- \`memory_search\` — semantic search across all memories
-- \`memory_add\` — store facts, decisions, preferences, events, people, projects
-- \`memory_query\` — filter memories by tag, date, category, source, importance
-
-Categories: \`fact\`, \`preference\`, \`decision\`, \`lesson\`, \`person\`, \`project\`, \`event\`, \`conversation\`, \`resource\`, \`pattern\`, \`context\`, \`email\`
-
-### Your Own Knowledge (\`knowledge_search\`, \`knowledge_add\`, \`interests_list\`, \`interests_add\`)
-Separate from user memory — this is *your* brain. Research you've done, things you're curious about, your own reflections.
-- \`knowledge_search\` — search your own research and reflections
-- \`knowledge_add\` — store a finding, reflection, or observation (categories: research, interest, self, pattern)
-- \`interests_list\` — see what you're currently curious about
-- \`interests_add\` — queue something to explore in a future curiosity cycle
-
-When a topic comes up that you want to know more about, add it as an interest. Your curiosity cycle will research it automatically every few hours and store findings back here.
-
-### Files (\`read_file\`, \`write_file\`)
-Read and write files within your workspace. Parent directories created automatically.
-Cannot access paths outside workspace or /tmp.
-
-### Web (\`web_search\`)
-Search the web for current information.
-
-### Background Tasks (\`background_task\`)
-Spawn heavy work (research, site building, complex analysis) in the background.
-The main conversation stays responsive. User gets progress updates every 30s.
-After spawning, reply with a brief acknowledgment.
-
-### Secrets (\`store_secret\`, \`read_secret\`, \`list_secrets\`)
-Per-user encrypted secret store (pass or JSON fallback).
-- \`store_secret\` — store a key/value secret (API keys, passwords, tokens)
-- \`read_secret\` — read a secret by key
-- \`list_secrets\` — list all secret keys (keys only, not values)
-
-Use these tools instead of \`exec\` for storing/reading secrets — they bypass the \`bash -c\` restriction.
-
-### Send File (\`send_file\`)
-Send a file back to the user via Telegram. Use after generating PDFs, images, documents, or any file the user requested.
-
-### Create PDF (\`create_pdf\`)
-Create professional PDF documents from Typst markup. After creating, use \`send_file\` to deliver.
-
-Typst quick reference:
-- Headings: \`= Title\`, \`== Section\`, \`=== Subsection\`
-- Bold: \`*bold*\`, Italic: \`_italic_\`, Code: \`\\\`code\\\`\`
-- Lists: \`- item\` (bullet), \`+ item\` (numbered)
-- Links: \`#link("url")[label]\`
-- Images: \`#image("path.png", width: 50%)\`
-- Tables: \`#table(columns: 3, [Header], [Header], [Header], [A], [B], [C])\`
-- Page setup: \`#set page(paper: "a4", margin: 2cm)\`
-- Text setup: \`#set text(font: "New Computer Modern", size: 11pt)\`
-- Alignment: \`#align(center)[centered text]\`
-- Math: \`$E = m c^2$\` (inline), \`$ sum_(i=0)^n i $\` (block)
-- Line break: \`\\\\\`, Page break: \`#pagebreak()\`
-
-### Ask User (\`telegram_ask\`)
-Send a message with inline keyboard buttons and wait for the user to tap one. Use for human-in-the-loop decisions before taking action.
-
-Examples:
-- After listing emails: \`telegram_ask({message: "Open any of these?", options: ["#1 Google", "#2 LinkedIn", "#3 DeepLearning", "None"]})\`
-- Before sending a reply: \`telegram_ask({message: "Send this reply?", options: ["Send it", "Edit first", "Cancel"]})\`
-- Before an irreversible action: \`telegram_ask({message: "Archive all read emails?", options: ["Yes", "No"]})\`
-
-Returns the tapped button label, or \`"timeout"\` if the user doesn't respond within the timeout (default 60s).
-
-### Scheduling (\`schedule_event\`, \`list_events\`, \`cancel_event\`)
-Schedule one-time or recurring reminders. The user gets a Telegram message each time an event fires.
-- \`schedule_event\` — schedule a reminder with title, due_at (ISO 8601), timezone (IANA), optional description
-- \`list_events\` — list pending/sent/cancelled/completed events
-- \`cancel_event\` — cancel a scheduled event by ID
-
-**Recurring events:** use \`cron_expr\` (5-field cron). The system auto-reschedules after each fire — never chain one-time events manually.
-Examples: \`*/30 * * * *\` (every 30 min), \`0 9 * * 1-5\` (weekdays 9am), \`0 8 * * 1\` (Mondays 8am), \`0 0 1 * *\` (1st of month).
-
-When scheduling: always search memory first for the user's timezone/location. If no timezone found, ask the user or default to UTC. Parse natural language dates relative to the user's timezone.
-
-### Text to Speech (\`text_to_speech\`, \`tts_voices\`)
-Convert text to voice messages. Use when the user wants something read aloud.
-- \`text_to_speech\` — synthesize text and send as voice message. Voice defaults to user preference.
-- \`tts_voices\` — list available voices, filterable by language and gender
-
-### Flowchart / Diagram (\`mermaid_chart\`)
-Generate diagrams and send them as images. Supports flowcharts, sequence diagrams, ER diagrams, Gantt charts, pie charts, etc.
-- \`definition\` — Mermaid syntax (e.g. \`graph TD; A-->B\`)
-- \`theme\` — default / dark / forest / neutral
-- \`caption\` — optional caption on the image
-
-### Bridge (\`bridge_ask\`, \`bridge_tell\`)
-Only available if bridge is enabled. Communicate with partner's AI agent.
+- \`exec\`: timeout 30s default, 120s max. Blocked: \`rm -rf\`, \`shutdown\`, \`eval\`, \`bash -c\`, backtick injection, pipe-to-shell. Sensitive paths blocked: \`/etc/passwd\`, \`.env\`, \`.ssh/\`, \`/root/\`
+- \`knowledge_add\`/\`interests_add\`: when a topic comes up you want to know more about, add it as an interest — your curiosity cycle researches it automatically
+- \`background_task\`: after spawning, reply with a brief acknowledgment
+- \`schedule_event\`: always search memory first for the user's timezone. For recurring events, use \`cron_expr\` — never chain one-time events manually
+- \`create_pdf\`: uses Typst markup. Quick ref: \`= Heading\`, \`*bold*\`, \`_italic_\`, \`- list\`, \`#table(columns: N, [...])\`, \`#set page(paper: "a4")\`, \`#set text(font: "New Computer Modern", size: 11pt)\`. After creating, use \`send_file\` to deliver
+- \`store_secret\`/\`read_secret\`: use these instead of \`exec\` for credentials — they bypass \`bash -c\` restriction
+- \`telegram_ask\`: use for human-in-the-loop decisions before acting (confirmations, approvals, selections)
 `);
 
   const scriptsDir = userDir ? path.join(userDir, 'scripts') : null;

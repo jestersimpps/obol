@@ -31,6 +31,8 @@ Thumbs.db
 
 # local dev scripts
 src/cli/prompt-debug.js
+src/cli/prompt-bench.js
+bench-results.json
 
 # test & coverage
 coverage/
