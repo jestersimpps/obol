@@ -1,13 +1,8 @@
+const { resolveDelay } = require('../utils/timing');
+
 const DISPATCH_MODEL = 'claude-sonnet-4-6';
 const MAX_ITERATIONS = 10;
 const SHAREABLE_CATEGORIES = new Set(['research', 'interest', 'self']);
-
-function resolveDelay(delay) {
-  const units = { h: 3600000, d: 86400000, w: 604800000 };
-  const match = delay.match(/^(\d+)([hdw])$/);
-  if (!match) return new Date(Date.now() + 86400000).toISOString();
-  return new Date(Date.now() + parseInt(match[1]) * units[match[2]]).toISOString();
-}
 
 async function runCuriosityDispatch(client, selfMemory, users) {
   if (!users.length) return;

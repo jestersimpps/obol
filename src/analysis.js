@@ -1,3 +1,5 @@
+const { resolveDelay } = require('./utils/timing');
+
 const ANALYSIS_WINDOW_MS = 3 * 60 * 60 * 1000;
 const MAX_MESSAGE_CHARS = 1000;
 const MAX_TRANSCRIPT_CHARS = 40000;
@@ -113,10 +115,10 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
             type: 'object',
             properties: {
               description: { type: 'string' },
-              delay: { type: 'string', description: '"2h", "1d", "3d", or "1w"' },
+              due_at: { type: 'string', description: 'ISO 8601 date or datetime in the user\'s local time, e.g. "2024-03-15" or "2024-03-15T20:00"' },
               context: { type: 'string', description: 'Brief context for the follow-up message' },
             },
-            required: ['description', 'delay', 'context'],
+            required: ['description', 'due_at', 'context'],
           },
         },
         patterns: {
@@ -139,11 +141,13 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
   }];
 
   try {
+    const localTime = new Date().toLocaleString('en-US', { timeZone: timezone, dateStyle: 'full', timeStyle: 'short' });
     const patternGuidance = `Extract behavioral patterns about this user from the report. Each pattern must be a factual observation about the user's behavior — not notes about your analysis process. If you see the same pattern in the existing list, reuse its exact key and update the summary/confidence. Skip patterns already at confidence >0.8 unless new evidence contradicts them.`;
+    const timingGuidance = `Current local time for this user: ${localTime}. For each follow-up, pick a specific date or datetime in the user's local time based on what you know from the transcript. Use ISO 8601 format: "2024-03-15" for date-only or "2024-03-15T20:00" for exact time.`;
 
     const system = formattedPatterns
-      ? `Existing behavioral patterns for this user:\n${formattedPatterns}\n\n---\n\n${patternGuidance}`
-      : `Convert this analytical report into structured data using the save_analysis tool. ${patternGuidance}`;
+      ? `Existing behavioral patterns for this user:\n${formattedPatterns}\n\n---\n\n${patternGuidance}\n\n${timingGuidance}`
+      : `Convert this analytical report into structured data using the save_analysis tool. ${patternGuidance}\n\n${timingGuidance}`;
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -160,9 +164,12 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
     const followUps = toolUse.input?.follow_ups || [];
     const patternList = toolUse.input?.patterns || [];
 
+    const timingPattern = patterns ? await patterns.get('timing.active_hours').catch(() => null) : null;
+    const timingData = timingPattern?.data || null;
+
     for (const fu of followUps) {
-      if (!fu.description || !fu.delay) continue;
-      const dueAt = resolveDelay(fu.delay);
+      if (!fu.description || !fu.due_at) continue;
+      const dueAt = resolveDelay(fu.due_at, timezone, timingData);
       const instructions = `You mentioned checking in on: "${fu.description}". Context: ${fu.context || ''}. Reach out naturally — like a friend who remembered. Keep it casual, one line. Don't reference any system or task.`;
       await scheduler.add(chatId, 'Proactive follow-up', dueAt, timezone, fu.description, null, null, null, instructions).catch(e =>
         console.error('[analysis] Failed to schedule follow-up:', e.message)
@@ -184,12 +191,4 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
   }
 }
 
-function resolveDelay(delay) {
-  const now = Date.now();
-  const units = { h: 3600000, d: 86400000, w: 604800000 };
-  const match = delay.match(/^(\d+)([hdw])$/);
-  if (!match) return new Date(now + 86400000).toISOString();
-  return new Date(now + parseInt(match[1]) * units[match[2]]).toISOString();
-}
-
-module.exports = { runAnalysis, buildTranscript, resolveDelay };
+module.exports = { runAnalysis, buildTranscript };

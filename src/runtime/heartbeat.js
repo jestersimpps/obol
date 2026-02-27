@@ -7,15 +7,16 @@ const { runAnalysis } = require('../analysis');
 const { runCuriosity } = require('../curiosity');
 const { runCuriosityDispatch } = require('../curiosity/dispatch');
 const { runCuriosityHumor } = require('../curiosity/humor');
-const { maybePeriodicImpulse } = require('../curiosity/impulse');
+const { runProactiveNews } = require('../curiosity/news');
 const { createSelfMemory } = require('../memory/self');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
 const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
-const IMPULSE_HOURS = new Set([4, 10, 16, 22]);
+const NEWS_HOURS = new Set([8, 18]);
 
 const _evolutionRunning = new Set();
+const _newsRunning = new Set();
 let _curiosityRunning = false;
 
 function getLocalHour(timezone) {
@@ -150,6 +151,44 @@ async function runAnalysisForUser(bot, config, userId) {
   }
 }
 
+async function runNewsForUser(bot, config, userId) {
+  if (_newsRunning.has(userId)) return;
+
+  const tenant = await getTenant(userId, config);
+  const pref = tenant.toolPrefs?.get('proactive_news');
+  if (!pref?.enabled) return;
+
+  const topics = pref.config?.topics || [];
+  if (topics.length === 0) return;
+
+  _newsRunning.add(userId);
+  console.log(`[news] Starting proactive news for user ${userId}, topics: ${topics.join(', ')}`);
+
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+    const timezone = getUserTimezone(config, userId);
+
+    const messages = await runProactiveNews(client, topics, tenant.memory, tenant.personality, timezone);
+
+    for (let i = 0; i < messages.length; i++) {
+      if (i > 0) {
+        const delay = 30_000 + Math.random() * 120_000;
+        await new Promise(r => setTimeout(r, delay));
+      }
+      await bot.api.sendMessage(userId, messages[i]).catch(() =>
+        bot.api.sendMessage(userId, messages[i], { parse_mode: undefined }).catch(() => {})
+      );
+    }
+
+    console.log(`[news] Sent ${messages.length} messages to user ${userId}`);
+  } catch (e) {
+    console.error(`[news] Failed for user ${userId}:`, e.message);
+  } finally {
+    _newsRunning.delete(userId);
+  }
+}
+
 function makeFakeCtx(bot, chatId) {
   return {
     chat: { id: chatId },
@@ -237,17 +276,18 @@ function setupHeartbeat(bot, config) {
     });
     console.log(`  ✅ Curiosity cron running (every 6h ${config.timezone || 'UTC'})`);
 
+
     cron.schedule('* * * * *', async () => {
       for (const userId of allowedUsers) {
         const tz = getUserTimezone(config, userId);
         const { hour, minute } = getLocalHour(tz);
-        if (!IMPULSE_HOURS.has(hour) || minute !== 0) continue;
-        maybePeriodicImpulse(bot, config, userId).catch(e =>
-          console.error(`[impulse] Periodic error for user ${userId}:`, e.message)
+        if (!NEWS_HOURS.has(hour) || minute !== 0) continue;
+        runNewsForUser(bot, config, userId).catch(e =>
+          console.error(`[news] Unhandled error for user ${userId}:`, e.message)
         );
       }
     });
-    console.log('  ✅ Impulse cron running (every 6h per-user timezone)');
+    console.log('  ✅ News cron running (8am + 6pm per-user timezone)');
   }
 
   console.log('  ✅ Heartbeat running (every 1min)');

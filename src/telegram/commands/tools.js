@@ -2,6 +2,7 @@ const { InlineKeyboard } = require('grammy');
 const { getTenant } = require('../../tenant');
 const { OPTIONAL_TOOLS } = require('../../claude');
 const { clearVoiceFlow, sendVoiceLanguagePicker } = require('../voice');
+const { clearTopicFlow, sendTopicEditor } = require('../topics');
 const { TERM_SEP } = require('../constants');
 
 function isEnabled(pref, feature) {
@@ -34,6 +35,7 @@ function register(bot, config) {
   bot.command('tools', async (ctx) => {
     if (!ctx.from) return;
     await clearVoiceFlow(ctx.from.id, bot);
+    await clearTopicFlow(ctx.from.id, bot);
     const tenant = await getTenant(ctx.from.id, config);
     await tenant.reloadToolPrefs();
     const text = buildToolsMessage(tenant.toolPrefs);
@@ -47,6 +49,7 @@ async function handleToolCallback(ctx, featureKey, answer, { getTenant: gt, conf
   if (!ctx.from) return answer();
 
   await clearVoiceFlow(ctx.from.id, bot);
+  await clearTopicFlow(ctx.from.id, bot);
 
   const tenant = await gt(ctx.from.id, cfg);
   if (!tenant.toolPrefsApi) return answer({ text: 'Not available' });
@@ -63,6 +66,10 @@ async function handleToolCallback(ctx, featureKey, answer, { getTenant: gt, conf
 
   if (newEnabled && Object.keys(feature.config).length > 0 && feature.config.voice) {
     sendVoiceLanguagePicker(ctx);
+  }
+
+  if (newEnabled && featureKey === 'proactive_news') {
+    sendTopicEditor(ctx, cfg);
   }
 }
 

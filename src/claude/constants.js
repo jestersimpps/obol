@@ -35,6 +35,13 @@ const OPTIONAL_TOOLS = {
     config: {},
     defaultEnabled: true,
   },
+  proactive_news: {
+    label: 'Proactive News',
+    tools: [],
+    config: {
+      topics: { label: 'Topics', default: [] },
+    },
+  },
 };
 
 const BLOCKED_EXEC_PATTERNS = [

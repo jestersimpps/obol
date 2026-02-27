@@ -1,5 +1,8 @@
-## 0.3.14
-- rewrite impulse prompt to sound like a friend, not an assistant
+## 0.3.15
+- replace impulse with proactive news system (topic-based, 8am + 6pm per timezone)
+- exact datetime for analysis follow-ups instead of semantic delays
+- deduplicate resolveDelay into shared utils/timing module
+- add /topics command for editing news topics
 
 ## 0.3.13
 - strip citations from history to fix 400 replay errors

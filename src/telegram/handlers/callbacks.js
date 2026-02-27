@@ -1,5 +1,6 @@
 const { handleToolCallback } = require('../commands/tools');
 const { handleVoiceCallback } = require('../voice');
+const { handleTopicCallback } = require('../topics');
 
 function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
   bot.on('callback_query:data', async (ctx) => {
@@ -34,6 +35,11 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
 
     if (data.startsWith('voice:')) {
       await handleVoiceCallback(ctx, data, answer, { getTenant, config });
+      return;
+    }
+
+    if (data.startsWith('topics:')) {
+      await handleTopicCallback(ctx, data, answer, { getTenant, config, bot });
       return;
     }
 

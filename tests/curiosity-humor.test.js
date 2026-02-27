@@ -1,6 +1,7 @@
 const { describe, it, expect, vi, beforeEach, afterEach } = globalThis;
 
-const { resolveDelay, handleTool } = require('../src/curiosity/humor');
+const { handleTool } = require('../src/curiosity/humor');
+const { resolveDelay } = require('../src/utils/timing');
 
 describe('curiosity-humor', () => {
   describe('resolveDelay', () => {
@@ -25,12 +26,12 @@ describe('curiosity-humor', () => {
       expect(resolveDelay('1w')).toBe(new Date('2024-01-22T12:00:00.000Z').toISOString());
     });
 
-    it('defaults to 1 day on invalid input', () => {
-      expect(resolveDelay('lol')).toBe(new Date('2024-01-16T12:00:00.000Z').toISOString());
+    it('defaults to tomorrow at peak hour on invalid input', () => {
+      expect(resolveDelay('lol', 'UTC')).toBe(new Date('2024-01-16T20:00:00.000Z').toISOString());
     });
 
-    it('defaults to 1 day on empty string', () => {
-      expect(resolveDelay('')).toBe(new Date('2024-01-16T12:00:00.000Z').toISOString());
+    it('defaults to tomorrow at peak hour on empty string', () => {
+      expect(resolveDelay('', 'UTC')).toBe(new Date('2024-01-16T20:00:00.000Z').toISOString());
     });
   });
 

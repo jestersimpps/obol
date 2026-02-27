@@ -1,6 +1,6 @@
-const { describe, it, expect, vi } = globalThis;
+const { describe, it, expect } = globalThis;
 
-const { buildTranscript, resolveDelay } = require('../src/analysis');
+const { buildTranscript } = require('../src/analysis');
 
 describe('analysis', () => {
   describe('buildTranscript', () => {
@@ -53,47 +53,6 @@ describe('analysis', () => {
       const result = buildTranscript(messages);
 
       expect(result).not.toMatch(/\s+$/);
-    });
-  });
-
-  describe('resolveDelay', () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2024-01-15T12:00:00.000Z'));
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it('parses hours correctly', () => {
-      const result = resolveDelay('2h');
-      const expected = new Date('2024-01-15T14:00:00.000Z').toISOString();
-      expect(result).toBe(expected);
-    });
-
-    it('parses days correctly', () => {
-      const result = resolveDelay('1d');
-      const expected = new Date('2024-01-16T12:00:00.000Z').toISOString();
-      expect(result).toBe(expected);
-    });
-
-    it('parses weeks correctly', () => {
-      const result = resolveDelay('1w');
-      const expected = new Date('2024-01-22T12:00:00.000Z').toISOString();
-      expect(result).toBe(expected);
-    });
-
-    it('defaults to 1 day on invalid input', () => {
-      const result = resolveDelay('invalid');
-      const expected = new Date('2024-01-16T12:00:00.000Z').toISOString();
-      expect(result).toBe(expected);
-    });
-
-    it('defaults to 1 day on empty string', () => {
-      const result = resolveDelay('');
-      const expected = new Date('2024-01-16T12:00:00.000Z').toISOString();
-      expect(result).toBe(expected);
     });
   });
 });

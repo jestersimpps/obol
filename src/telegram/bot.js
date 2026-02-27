@@ -101,6 +101,7 @@ function createBot(telegramConfig, config) {
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
     { command: 'tools', description: 'Toggle optional tools on/off' },
+    { command: 'topics', description: 'Edit news topics' },
     { command: 'stop', description: 'Stop the current request' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },
     { command: 'help', description: 'Show available commands' },
@@ -112,6 +113,12 @@ function createBot(telegramConfig, config) {
   adminCommands.register(bot, config, createAsk);
   secretsCommands.register(bot, config);
   toolsCommands.register(bot, config);
+
+  bot.command('topics', async (ctx) => {
+    if (!ctx.from) return;
+    const { sendTopicEditor } = require('./topics');
+    await sendTopicEditor(ctx, config);
+  });
 
   const deps = { config, allowedUsers, bot, createAsk };
   registerTextHandler(bot, deps);

@@ -211,9 +211,6 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
     tenant.messageLog?.log(ctx.chat.id, 'assistant', response, { model, tokensIn: usage?.input_tokens, tokensOut: usage?.output_tokens });
 
-    const { maybeImpulse } = require('../../curiosity/impulse');
-    maybeImpulse(bot, config, tenant, ctx.chat.id, chatMessage, response).catch(() => {});
-
     stopTyping();
 
     if (response.length > 4096) {
@@ -291,6 +288,12 @@ function registerTextHandler(bot, { config, allowedUsers, createAsk }) {
       await ctx.reply(
         '⚠️ That message contained what looks like an API key or token. I deleted it, but it may have been seen already — consider rotating it.\n\nUse `/secret set <name> <value>` to store credentials safely.'
       ).catch(() => {});
+      return;
+    }
+
+    const { isPendingTopicInput, handleTopicText } = require('../topics');
+    if (isPendingTopicInput(userId)) {
+      await handleTopicText(ctx, userMessage, { getTenant, config, bot });
       return;
     }
 
