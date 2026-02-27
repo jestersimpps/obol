@@ -1,3 +1,7 @@
+## 0.3.2
+- update changelog
+- add list_pending_events tool to dispatch and humor passes to prevent duplicates
+
 ## 0.3.1
 - update changelog
 - add curiosity humor pass with puns, inside jokes, and link support
