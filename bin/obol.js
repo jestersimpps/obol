@@ -94,4 +94,20 @@ program
     await reauth();
   });
 
+program
+  .command('evolve [userId]')
+  .description('Trigger an evolution cycle manually')
+  .action(async (userId) => {
+    const { evolve } = require('../src/cli/evolve');
+    await evolve({ userId: userId ? parseInt(userId) : undefined });
+  });
+
+program
+  .command('curiosity [userId]')
+  .description('Trigger a curiosity cycle manually')
+  .action(async (userId) => {
+    const { curiosity } = require('../src/cli/curiosity');
+    await curiosity({ userId: userId ? parseInt(userId) : undefined });
+  });
+
 program.parse();

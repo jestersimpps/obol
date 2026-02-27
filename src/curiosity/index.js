@@ -107,10 +107,12 @@ You can search your own memory to see what you already know before looking thing
     context ? `What you have access to:\n\n${context}` : null,
   ].filter(Boolean).join('\n\n');
 
+  const log = process.env.OBOL_VERBOSE ? (msg) => console.log(`[curiosity] ${msg}`) : () => {};
   const messages = [{ role: 'user', content: `What are you curious about right now?` }];
   let stored = 0;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    log(`Iteration ${i + 1}/${MAX_ITERATIONS}...`);
     const response = await client.messages.create({
       model: RESEARCH_MODEL,
       max_tokens: 2000,
@@ -121,12 +123,24 @@ You can search your own memory to see what you already know before looking thing
 
     messages.push({ role: 'assistant', content: response.content });
 
-    if (response.stop_reason === 'end_turn') break;
+    const textBlocks = response.content.filter(b => b.type === 'text').map(b => b.text).join(' ');
+    if (textBlocks) log(`  Text: ${textBlocks.substring(0, 200)}`);
+    log(`  Stop reason: ${response.stop_reason}`);
+
+    if (response.stop_reason === 'end_turn') {
+      if (stored === 0 && i < 3) {
+        log('  No saves yet — nudging to continue...');
+        messages.push({ role: 'user', content: 'Keep going — search the web, explore that thread, and save what you find with the remember tool. Don\'t just reflect, actually look things up.' });
+        continue;
+      }
+      break;
+    }
     if (response.stop_reason !== 'tool_use') break;
 
     const toolResults = [];
     for (const block of response.content) {
       if (block.type !== 'tool_use') continue;
+      log(`  Tool: ${block.name}${block.name === 'remember' ? ` — ${block.input.content?.substring(0, 100)}` : block.name === 'web_search' ? ` — "${block.input.query}"` : block.name === 'knowledge_search' ? ` — "${block.input.query}"` : ''}`);
 
       if (block.name === 'remember') {
         try {

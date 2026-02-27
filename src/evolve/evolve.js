@@ -22,6 +22,8 @@ const MODELS = {
 const MAX_FIX_ATTEMPTS = 1;
 
 async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig = null, selfMemory = null) {
+  const log = process.env.OBOL_VERBOSE ? (msg) => console.log(`[evolve] ${msg}`) : () => {};
+
   const { PERSONALITY_DIR } = require('../soul');
   const baseDir = userDir || OBOL_DIR;
   const state = loadEvolutionState(userDir);
@@ -33,16 +35,20 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
   const testsDir = path.join(baseDir, 'tests');
   const commandsDir = path.join(baseDir, 'commands');
 
+  log('Loading current personality files...');
   const currentSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : '';
   const currentUser = fs.existsSync(userPath) ? fs.readFileSync(userPath, 'utf-8') : '';
   const currentAgents = fs.existsSync(agentsPath) ? fs.readFileSync(agentsPath, 'utf-8') : '';
   const currentScripts = readDir(scriptsDir);
   const currentTests = readDir(testsDir);
   const currentCommands = readDir(commandsDir);
+  log(`  Soul: ${currentSoul.length} chars, Scripts: ${Object.keys(currentScripts).length}, Tests: ${Object.keys(currentTests).length}, Commands: ${Object.keys(currentCommands).length}`);
 
+  log('Fetching messages and memories...');
   const recentMessages = await fetchRecentMessages(messageLog, state);
   const { coreMemories, recentMemories } = await fetchMemories(memory, messageLog, state);
   const selfMemories = await fetchSelfMemories(selfMemory);
+  log(`  Messages: ${recentMessages.length}, Core memories: ${coreMemories.length}, Recent memories: ${recentMemories.length}, Self memories: ${selfMemories.length}`);
 
   let previousSoul = '';
   const archiveDir = path.join(PERSONALITY_DIR, 'evolution');
@@ -53,6 +59,7 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
         .sort();
       if (archives.length > 0) {
         previousSoul = fs.readFileSync(path.join(archiveDir, archives[archives.length - 1]), 'utf-8');
+        log(`  Previous soul: ${archives[archives.length - 1]} (${previousSoul.length} chars)`);
       }
     }
   } catch {}
@@ -78,10 +85,13 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
     .join('\n\n') || '(no commands)';
 
   const evolutionNumber = state.evolutionCount + 1;
+  log(`Evolution #${evolutionNumber} (last: ${state.lastEvolution || 'never'})`);
 
+  log('Pre-evolution backup...');
   await backupSnapshot(`pre-evolution #${evolutionNumber}`, userDir);
 
   if (memory && recentMessages.length >= 4) {
+    log('Deep consolidating memory...');
     await deepConsolidateMemory(claudeClient, memory, recentMessages, evolutionNumber, MODELS.personality).catch(e =>
       console.error('[evolve] Deep consolidation failed:', e.message)
     );
@@ -90,6 +100,7 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
   const isFirstEvolution = !currentSoul;
   let growthReport = '';
   if (!isFirstEvolution && (recentMemories.length > 0 || recentMessages.length > 0 || selfMemories.length > 0)) {
+    log('Running growth analysis...');
     try {
       const growthResponse = await claudeClient.messages.create({
         model: MODELS.personality,
@@ -122,12 +133,15 @@ ${transcript.substring(0, 30000)}`,
         }],
       });
       growthReport = growthResponse.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      log(`  Growth report: ${growthReport.length} chars`);
     } catch (e) {
       console.error('[evolve] Growth analysis failed:', e.message);
     }
   }
 
+  log('Running baseline tests...');
   const baselineResults = runTests(testsDir);
+  log(`  Baseline: ${baselineResults.passed} passed, ${baselineResults.failed} failed`);
 
   const firstEvolutionPreamble = isFirstEvolution ? `
 ## FIRST EVOLUTION — IMPORTANT
@@ -152,6 +166,7 @@ A pre-evolution analysis has been conducted comparing your previous state agains
     baselineResults,
   });
 
+  log('Running main evolution (this takes a while)...');
   const response = await claudeClient.messages.create({
     model: MODELS.personality,
     max_tokens: 16384,
@@ -191,6 +206,7 @@ ${transcript || '(no conversations yet)'}
 Evolve. Rewrite everything that needs rewriting. Write tests for every script. Keep what works. Fix what doesn't.${growthReport ? ' Use the growth report to guide personality continuity and trait adjustments.' : ''}`
     }],
   });
+  log('  Evolution response received');
 
   const responseText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
 
@@ -211,11 +227,14 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
     throw new Error('Evolution produced empty or too-short SOUL.md');
   }
 
+  log(`  New soul: ${result.soul.length} chars`);
+
   let scriptsRolledBack = false;
   const hasNewTests = result.tests && typeof result.tests === 'object' && Object.keys(result.tests).length > 0;
   const hasNewScripts = result.scripts && typeof result.scripts === 'object' && Object.keys(result.scripts).length > 0;
 
   if (hasNewTests) {
+    log(`Writing ${Object.keys(result.tests).length} new tests...`);
     syncDir(testsDir, result.tests);
     for (const f of Object.keys(result.tests)) {
       try { fs.chmodSync(path.join(testsDir, f), 0o755); } catch {}
@@ -225,6 +244,7 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   const preRefactorResults = hasNewTests ? runTests(testsDir) : baselineResults;
 
   if (hasNewScripts) {
+    log(`Writing ${Object.keys(result.scripts).length} new scripts...`);
     syncDir(scriptsDir, result.scripts);
     for (const f of Object.keys(result.scripts)) {
       try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
@@ -234,11 +254,14 @@ Evolve. Rewrite everything that needs rewriting. Write tests for every script. K
   let scriptsFixed = false;
 
   if (hasNewTests || hasNewScripts) {
+    log('Running post-refactor tests...');
     let postRefactorResults = runTests(testsDir);
+    log(`  Post-refactor: ${postRefactorResults.passed} passed, ${postRefactorResults.failed} failed`);
 
     let fixAttempt = 0;
     while (postRefactorResults.failed > preRefactorResults.failed && fixAttempt < MAX_FIX_ATTEMPTS) {
       fixAttempt++;
+      log(`  Fix attempt ${fixAttempt}/${MAX_FIX_ATTEMPTS}...`);
 
       try {
         const fixResponse = await claudeClient.messages.create({
@@ -288,6 +311,7 @@ Fix the scripts. Tests define correct behavior.`
 
             if (postRefactorResults.failed <= preRefactorResults.failed) {
               scriptsFixed = true;
+              log('  Scripts fixed');
             }
           }
         }
@@ -297,6 +321,7 @@ Fix the scripts. Tests define correct behavior.`
     }
 
     if (postRefactorResults.failed > preRefactorResults.failed) {
+      log('  Rolling back scripts...');
       syncDir(scriptsDir, currentScripts);
       for (const f of Object.keys(currentScripts)) {
         try { fs.chmodSync(path.join(scriptsDir, f), 0o755); } catch {}
@@ -312,6 +337,7 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
+  log('Archiving previous soul...');
   fs.mkdirSync(archiveDir, { recursive: true });
   if (currentSoul) {
     const timestamp = new Date().toISOString().slice(0, 10);
@@ -321,6 +347,7 @@ Fix the scripts. Tests define correct behavior.`
     );
   }
 
+  log('Writing new soul...');
   fs.writeFileSync(soulPath, result.soul);
   if (supabaseConfig) {
     const { backup } = require('../soul');
@@ -330,22 +357,27 @@ Fix the scripts. Tests define correct behavior.`
   }
 
   if (result.user && result.user.length > 50) {
+    log('Writing USER.md...');
     fs.writeFileSync(userPath, result.user);
   }
 
   if (result.agents && result.agents.length > 50) {
+    log('Writing AGENTS.md...');
     fs.writeFileSync(agentsPath, result.agents);
   }
 
   if (result.commands && typeof result.commands === 'object') {
     if (Object.keys(result.commands).length > 0 || Object.keys(currentCommands).length > 0) {
+      log(`Writing ${Object.keys(result.commands).length} commands...`);
       syncDir(commandsDir, result.commands);
     }
   }
 
+  log('Building and deploying apps...');
   const deployedApps = await buildAndDeployApps(result, baseDir);
 
   if (result.dependencies && Array.isArray(result.dependencies) && result.dependencies.length > 0) {
+    log(`Installing dependencies: ${result.dependencies.join(', ')}...`);
     try {
       const validDeps = result.dependencies.filter(isValidNpmPackage);
       if (validDeps.length === 0) throw new Error('No valid package names found');
@@ -370,6 +402,7 @@ Fix the scripts. Tests define correct behavior.`
   saveEvolutionState(state, userDir);
 
   if (memory) {
+    log('Saving evolution memory...');
     const changelog = result.changelog || `Evolution #${evolutionNumber} completed.`;
     const rollbackNote = scriptsRolledBack ? ' Scripts rolled back due to test regression.' : scriptsFixed ? ' Scripts fixed after test regression.' : '';
     await memory.add(
@@ -385,8 +418,10 @@ Fix the scripts. Tests define correct behavior.`
     }
   }
 
+  log('Post-evolution backup...');
   await backupSnapshot(`post-evolution #${evolutionNumber}`, userDir);
 
+  log('Done');
   return {
     evolutionNumber,
     previousLength: currentSoul.length,

@@ -45,7 +45,8 @@ async function fetchRecentMessages(messageLog, state) {
       `${messageLog.url}/rest/v1/obol_messages?order=created_at.asc&limit=500&select=role,content,created_at${userFilter}${sinceFilter}`,
       { headers: messageLog.headers }
     );
-    return await res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch (e) {
     console.error('[evolve] Failed to fetch recent messages:', e.message);
     return [];
@@ -73,7 +74,8 @@ async function fetchMemories(memory, messageLog, state) {
       `${url}/rest/v1/obol_memory?select=content,category,importance&order=importance.desc,accessed_at.desc&limit=20${memUserFilter}`,
       { headers }
     );
-    coreMemories = await res.json();
+    const coreData = await res.json();
+    coreMemories = Array.isArray(coreData) ? coreData : [];
   } catch (e) {
     console.error('[evolve] Failed to fetch core memories:', e.message);
   }
@@ -85,7 +87,8 @@ async function fetchMemories(memory, messageLog, state) {
       `${url}/rest/v1/obol_memory?select=content,category,importance,tags,created_at,source&order=created_at.asc&limit=100${memUserFilter}${sinceFilter}`,
       { headers }
     );
-    recentMemories = await res.json();
+    const recentData = await res.json();
+    recentMemories = Array.isArray(recentData) ? recentData : [];
   } catch (e) {
     console.error('[evolve] Failed to fetch recent memories:', e.message);
   }
