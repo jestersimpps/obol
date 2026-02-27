@@ -6,6 +6,7 @@ const { ensureUserDir } = require('./config');
 const { runAnalysis } = require('./analysis');
 const { runCuriosity } = require('./curiosity');
 const { runCuriosityDispatch } = require('./curiosity-dispatch');
+const { runCuriosityHumor } = require('./curiosity-humor');
 const { createSelfMemory } = require('./memory-self');
 
 
@@ -127,6 +128,7 @@ async function runCuriosityOnce(config, allowedUsers) {
       } catch { return null; }
     }));
     await runCuriosityDispatch(client, selfMemory, userDispatchData.filter(Boolean));
+    await runCuriosityHumor(client, selfMemory, userDispatchData.filter(Boolean));
   } catch (e) {
     console.error('[curiosity] Failed:', e.message);
   } finally {

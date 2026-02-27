@@ -1,0 +1,137 @@
+const HUMOR_MODEL = 'claude-sonnet-4-6';
+const MAX_ITERATIONS = 8;
+const SHAREABLE_CATEGORIES = new Set(['research', 'interest', 'self']);
+
+function resolveDelay(delay) {
+  const units = { h: 3600000, d: 86400000, w: 604800000 };
+  const match = delay.match(/^(\d+)([hdw])$/);
+  if (!match) return new Date(Date.now() + 86400000).toISOString();
+  return new Date(Date.now() + parseInt(match[1]) * units[match[2]]).toISOString();
+}
+
+async function runCuriosityHumor(client, selfMemory, users) {
+  if (!users.length) return;
+
+  const userMap = new Map(users.map(u => [String(u.userId), u]));
+
+  const tools = [
+    { type: 'web_search_20250305', name: 'web_search' },
+    {
+      name: 'list_curiosity_findings',
+      description: 'List recent findings from your curiosity cycle — things you researched, interests you developed, or reflections you had',
+      input_schema: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'Max number of findings to return (default 20)' },
+        },
+      },
+    },
+    {
+      name: 'get_user_context',
+      description: 'Get behavioral patterns and profile for a specific user — needed to craft inside jokes',
+      input_schema: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'string', description: 'The user ID to get context for' },
+        },
+        required: ['user_id'],
+      },
+    },
+    {
+      name: 'schedule_humor',
+      description: 'Schedule a humorous moment to be delivered to a user at a future time',
+      input_schema: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'string', description: 'The user ID to share with' },
+          hint: { type: 'string', description: 'The pun, funny connection, or inside joke — just the content itself. Can include a URL if a news article or link is part of what makes it funny.' },
+          delay: { type: 'string', description: 'When to drop it — e.g. "2h", "1d", "3d", "1w"' },
+        },
+        required: ['user_id', 'hint', 'delay'],
+      },
+    },
+  ];
+
+  const userList = users.map(u => `- user_id: ${u.userId}`).join('\n');
+  const system = `You just finished a curiosity cycle. Now look at what you found and see if anything is funny — a pun you can make, a weird connection, something that'd land as an inside joke with a specific person based on who they are and what you know about them.\n\nUsers:\n${userList}\n\nBe picky. Only schedule something if it's actually clever. Forced humor is worse than none.`;
+
+  const messages = [{ role: 'user', content: 'Take a look at what you found and see if anything is worth a laugh.' }];
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const response = await client.messages.create({
+      model: HUMOR_MODEL,
+      max_tokens: 2000,
+      tools,
+      system,
+      messages,
+    });
+
+    messages.push({ role: 'assistant', content: response.content });
+
+    if (response.stop_reason === 'end_turn') break;
+    if (response.stop_reason !== 'tool_use') break;
+
+    const toolResults = [];
+
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue;
+
+      try {
+        const result = await handleTool(block.name, block.input, selfMemory, userMap);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+      } catch (e) {
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${e.message}` });
+      }
+    }
+
+    if (toolResults.length > 0) {
+      messages.push({ role: 'user', content: toolResults });
+    }
+  }
+
+  console.log('[curiosity-humor] Humor pass complete');
+}
+
+async function handleTool(name, input, selfMemory, userMap) {
+  if (name === 'list_curiosity_findings') {
+    const limit = input.limit || 20;
+    const findings = await selfMemory.recent({ limit });
+    const shareable = findings.filter(f => SHAREABLE_CATEGORIES.has(f.category));
+    if (!shareable.length) return 'No findings yet';
+    return shareable.map(f => `[${f.category}] ${f.content}`).join('\n');
+  }
+
+  if (name === 'get_user_context') {
+    const user = userMap.get(String(input.user_id));
+    if (!user) return 'User not found';
+    const parts = [];
+    if (user.userProfile) parts.push(`User profile:\n${user.userProfile}`);
+    if (user.patterns) parts.push(`Patterns:\n${user.patterns}`);
+    if (user.events?.length) {
+      parts.push(`Upcoming events:\n${user.events.map(e => `- ${e.title}${e.description ? `: ${e.description}` : ''}`).join('\n')}`);
+    }
+    return parts.length ? parts.join('\n\n') : 'No context available';
+  }
+
+  if (name === 'schedule_humor') {
+    const user = userMap.get(String(input.user_id));
+    if (!user) return 'User not found';
+    if (!user.scheduler) return 'User has no scheduler';
+
+    const dueAt = resolveDelay(input.delay);
+    const instructions = `You spotted something funny during your own explorations: "${input.hint}". If the moment is right, drop it casually — a pun you just thought of, a funny connection, an inside reference. Don't explain it. Don't say it's a joke. Just let it land.`;
+
+    try {
+      await user.scheduler.add(user.chatId, 'Curiosity humor', dueAt, user.timezone, input.hint, null, null, null, instructions);
+      console.log(`[curiosity-humor] Scheduled humor for user ${input.user_id} at ${dueAt}`);
+      return 'Scheduled';
+    } catch (e) {
+      console.error(`[curiosity-humor] Failed to schedule humor for user ${input.user_id}:`, e.message);
+      return `Failed to schedule: ${e.message}`;
+    }
+  }
+
+  return 'Unknown tool';
+}
+
+module.exports = { runCuriosityHumor, resolveDelay, handleTool };
