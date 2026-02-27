@@ -124,10 +124,10 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
           items: {
             type: 'object',
             properties: {
-              key: { type: 'string', description: 'Stable identifier e.g. "timing.active_hours"' },
+              key: { type: 'string', description: 'Stable dot-notation identifier for this pattern, e.g. "timing.active_hours", "mood.stress_signals", "humor.style"' },
               dimension: { type: 'string', enum: ['timing', 'mood', 'humor', 'engagement', 'communication', 'topics'] },
-              summary: { type: 'string', description: 'Human-readable statement e.g. "Usually active 7-10pm"' },
-              data: { type: 'object', description: 'Structured supporting data' },
+              summary: { type: 'string', description: 'Factual observation about the user, e.g. "Most active between 7-10pm on weekdays", "Uses sarcasm and dry humor when relaxed"' },
+              data: { type: 'object', description: 'Factual evidence only. Examples: {"peak_hours":["19:00-22:00"],"peak_days":["mon","wed","fri"]} or {"preferred_topics":["crypto","music"]} or {"avg_message_length":"short","uses_caps":false}. Never put notes, commentary, or meta-analysis here.' },
               confidence: { type: 'number', description: '0-1' },
             },
             required: ['key', 'dimension', 'summary', 'confidence'],
@@ -139,9 +139,11 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
   }];
 
   try {
+    const patternGuidance = `Extract behavioral patterns about this user from the report. Each pattern must be a factual observation about the user's behavior — not notes about your analysis process. If you see the same pattern in the existing list, reuse its exact key and update the summary/confidence. Skip patterns already at confidence >0.8 unless new evidence contradicts them.`;
+
     const system = formattedPatterns
-      ? `Existing behavioral patterns for this user:\n${formattedPatterns}\n\n---\n\nConvert this analytical report into structured data using the save_analysis tool. Use existing patterns to calibrate confidence scores (higher if confirming, consider skipping if already well-established at >0.8). Flag contradictions in pattern data.`
-      : 'Convert this analytical report into structured data using the save_analysis tool. Extract all follow-ups and patterns mentioned.';
+      ? `Existing behavioral patterns for this user:\n${formattedPatterns}\n\n---\n\n${patternGuidance}`
+      : `Convert this analytical report into structured data using the save_analysis tool. ${patternGuidance}`;
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -169,8 +171,10 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
 
     for (const p of patternList) {
       if (!p.key || !p.dimension || !p.summary) continue;
-      await patterns.upsert(p.key, p.dimension, p.summary, p.data || {}, p.confidence || 0.5).catch(e =>
-        console.error('[analysis] Failed to upsert pattern:', e.message)
+      const existing = await patterns.get(p.key).catch(() => null);
+      const save = existing ? patterns.incrementObservation : patterns.upsert;
+      await save(p.key, p.dimension, p.summary, p.data || {}, p.confidence || 0.5).catch(e =>
+        console.error('[analysis] Failed to save pattern:', e.message)
       );
     }
 

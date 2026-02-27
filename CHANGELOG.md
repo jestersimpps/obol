@@ -1,5 +1,8 @@
+## 0.3.9
+- fix pattern analysis: enforce factual user observations, use incrementObservation for existing patterns
+
 ## 0.3.8
-- prevent haiku from hallucinating tool actions: override to sonnet when recent history has tool use
+- override haiku to sonnet when recent history has tool use
 
 ## 0.3.7
 - add impulse system, fix haiku context, enforce code block formatting
