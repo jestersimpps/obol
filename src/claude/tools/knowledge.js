@@ -49,6 +49,17 @@ const definitions = [
       required: ['content'],
     },
   },
+  {
+    name: 'knowledge_remove',
+    description: 'Remove one or more entries from your own knowledge/self-memory by ID. Use knowledge_search first to find IDs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ids: { type: 'array', items: { type: 'string' }, description: 'IDs to remove' },
+      },
+      required: ['ids'],
+    },
+  },
 ];
 
 function formatEntry(m) {
@@ -99,6 +110,13 @@ const handlers = {
       source: 'conversation',
     });
     return `Interest stored: ${result.id}`;
+  },
+
+  async knowledge_remove(input, _memory, context) {
+    const selfMemory = context.selfMemory;
+    if (!selfMemory) return 'Self memory not available.';
+    await Promise.all(input.ids.map(id => selfMemory.forget(id)));
+    return `Removed ${input.ids.length} entr${input.ids.length !== 1 ? 'ies' : 'y'}`;
   },
 };
 

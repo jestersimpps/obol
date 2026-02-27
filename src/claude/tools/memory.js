@@ -53,6 +53,11 @@ const definitions = [
       },
     },
   },
+  {
+    name: 'memory_stats',
+    description: 'Show memory statistics — total count and breakdown by category.',
+    input_schema: { type: 'object', properties: {} },
+  },
 ];
 
 function formatMemory(m) {
@@ -95,6 +100,11 @@ const handlers = {
       limit: input.limit,
     });
     return JSON.stringify(results.map(formatMemory));
+  },
+
+  async memory_stats(_input, memory) {
+    const { total, breakdown } = await memory.stats();
+    return `Total memories: ${total}\n\nBy category:\n${breakdown}`;
   },
 };
 

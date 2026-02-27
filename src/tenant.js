@@ -38,7 +38,7 @@ async function createTenant(userId, config) {
   const selfMemory = config.supabase ? await createSelfMemory(config.supabase, userId) : null;
   const patterns = config.supabase ? await createPatterns(config.supabase, userId) : null;
   const bridgeEnabled = isBridgeEnabled(config) && (config.telegram?.allowedUsers?.length || 0) >= 2;
-  const claude = createClaude(config.anthropic, { personality, memory, selfMemory, userDir, bridgeEnabled, botName: config.bot?.name });
+  const claude = createClaude(config.anthropic, { personality, memory, selfMemory, patterns, userDir, bridgeEnabled, botName: config.bot?.name });
   const scheduler = config.supabase ? createScheduler(config.supabase, userId) : null;
   const messageLog = config.supabase ? createMessageLog(config.supabase, memory, config.anthropic, userId, userDir) : null;
   const toolPrefsApi = config.supabase ? createToolPrefs(config.supabase, userId) : null;

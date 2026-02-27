@@ -8,7 +8,7 @@ const { buildTools, buildRunnableTools, addToolCache } = require('./tool-registr
 const { withCacheBreakpoints, sanitizeMessages, stripToolBlocks } = require('./cache');
 const { getMaxToolIterations } = require('./constants');
 
-function createClaude(anthropicConfig, { personality, memory, selfMemory, userDir = OBOL_DIR, bridgeEnabled, botName }) {
+function createClaude(anthropicConfig, { personality, memory, selfMemory, patterns, userDir = OBOL_DIR, bridgeEnabled, botName }) {
   let client = createAnthropicClient(anthropicConfig);
 
   let baseSystemPrompt = buildSystemPrompt(personality, userDir, { bridgeEnabled, botName });
@@ -18,7 +18,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
   const chatAbortControllers = new Map();
   const chatForceControllers = new Map();
 
-  const tools = buildTools(memory, { bridgeEnabled, selfMemory });
+  const tools = buildTools(memory, { bridgeEnabled, selfMemory, patterns });
 
   function acquireChatLock(chatId) {
     if (!chatLocks.has(chatId)) chatLocks.set(chatId, { promise: Promise.resolve(), busy: false });
@@ -105,6 +105,7 @@ function createClaude(anthropicConfig, { personality, memory, selfMemory, userDi
     context._forceSignal = forceController.signal;
     context.claude = { chat, clearHistory, client };
     context.selfMemory = selfMemory;
+    context.patterns = patterns;
     const runnableTools = buildRunnableTools(tools, memory, context, vlog);
     let activeModel = model;
 

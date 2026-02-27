@@ -15,6 +15,7 @@ const historyTool = require('./tools/history');
 const agentTool = require('./tools/agent');
 const sttTool = require('./tools/stt');
 const mermaidTool = require('./tools/mermaid');
+const patternsTool = require('./tools/patterns');
 
 const TOOL_MODULES = [
   execTool,
@@ -54,6 +55,10 @@ const INPUT_SUMMARIES = {
   create_pdf: (i) => i.filename || 'document',
   text_to_speech: (i) => i.text?.substring(0, 60),
   tts_voices: (i) => i.language || 'all',
+  memory_stats: () => 'stats',
+  knowledge_remove: (i) => i.ids?.join(', '),
+  patterns_view: (i) => i.dimension || 'all',
+  patterns_delete: (i) => i.key,
   chat_history: (i) => `${i.date}${i.role ? ` [${i.role}]` : ''}`,
 };
 
@@ -77,6 +82,10 @@ function buildTools(memory, opts = {}) {
     tools.push(...knowledgeTool.definitions);
   }
 
+  if (opts.patterns) {
+    tools.push(...patternsTool.definitions);
+  }
+
   if (opts.bridgeEnabled) {
     tools.push(...bridgeTool.getDefinitions());
   }
@@ -91,6 +100,7 @@ function buildHandlerMap() {
   }
   Object.assign(map, memoryTool.handlers);
   Object.assign(map, knowledgeTool.handlers);
+  Object.assign(map, patternsTool.handlers);
   Object.assign(map, bridgeTool.handlers);
   return map;
 }
@@ -103,7 +113,8 @@ function buildRunnableTools(tools, memory, context, vlog) {
   if (toolPrefs) {
     for (const [featureKey, feature] of Object.entries(OPTIONAL_TOOLS)) {
       const pref = toolPrefs.get(featureKey);
-      if (!pref || !pref.enabled) {
+      const enabled = pref ? pref.enabled : (feature.defaultEnabled || false);
+      if (!enabled) {
         for (const t of feature.tools) disabledTools.add(t);
       }
     }
