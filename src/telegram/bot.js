@@ -100,7 +100,7 @@ function createBot(telegramConfig, config) {
     { command: 'evolution', description: 'Evolution progress' },
     { command: 'verbose', description: 'Toggle verbose mode on/off' },
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
-    { command: 'tools', description: 'Toggle optional tools on/off' },
+    { command: 'options', description: 'Toggle optional features on/off' },
     { command: 'topics', description: 'Edit news topics' },
     { command: 'stop', description: 'Stop the current request' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },

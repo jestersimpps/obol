@@ -31,7 +31,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 💰 **Prompt caching** — Static system prompt and conversation history prefix are cached via Anthropic's prompt caching, cutting ~85% of repeated input token costs across turns.
 
-🔍 **Curious** — Explores the web on its own every 6 hours. Saves findings, schedules insights and humor for each user based on what it learns and who they are.
+🔍 **Curious** — Explores the web on its own every 12 hours. Saves findings, schedules insights and humor for each user based on what it learns and who they are.
 
 📰 **Proactive news** — Searches for news on topics you care about twice daily (8am + 6pm). Cross-references with your memory to only share what's personally relevant. Friend-style, not newsletter.
 
@@ -84,13 +84,13 @@ ranked recall   escalates on tool use)
    ┌───────┴────────────────────────────────┐
    ↓                ↓              ↓        ↓
 Each exchange    3am daily    Every 3h   Every 6h
-   ↓                ↓              ↓        ↓
-Haiku            Sonnet        Sonnet    Sonnet
-consolidation    evolution     analysis  curiosity
-   ↓             cycle            ↓        ↓
-Extract facts    Rewrite       Patterns  Explore web,
-→ obol_memory    personality,  + follow  dispatch
-                 scripts,      -ups      insights
+   ↓                ↓              ↓         ↓
+Haiku            Sonnet        Sonnet     Sonnet
+consolidation    evolution     analysis   curiosity
+   ↓             cycle            ↓         ↓
+Extract facts    Rewrite       Patterns   Explore web,
+→ obol_memory    personality,  + follow   dispatch
+                 scripts,      -ups       insights
                  tests, apps              + humor
 ```
 
@@ -180,19 +180,19 @@ Refined voice, updated your project list, cleaned up 2 unused scripts.
 
 Three autonomous cycles run alongside conversations — no user interaction needed.
 
-**Behavioral Analysis (every 3h):** Sonnet analyzes the last 3 hours of conversation, searching long-term memory for context. It extracts behavioral patterns across six dimensions — timing, mood, humor, engagement, communication, and topics — and schedules natural follow-ups with exact dates and times based on what it observes. Patterns accumulate over time with observation counts and confidence scores.
+**Behavioral Analysis (every 3h):** Sonnet analyzes the last 3 hours of conversation, with all memories from that same window injected as context. It extracts behavioral patterns across six dimensions — timing, mood, humor, engagement, communication, and topics — and schedules natural follow-ups with exact dates and times based on what it observes. Patterns accumulate over time with observation counts and confidence scores.
 
 ```
 "Mentioned a job interview on Thursday" → schedules a casual check-in for Thursday evening
 "Most active between 7-10pm on weekdays" → stored as timing.active_hours (confidence 0.8)
 ```
 
-**Curiosity Engine (every 6h):** Sonnet gets free time with web search, its own knowledge base, and workspace file access. It researches from a point of view — not neutrally. Findings are saved with reactions, opinions, and open questions. After exploring, two passes run:
+**Curiosity Engine (every 12h):** Sonnet gets free time with web search, its own knowledge base, and workspace file access. It researches from a point of view — not neutrally. Findings are saved with reactions, opinions, and open questions. After exploring, two passes run:
 
 - **Dispatch** — decides which findings are worth sharing with which user, based on their patterns and interests. Schedules insights to arrive naturally.
 - **Humor** — looks for puns, funny connections, and inside jokes tied to what it knows about each person. Schedules them to land at the right moment.
 
-**Proactive News (8am + 6pm per-user timezone):** Searches the web for topics each user cares about, then cross-references with their memory to find personal connections. Only sends messages when something is genuinely relevant — max 3 per cycle, friend-style delivery with natural spacing between messages. Topics configured via `/tools`.
+**Proactive News (8am + 6pm per-user timezone):** Searches the web for topics each user cares about, then cross-references with their memory to find personal connections. Only sends messages when something is genuinely relevant — max 3 per cycle, friend-style delivery with natural spacing between messages. Topics configured via `/options`.
 
 ### The Lifecycle
 
@@ -203,7 +203,7 @@ Day 1:   obol init → obol start → first conversation
 
 Day 1:   Every exchange → Haiku extracts facts to vector memory
          Every 3h → behavioral analysis builds your pattern profile
-         Every 6h → curiosity cycle explores, dispatches insights
+         Every 12h → curiosity cycle explores, dispatches insights
 
 Day 2:   3am → Evolution #1 → growth analysis + Sonnet rewrites
          → voice shifts from generic to personal
@@ -257,17 +257,17 @@ OBOL handles images (vision), documents (PDF extraction), and voice — all via 
 
 | Feature | How it works | Toggle |
 |---------|-------------|--------|
-| **Speech-to-Text** | Incoming voice messages are transcribed locally using faster-whisper (tiny model, ~140MB, CPU). Transcription is injected as context. | `/tools` → Speech to Text |
-| **Text-to-Speech** | OBOL can reply with voice messages using edge-tts. Choose from multiple voices and languages. | `/tools` → Text to Speech |
+| **Speech-to-Text** | Incoming voice messages are transcribed locally using faster-whisper (tiny model, ~140MB, CPU). Transcription is injected as context. | `/options` → Speech to Text |
+| **Text-to-Speech** | OBOL can reply with voice messages using edge-tts. Choose from multiple voices and languages. | `/options` → Text to Speech |
 | **Images** | Photos and images are analyzed via Claude's vision. Analysis is stored in memory for later recall. | Always on |
 | **PDFs** | PDF files are extracted and read via the `read_file` tool. | Always on |
 
-### Optional Tools
+### Options
 
-Toggle features on/off per user via the `/tools` command:
+Toggle features on/off per user via the `/options` command:
 
-| Tool | Default | Description |
-|------|---------|-------------|
+| Option | Default | Description |
+|--------|---------|-------------|
 | Speech to Text | On | Transcribe incoming voice messages |
 | Text to Speech | Off | Voice message replies |
 | PDF Generator | Off | Create PDFs from markdown |
@@ -275,6 +275,7 @@ Toggle features on/off per user via the `/tools` command:
 | Flowchart | Off | Generate Mermaid diagrams |
 | Model Stats | On | Show model/token info in responses |
 | Proactive News | Off | Twice-daily news on configured topics |
+| Curiosity | On | Autonomous web exploration every 12h |
 
 ## Multi-User Architecture
 
@@ -543,7 +544,7 @@ Or edit `~/.obol/config.json` directly:
 /evolution  — Evolution progress
 /verbose    — Toggle verbose mode on/off
 /toolimit   — View or set max tool iterations per message
-/tools      — Toggle optional tools on/off (STT, TTS, PDF, news, etc.)
+/options    — Toggle optional features on/off (STT, TTS, PDF, news, curiosity, etc.)
 /stop       — Stop the current request
 /upgrade    — Check for updates and upgrade
 /help       — Show available commands

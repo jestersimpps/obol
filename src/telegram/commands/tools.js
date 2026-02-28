@@ -10,7 +10,7 @@ function isEnabled(pref, feature) {
 }
 
 function buildToolsMessage(toolPrefs) {
-  const lines = [`◈ TOOLS`, TERM_SEP, ``];
+  const lines = [`◈ OPTIONS`, TERM_SEP, ``];
   for (const [key, feature] of Object.entries(OPTIONAL_TOOLS)) {
     const enabled = isEnabled(toolPrefs.get(key), feature);
     lines.push(`  ${enabled ? '◉' : '○'} ${feature.label}`);
@@ -32,7 +32,7 @@ function buildToolsKeyboard(toolPrefs) {
 }
 
 function register(bot, config) {
-  bot.command('tools', async (ctx) => {
+  bot.command('options', async (ctx) => {
     if (!ctx.from) return;
     await clearVoiceFlow(ctx.from.id, bot);
     await clearTopicFlow(ctx.from.id, bot);

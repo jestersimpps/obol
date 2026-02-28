@@ -45,7 +45,7 @@ function register(bot, config) {
 /forget <id> — Delete a memory
 /events — Upcoming scheduled events
 /tasks — Running background tasks
-/tools — Toggle optional tools on/off
+/options — Toggle optional features on/off
 /secret — Manage per-user secrets
 /evolution — Evolution progress
 /status — Bot status and uptime
