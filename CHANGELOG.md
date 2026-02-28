@@ -1,3 +1,7 @@
+## 0.3.20
+- update changelog
+- rename tools to options, update readme
+
 ## 0.3.19
 - update changelog
 - add curiosity toggle, fix describeToolCall crash in background tasks
