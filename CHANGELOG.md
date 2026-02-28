@@ -1,7 +1,6 @@
-## 0.3.17
-- fix STT pipeline: add missing whisper_transcribe.py, fix require path, enable by default
-
 ## 0.3.16
+- Merge pull request #7 from jestersimpps/fix/stt-whisper-transcribe
+- fix: STT pipeline - add missing whisper_transcribe.py and fix media handler
 - Merge pull request #6 from jestersimpps/fix/status-instant-tool-labels
 - fix: replace async haiku status labels with instant sync formatToolCall
 

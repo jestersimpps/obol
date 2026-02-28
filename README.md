@@ -19,7 +19,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 ---
 
-🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md after 24h + minimum exchanges (configurable). Pre-evolution growth analysis guides personality continuity.
+🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md nightly at 3am (per-user timezone). Pre-evolution growth analysis guides personality continuity.
 
 🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
 
@@ -27,9 +27,17 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 🧠 **Living memory** — Vector memory with semantic search. Haiku routes queries and rewrites them for better embedding hits. Free local embeddings.
 
-🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? Auto-escalates to Sonnet when tool use is needed. No wasted API calls
+🤖 **Smart routing** — Haiku decides per-message: does it need memory? Sonnet or Opus? Auto-escalates to Sonnet when tool use is needed. No wasted API calls.
 
-💰 **Prompt caching** — Static system prompt and conversation history prefix are cached via Anthropic's prompt caching, cutting ~85% of repeated input token costs across turns
+💰 **Prompt caching** — Static system prompt and conversation history prefix are cached via Anthropic's prompt caching, cutting ~85% of repeated input token costs across turns.
+
+🔍 **Curious** — Explores the web on its own every 6 hours. Saves findings, schedules insights and humor for each user based on what it learns and who they are.
+
+📰 **Proactive news** — Searches for news on topics you care about twice daily (8am + 6pm). Cross-references with your memory to only share what's personally relevant. Friend-style, not newsletter.
+
+📊 **Pattern analysis** — Tracks your behavioral patterns every 3 hours — timing, mood, humor, engagement, communication, topics. Schedules natural follow-ups based on what it observes.
+
+🎙️ **Voice** — Text-to-speech voice messages and speech-to-text transcription for incoming voice notes. Toggle on/off per user.
 
 🛡️ **Self-hardening** — Auto-configures SSH (port 2222), firewall, fail2ban, encrypted secrets, and kernel hardening on first run.
 
@@ -41,7 +49,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 
 OBOL is an AI agent that evolves its own personality, rewrites its own code, tests its changes, and fixes what breaks — all from Telegram on your VPS.
 
-It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every 24 hours (with enough conversation), it runs a growth analysis comparing who it was against who it's becoming, then rewrites its personality, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
+It starts as a blank slate. Through conversation it learns who you are, develops a personality shaped by your interactions, and builds operational knowledge about how to work with you. Every night at 3am it runs a growth analysis comparing who it was against who it's becoming, then rewrites its personality, refactors its own scripts, writes tests, fixes regressions, and builds you new tools based on patterns it spots in your conversations — scripts, commands, or full web apps. Between conversations it explores the web on its own, tracks your behavioral patterns, and proactively shares news and insights that connect to things you care about. Over months it becomes an agent that's uniquely yours. No two OBOL instances are alike.
 
 One bot, multiple users. Each allowed Telegram user gets a fully isolated context — their own personality, memory, evolution cycle, and workspace. User A's personality drift, scripts, and memories never leak into User B's. Everything runs in a single process with shared API credentials.
 
@@ -73,18 +81,17 @@ ranked recall   escalates on tool use)
            ↓
    Response → obol_messages
            ↓
-   ┌───────┴────────┐
-   ↓                ↓
-Each exchange    24h + 10 exchanges
-   ↓                ↓
-Haiku              Sonnet
-consolidation      evolution cycle
-   ↓                ↓
-Extract facts      Growth analysis →
-→ obol_memory      rewrite personality,
-                   scripts, tests, commands.
-                   Build new tools.
-                   Git snapshot before + after.
+   ┌───────┴────────────────────────────────┐
+   ↓                ↓              ↓        ↓
+Each exchange    3am daily    Every 3h   Every 6h
+   ↓                ↓              ↓        ↓
+Haiku            Sonnet        Sonnet    Sonnet
+consolidation    evolution     analysis  curiosity
+   ↓             cycle            ↓        ↓
+Extract facts    Rewrite       Patterns  Explore web,
+→ obol_memory    personality,  + follow  dispatch
+                 scripts,      -ups      insights
+                 tests, apps              + humor
 ```
 
 ### Layer 1: Message Log + Vector Memory
@@ -113,13 +120,11 @@ A 1-year-old memory with high similarity and high importance still surfaces. A t
 
 ### Layer 2: The Evolution Cycle
 
-Evolution triggers after a configurable time interval (default 24h) AND a minimum number of exchanges (default 10). The first evolution triggers earlier — just 10 exchanges with no time gate. The bot checks readiness by querying the DB for assistant messages since the last evolution, so the count survives restarts.
+Evolution runs nightly at 3am in each user's local timezone. It checks whether it already ran today — if so, it skips. The first evolution triggers on the first night after setup.
 
-**Pre-evolution growth analysis:** Before rewriting anything, Sonnet compares the previous SOUL against the current one, incorporating all new memories and conversations since the last evolution. It produces a structured growth report covering new learnings, relationship shifts, behavioral patterns, growth edges, trait pressure, and identity continuity. This report becomes the primary guide for the rewrite — evidence-based personality evolution instead of blind overwriting.
+**Pre-evolution growth analysis:** Before rewriting anything, Sonnet compares the previous SOUL against the current one, incorporating all new memories and conversations since the last evolution. It produces a structured growth report covering new learnings, relationship shifts, behavioral patterns, growth edges, and identity continuity. This report becomes the primary guide for the rewrite — evidence-based personality evolution instead of blind overwriting.
 
 **Deep memory consolidation:** A Sonnet pass extracts every valuable fact from the full conversation history into vector memory, deduplicating against existing memories (threshold 0.92). This ensures nothing is lost between evolutions.
-
-**Personality traits** (humor, honesty, directness, curiosity, empathy, creativity) are scored 0-100 and adjusted ±5-15 each evolution based on conversation evidence. The growth report recommends specific trait shifts.
 
 **Cost-conscious model selection:** Evolution uses Sonnet for all phases — growth analysis, personality rewrites, code refactoring, and fix attempts. Sonnet keeps evolution costs negligible (~$0.02 per cycle).
 
@@ -129,10 +134,9 @@ Evolution triggers after a configurable time interval (default 24h) AND a minimu
 
 | Target | What happens |
 |--------|-------------|
-| **SOUL.md** | First-person journal — who the bot has become, relationship dynamic, opinions, quirks |
+| **SOUL.md** | First-person journal — who the bot has become, relationship dynamic, opinions, quirks (shared across all users) |
 | **USER.md** | Third-person owner profile — facts, preferences, projects, people, communication style |
 | **AGENTS.md** | Operational manual — tools, workflows, lessons learned, patterns, rules |
-| **Traits** | Personality trait scores adjusted based on conversation evidence |
 | **scripts/** | Refactored, dead code removed, strict standards enforced |
 | **tests/** | Test for every script, run before and after refactor |
 | **commands/** | Cleaned up, new commands for new tools |
@@ -172,6 +176,24 @@ It searches npm/GitHub for existing libraries, installs dependencies, and writes
 Refined voice, updated your project list, cleaned up 2 unused scripts.
 ```
 
+### Layer 3: Background Intelligence
+
+Three autonomous cycles run alongside conversations — no user interaction needed.
+
+**Behavioral Analysis (every 3h):** Sonnet analyzes the last 3 hours of conversation, searching long-term memory for context. It extracts behavioral patterns across six dimensions — timing, mood, humor, engagement, communication, and topics — and schedules natural follow-ups with exact dates and times based on what it observes. Patterns accumulate over time with observation counts and confidence scores.
+
+```
+"Mentioned a job interview on Thursday" → schedules a casual check-in for Thursday evening
+"Most active between 7-10pm on weekdays" → stored as timing.active_hours (confidence 0.8)
+```
+
+**Curiosity Engine (every 6h):** Sonnet gets free time with web search, its own knowledge base, and workspace file access. It researches from a point of view — not neutrally. Findings are saved with reactions, opinions, and open questions. After exploring, two passes run:
+
+- **Dispatch** — decides which findings are worth sharing with which user, based on their patterns and interests. Schedules insights to arrive naturally.
+- **Humor** — looks for puns, funny connections, and inside jokes tied to what it knows about each person. Schedules them to land at the right moment.
+
+**Proactive News (8am + 6pm per-user timezone):** Searches the web for topics each user cares about, then cross-references with their memory to find personal connections. Only sends messages when something is genuinely relevant — max 3 per cycle, friend-style delivery with natural spacing between messages. Topics configured via `/tools`.
+
 ### The Lifecycle
 
 ```
@@ -180,15 +202,18 @@ Day 1:   obol init → obol start → first conversation
          → post-setup hardens your VPS automatically
 
 Day 1:   Every exchange → Haiku extracts facts to vector memory
+         Every 3h → behavioral analysis builds your pattern profile
+         Every 6h → curiosity cycle explores, dispatches insights
 
-Day 2:   Evolution #1 → growth analysis + Sonnet rewrites everything
+Day 2:   3am → Evolution #1 → growth analysis + Sonnet rewrites
          → voice shifts from generic to personal
          → old soul archived in evolution/
-         → traits calibrated to your communication style
+         8am/6pm → proactive news on topics you care about
 
 Month 2: Evolution #30 → notices you check crypto daily
          → builds a crypto dashboard
          → adds /pdf because you kept asking for PDFs
+         → curiosity drops inside jokes about your interests
 
 Month 6: evolution/ has 180+ archived souls
          → a readable timeline of how your bot evolved from
@@ -217,7 +242,7 @@ Here are the top 5 coworking spaces: ...
 
 ![Status UI](docs/obol-status.png)
 
-Every request shows a live status message with elapsed time, model routing info, and what tools are being used. Two inline buttons let you cancel:
+Every request shows a live status message with elapsed time, model routing info, and the current tool call. Status updates are instant — tool names and input summaries display the moment a tool starts. Two inline buttons let you cancel:
 
 | Button | Behavior |
 |--------|----------|
@@ -225,6 +250,31 @@ Every request shows a live status message with elapsed time, model routing info,
 | **■ Force Stop** | Instantly aborts mid-tool — races the handler and returns immediately |
 
 The `/stop` command also works as a text alternative.
+
+### Voice & Media
+
+OBOL handles images (vision), documents (PDF extraction), and voice — all via Telegram.
+
+| Feature | How it works | Toggle |
+|---------|-------------|--------|
+| **Speech-to-Text** | Incoming voice messages are transcribed locally using faster-whisper (tiny model, ~140MB, CPU). Transcription is injected as context. | `/tools` → Speech to Text |
+| **Text-to-Speech** | OBOL can reply with voice messages using edge-tts. Choose from multiple voices and languages. | `/tools` → Text to Speech |
+| **Images** | Photos and images are analyzed via Claude's vision. Analysis is stored in memory for later recall. | Always on |
+| **PDFs** | PDF files are extracted and read via the `read_file` tool. | Always on |
+
+### Optional Tools
+
+Toggle features on/off per user via the `/tools` command:
+
+| Tool | Default | Description |
+|------|---------|-------------|
+| Speech to Text | On | Transcribe incoming voice messages |
+| Text to Speech | Off | Voice message replies |
+| PDF Generator | Off | Create PDFs from markdown |
+| Background Tasks | Off | Spawn long-running tasks |
+| Flowchart | Off | Generate Mermaid diagrams |
+| Model Stats | On | Show model/token info in responses |
+| Proactive News | Off | Twice-daily news on configured topics |
 
 ## Multi-User Architecture
 
@@ -250,12 +300,13 @@ Router: ctx.from.id → tenant context
 
 | Shared (one copy) | Isolated (per user) |
 |---|---|
-| Telegram bot token | Personality (SOUL.md, USER.md, AGENTS.md) |
+| Telegram bot token | Personality (USER.md, AGENTS.md) |
 | Anthropic API key | Vector memory (scoped by user_id in DB) |
 | Supabase connection | Message history (scoped by user_id in DB) |
 | VPS hardening | Evolution cycle + state |
 | Process manager (pm2) | Scripts, tests, commands, apps |
-| | Workspace directory (`~/.obol/users/{id}/`) |
+| SOUL.md (shared personality) | Behavioral patterns (scoped by user_id in DB) |
+| Curiosity knowledge base | Workspace directory (`~/.obol/users/{id}/`) |
 
 ### Tenant routing
 
@@ -472,10 +523,9 @@ Or edit `~/.obol/config.json` directly:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `evolution.intervalHours` | 24 | Hours between evolution cycles |
-| `evolution.minExchanges` | 10 | Minimum exchanges before evolution can trigger |
-| `heartbeat` | false | Enable proactive check-ins |
 | `bridge.enabled` | false | Let user agents query each other (requires 2+ users) |
+| `timezone` | UTC | Default timezone for evolution, analysis, and news cycles |
+| `users[].timezone` | config timezone | Per-user timezone override |
 
 ## Telegram Commands
 
@@ -486,15 +536,14 @@ Or edit `~/.obol/config.json` directly:
 /today      — Today's memories
 /events     — Show upcoming scheduled events
 /tasks      — Running background tasks
-/status     — Bot status, uptime, evolution progress, traits
+/status     — Bot status, uptime, memory, evolution count
 /backup     — Trigger GitHub backup
 /clean      — Audit workspace, remove rogue files, fix misplaced items
-/traits     — View or adjust personality traits (0-100)
 /secret     — Manage per-user encrypted secrets
 /evolution  — Evolution progress
 /verbose    — Toggle verbose mode on/off
 /toolimit   — View or set max tool iterations per message
-/tools      — Toggle optional tools on/off
+/tools      — Toggle optional tools on/off (STT, TTS, PDF, news, etc.)
 /stop       — Stop the current request
 /upgrade    — Check for updates and upgrade
 /help       — Show available commands
@@ -526,10 +575,11 @@ obol delete            # Full VPS cleanup (removes all OBOL data)
 ```
 ~/.obol/
 ├── config.json                    # Shared credentials + allowedUsers
+├── personality/
+│   └── SOUL.md                    # Shared personality (rewritten each evolution)
 ├── users/
 │   └── <telegram-user-id>/        # Per-user isolated context
 │       ├── personality/
-│       │   ├── SOUL.md            # Bot personality (rewritten each evolution)
 │       │   ├── USER.md            # Owner profile (rewritten each evolution)
 │       │   ├── AGENTS.md          # Operational knowledge
 │       │   └── evolution/         # Archived previous souls
@@ -541,7 +591,7 @@ obol delete            # Full VPS cleanup (removes all OBOL data)
 └── logs/
 ```
 
-Each allowed Telegram user gets their own isolated context — separate personality, memory namespace, evolution cycle, and first-run experience. One bot process, full per-user isolation.
+SOUL.md is shared — it's the bot's core identity across all users. USER.md and AGENTS.md are per-user, so each person gets their own profile and operational knowledge. Memory, patterns, evolution state, and workspace are fully isolated.
 
 ## Backup & Restore
 
@@ -574,6 +624,7 @@ obol start -d
 - Anthropic API key
 - Telegram bot token
 - Supabase account (free tier)
+- Python 3 + `pip3 install faster-whisper` (optional, for voice transcription)
 
 **[→ Full DigitalOcean deployment guide](docs/DEPLOY.md)**
 
@@ -590,8 +641,10 @@ obol start -d
 | **Security** | Auto-hardens on first run | Manual |
 | **Model routing** | Automatic (Haiku) | Manual overrides |
 | **Background tasks** | Built-in with check-ins | Sub-agent spawning |
+| **Proactive intelligence** | Curiosity, analysis, news, humor | — |
+| **Voice** | TTS + STT (faster-whisper) | TTS |
 | **Group chats** | — | Full support |
-| **Cron** | Basic node-cron | Full scheduler |
+| **Cron** | Agentic cron (tool access) + basic | Full scheduler |
 | **Cost** | ~$9/mo | ~$9/mo+ |
 
 ### Performance
@@ -603,7 +656,7 @@ obol start -d
 | **Heap usage** | ~16 MB | ~80-200 MB |
 | **RSS** | ~109 MB | ~300-600 MB |
 | **node_modules** | 354 MB / 9 deps | ~1-2 GB / 50-100+ deps |
-| **Source code** | ~5,100 lines (plain JS) | Tens of thousands (TypeScript monorepo) |
+| **Source code** | ~13,600 lines (plain JS) | Tens of thousands (TypeScript monorepo) |
 | **Native apps** | None | Swift (macOS/iOS), Kotlin (Android) |
 
 The Claude API call dominates response time at 1-5s for both — that's ~85-90% of total latency. User-perceived speed difference is ~10-20%. Where OBOL wins is cold start (10-20x), memory footprint (5-10x), and operational simplicity. On a $5/mo VPS, that matters.
