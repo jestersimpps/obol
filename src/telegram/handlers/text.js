@@ -1,6 +1,6 @@
 const { InlineKeyboard } = require('grammy');
 const { getTenant } = require('../../tenant');
-const { buildStatusHtml, describeToolCall } = require('../../status');
+const { buildStatusHtml, formatToolCall } = require('../../status');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
 const { TEXT_BUFFER_GAP_MS, TEXT_BUFFER_MAX_PARTS, TEXT_BUFFER_MAX_CHARS, TEXT_BUFFER_THRESHOLD } = require('../constants');
 
@@ -133,6 +133,12 @@ function createStatusTracker(ctx, botName) {
       const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: 'Formatting output', title });
       ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML' }).catch(() => {});
     },
+    pushUpdate() {
+      if (!statusMsgId) return;
+      const elapsed = statusStart ? Math.round((Date.now() - statusStart) / 1000) : 0;
+      const html = buildStatusHtml({ route: routeInfo, elapsed, toolStatus: statusText, title });
+      ctx.api.editMessageText(ctx.chat.id, statusMsgId, html, { parse_mode: 'HTML', reply_markup: stopBtn }).catch(() => {});
+    },
     deleteMsg() {
       if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
     },
@@ -185,11 +191,9 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
       if (update.model) ri.model = update.model;
     };
     chatContext._onToolStart = (toolName, inputSummary) => {
-      status.setStatusText('Processing');
-      describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
-        if (desc) status.setStatusText(desc);
-      });
+      status.setStatusText(formatToolCall(toolName, inputSummary));
       status.start();
+      status.pushUpdate();
     };
     chatContext._onLockTimeout = () => {
       status.clear();

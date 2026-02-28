@@ -1,5 +1,4 @@
 const TERM_WIDTH = 25;
-const _toolDescriptionCache = new Map();
 
 function buildStatusHtml({ route, elapsed, toolStatus, title = 'OBOL' }) {
   const pad = Math.max(0, TERM_WIDTH - title.length - 3);
@@ -28,25 +27,10 @@ function buildStatusHtml({ route, elapsed, toolStatus, title = 'OBOL' }) {
   return `<pre>${lines.join('\n')}</pre>`;
 }
 
-function describeToolCall(client, toolName, inputSummary) {
-  const key = `${toolName}:${inputSummary}`;
-  const cached = _toolDescriptionCache.get(key);
-  if (cached) return Promise.resolve(cached);
-
-  return client.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 30,
-    system: 'Describe this tool call in 3-8 words from the user\'s perspective. Present participle. No quotes, period, or emoji.',
-    messages: [{ role: 'user', content: `${toolName}: ${inputSummary}` }],
-  }).then(r => {
-    const desc = r.content[0]?.text?.trim() || null;
-    if (desc) _toolDescriptionCache.set(key, desc);
-    if (_toolDescriptionCache.size > 200) {
-      const first = _toolDescriptionCache.keys().next().value;
-      _toolDescriptionCache.delete(first);
-    }
-    return desc;
-  }).catch(() => null);
+function formatToolCall(toolName, inputSummary) {
+  if (!inputSummary) return toolName;
+  const truncated = inputSummary.length > 40 ? inputSummary.slice(0, 37) + '...' : inputSummary;
+  return `${toolName} "${truncated}"`;
 }
 
-module.exports = { buildStatusHtml, describeToolCall, TERM_WIDTH };
+module.exports = { buildStatusHtml, formatToolCall, TERM_WIDTH };

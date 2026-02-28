@@ -1,6 +1,6 @@
 const path = require('path');
 const { getTenant } = require('../../tenant');
-const { buildStatusHtml, describeToolCall } = require('../../status');
+const { buildStatusHtml, formatToolCall } = require('../../status');
 const media = require('../../media');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
 const { MAX_MEDIA_SIZE, MEDIA_GROUP_DELAY_MS } = require('../constants');
@@ -80,11 +80,9 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
       if (update.model) ri.model = update.model;
     };
     mediaChatCtx._onToolStart = (toolName, inputSummary) => {
-      status.setStatusText('Processing');
-      describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
-        if (desc) status.setStatusText(desc);
-      });
+      status.setStatusText(formatToolCall(toolName, inputSummary));
       status.start();
+      status.pushUpdate();
     };
     mediaChatCtx._onLockTimeout = () => {
       status.clear();
