@@ -1,3 +1,7 @@
+## 0.3.19
+- update changelog
+- add curiosity toggle, fix describeToolCall crash in background tasks
+
 ## 0.3.18
 - store news in self-memory, boost humor output, fix analysis self-referential patterns
 - update readme with curiosity, analysis, news, voice, patterns, and remove traits
