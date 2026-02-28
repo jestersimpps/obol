@@ -3,7 +3,7 @@ const MAX_ITERATIONS = 12;
 const CONFIDENCE_THRESHOLD = 0.6;
 const MAX_MESSAGES = 3;
 
-async function runProactiveNews(client, topics, memory, personality, timezone) {
+async function runProactiveNews(client, topics, memory, personality, timezone, selfMemory) {
   const log = process.env.OBOL_VERBOSE ? (msg) => console.log(`[news] ${msg}`) : () => {};
   const composed = [];
 
@@ -102,6 +102,14 @@ async function runProactiveNews(client, topics, memory, personality, timezone) {
 
         if (confidence >= CONFIDENCE_THRESHOLD && composed.length < MAX_MESSAGES) {
           composed.push(message);
+          if (selfMemory) {
+            selfMemory.add(message, {
+              category: 'research',
+              importance: Math.min(confidence, 0.8),
+              tags: ['news', topic.toLowerCase()],
+              source: 'news',
+            }).catch(e => log(`Failed to store news in self-memory: ${e.message}`));
+          }
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Message queued for delivery' });
         } else if (composed.length >= MAX_MESSAGES) {
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Already have ${MAX_MESSAGES} messages queued. Done.` });

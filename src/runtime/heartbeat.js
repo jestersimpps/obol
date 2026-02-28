@@ -12,7 +12,7 @@ const { createSelfMemory } = require('../memory/self');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
-const CURIOSITY_HOURS = new Set([1, 7, 13, 19]);
+const CURIOSITY_HOURS = new Set([1, 13]);
 const NEWS_HOURS = new Set([8, 18]);
 
 const _evolutionRunning = new Set();
@@ -169,7 +169,8 @@ async function runNewsForUser(bot, config, userId) {
     const client = new Anthropic({ apiKey: config.anthropic.apiKey });
     const timezone = getUserTimezone(config, userId);
 
-    const messages = await runProactiveNews(client, topics, tenant.memory, tenant.personality, timezone);
+    const selfMemory = config.supabase ? await createSelfMemory(config.supabase, 0).catch(() => null) : null;
+    const messages = await runProactiveNews(client, topics, tenant.memory, tenant.personality, timezone, selfMemory);
 
     for (let i = 0; i < messages.length; i++) {
       if (i > 0) {

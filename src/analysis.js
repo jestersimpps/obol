@@ -36,62 +36,38 @@ function buildTranscript(messages) {
 }
 
 async function generateReport(client, memory, transcript, timezone) {
-  const tools = memory ? [{
-    name: 'memory_search',
-    description: 'Search long-term memory for context about a topic in this transcript',
-    input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string' } },
-      required: ['query'],
-    },
-  }] : [];
+  const since = new Date(Date.now() - ANALYSIS_WINDOW_MS);
+  const memories = memory ? await memory.query({ since, limit: 100 }).catch(() => []) : [];
+  const memoryContext = memories.length
+    ? `\nWhat you already know about them:\n${memories.map(m => `- ${m.content}`).join('\n')}`
+    : '';
 
-  const system = `You are an attentive observer analyzing a conversation transcript. Write a free-form analytical report covering:
+  const system = `You are analyzing a conversation transcript to understand the HUMAN in it. Write a report about THEIR behavior, personality, and patterns.
 
-1. INTENTIONS & FOLLOW-UPS: Any intentions expressed, upcoming events, pending tasks, or things worth a natural check-in later. Be selective — only things a friend would genuinely remember.
+1. INTENTIONS & FOLLOW-UPS: Intentions they expressed, upcoming events, pending tasks, or things worth a natural check-in later. Be selective — only things a friend would genuinely remember.
 
-2. BEHAVIORAL PATTERNS:
-   - Timing: when they tend to message, active windows, energy by day/time
+2. BEHAVIORAL PATTERNS (about the human, not about yourself):
+   - Timing: when they message, active windows, energy by day/time
    - Mood signals: emotional baseline, stress indicators, good/bad day signals
    - Humor style: what lands, banter comfort, comedic preferences
    - Engagement depth: which topics generate longer responses, what they bring up unprompted
    - Communication style: message length, formality, response patterns
    - Recurring topics: what keeps coming up, what lights them up, what they avoid
 
-Write candidly and specifically. "Active between 9-11pm" beats "sometimes active at night". Skip categories with no signal. Timezone context: ${timezone}.${memory ? ' Use the memory_search tool to look up relevant context about topics in the transcript before writing your report.' : ''}`;
+IMPORTANT: Only describe the human's behavior. Every observation must be about what the human said or did.
 
-  const messages = [{ role: 'user', content: `Conversation transcript:\n\n${transcript}` }];
+Write candidly and specifically. "Active between 9-11pm" beats "sometimes active at night". Skip categories with no signal. Timezone context: ${timezone}.${memoryContext}`;
 
   try {
-    for (let i = 0; i < 6; i++) {
-      const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        system,
-        ...(tools.length ? { tools, tool_choice: { type: 'auto' } } : {}),
-        messages,
-      });
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system,
+      messages: [{ role: 'user', content: `Conversation transcript:\n\n${transcript}` }],
+    });
 
-      const text = response.content.find(b => b.type === 'text');
-      if (text) return text.text;
-
-      const toolUses = response.content.filter(b => b.type === 'tool_use');
-      if (!toolUses.length) return null;
-
-      messages.push({ role: 'assistant', content: response.content });
-      const results = [];
-      for (const tu of toolUses) {
-        const hits = await memory.search(tu.input.query, { limit: 5 }).catch(() => []);
-        results.push({
-          type: 'tool_result',
-          tool_use_id: tu.id,
-          content: hits.length ? hits.map(m => `- ${m.content}`).join('\n') : 'No relevant memories found',
-        });
-      }
-      messages.push({ role: 'user', content: results });
-    }
-
-    return null;
+    const text = response.content.find(b => b.type === 'text');
+    return text?.text || null;
   } catch (e) {
     console.error('[analysis] Report generation failed:', e.message);
     return null;
@@ -142,7 +118,7 @@ async function structureReport(client, report, scheduler, patterns, chatId, time
 
   try {
     const localTime = new Date().toLocaleString('en-US', { timeZone: timezone, dateStyle: 'full', timeStyle: 'short' });
-    const patternGuidance = `Extract behavioral patterns about this user from the report. Each pattern must be a factual observation about the user's behavior — not notes about your analysis process. If you see the same pattern in the existing list, reuse its exact key and update the summary/confidence. Skip patterns already at confidence >0.8 unless new evidence contradicts them.`;
+    const patternGuidance = `Extract behavioral patterns about the human from the report. Each pattern must describe something the HUMAN does — how they write, when they're active, what they talk about, how they respond. Never include patterns about your own behavior, tool usage, analysis approach, or system processes. If you see the same pattern in the existing list, reuse its exact key and update the summary/confidence. Skip patterns already at confidence >0.8 unless new evidence contradicts them.`;
     const timingGuidance = `Current local time for this user: ${localTime}. For each follow-up, pick a specific date or datetime in the user's local time based on what you know from the transcript. Use ISO 8601 format: "2024-03-15" for date-only or "2024-03-15T20:00" for exact time.`;
 
     const system = formattedPatterns

@@ -150,6 +150,10 @@ async function createMemory(supabaseConfig, userId = 0) {
     if (opts.source) parts.push(`source=eq.${opts.source}`);
     if (opts.minImportance) parts.push(`importance=gte.${opts.minImportance}`);
     if (opts.tags?.length) parts.push(`tags=ov.{${opts.tags.join(',')}}`);
+    if (opts.since) {
+      const sinceDate = opts.since instanceof Date ? opts.since : new Date(opts.since);
+      parts.push(`created_at=gte.${sinceDate.toISOString()}`);
+    }
     if (opts.date) {
       const { start, end } = parseDateRange(opts.date);
       parts.push(`created_at=gte.${start.toISOString()}`);

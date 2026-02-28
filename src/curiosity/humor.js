@@ -59,9 +59,22 @@ async function runCuriosityHumor(client, selfMemory, users) {
   ];
 
   const userList = users.map(u => `- user_id: ${u.userId}`).join('\n');
-  const system = `You just finished a curiosity cycle. Now look at what you found and see if anything is funny — a pun you can make, a weird connection, something that'd land as an inside joke with a specific person based on who they are and what you know about them.\n\nUsers:\n${userList}\n\nBe picky. Only schedule something if it's actually clever. Forced humor is worse than none.`;
+  const system = `You just finished a curiosity cycle and explored some things. Now find the humor in what you found — weird facts, absurd connections, niche references that'd land with someone specific based on their personality and interests.
+
+Types of humor that work well:
+- Absurd juxtapositions between something you found and something you know about a person
+- Niche references only they'd get
+- Dry observations about something weird you stumbled on
+- A follow-up to something you talked about before, with a twist
+- Playful "did you know" moments that are genuinely surprising
+
+Users:
+${userList}
+
+Aim for at least 1 per user. Search the web if your findings alone aren't enough — look for weird facts, unexpected connections, or timely jokes related to their interests. Get user context first so you know what would land.`;
 
   const messages = [{ role: 'user', content: 'Take a look at what you found and see if anything is worth a laugh.' }];
+  let scheduled = 0;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await client.messages.create({
@@ -74,7 +87,13 @@ async function runCuriosityHumor(client, selfMemory, users) {
 
     messages.push({ role: 'assistant', content: response.content });
 
-    if (response.stop_reason === 'end_turn') break;
+    if (response.stop_reason === 'end_turn') {
+      if (scheduled === 0 && i < 3) {
+        messages.push({ role: 'user', content: 'You haven\'t scheduled anything yet. Search the web for something funny related to their interests, or look at your findings from a different angle. Even a dry observation works.' });
+        continue;
+      }
+      break;
+    }
     if (response.stop_reason !== 'tool_use') break;
 
     const toolResults = [];
@@ -84,6 +103,7 @@ async function runCuriosityHumor(client, selfMemory, users) {
 
       try {
         const result = await handleTool(block.name, block.input, selfMemory, userMap);
+        if (block.name === 'schedule_humor' && result === 'Scheduled') scheduled++;
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
       } catch (e) {
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${e.message}` });
@@ -95,7 +115,7 @@ async function runCuriosityHumor(client, selfMemory, users) {
     }
   }
 
-  console.log('[curiosity-humor] Humor pass complete');
+  console.log(`[curiosity-humor] Humor pass complete — scheduled ${scheduled}`);
 }
 
 async function handleTool(name, input, selfMemory, userMap) {
