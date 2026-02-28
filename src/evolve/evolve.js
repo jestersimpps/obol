@@ -351,7 +351,7 @@ Fix the scripts. Tests define correct behavior.`
   fs.writeFileSync(soulPath, result.soul);
   if (supabaseConfig) {
     const { backup } = require('../soul');
-    backup(supabaseConfig, 'soul', result.soul).catch(e =>
+    backup(supabaseConfig, `soul-v${state.evolutionCount}`, result.soul).catch(e =>
       console.error('[evolve] Soul backup failed:', e.message)
     );
   }

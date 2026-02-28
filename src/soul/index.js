@@ -17,14 +17,14 @@ async function backup(supabaseConfig, key, content) {
   if (!supabaseConfig?.url || !supabaseConfig?.serviceKey) return;
   await fetch(`${supabaseConfig.url}/rest/v1/obol_soul`, {
     method: 'POST',
-    headers: { ...makeHeaders(supabaseConfig), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    headers: makeHeaders(supabaseConfig),
     body: JSON.stringify({ id: key, content, updated_at: new Date().toISOString() }),
   });
 }
 
-async function restore(supabaseConfig, key) {
+async function restore(supabaseConfig) {
   if (!supabaseConfig?.url || !supabaseConfig?.serviceKey) return null;
-  const res = await fetch(`${supabaseConfig.url}/rest/v1/obol_soul?id=eq.${key}&select=content`, {
+  const res = await fetch(`${supabaseConfig.url}/rest/v1/obol_soul?id=like.soul%25&order=updated_at.desc&limit=1&select=content`, {
     headers: makeHeaders(supabaseConfig),
   });
   if (!res.ok) return null;
@@ -39,7 +39,7 @@ async function restoreIfMissing(supabaseConfig) {
   const soulPath = path.join(PERSONALITY_DIR, 'SOUL.md');
   if (!fs.existsSync(soulPath)) {
     try {
-      const content = await restore(supabaseConfig, 'soul');
+      const content = await restore(supabaseConfig);
       if (content) {
         fs.writeFileSync(soulPath, content);
         console.log('  [soul] Restored SOUL.md from Supabase');
