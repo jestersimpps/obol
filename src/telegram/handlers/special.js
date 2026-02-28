@@ -1,5 +1,5 @@
 const { getTenant } = require('../../tenant');
-const { describeToolCall } = require('../../status');
+const { formatToolCall } = require('../../status');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
 const { createChatContext, createStatusTracker } = require('./text');
 
@@ -92,11 +92,9 @@ async function processSpecial(ctx, prompt, deps) {
       if (update.model) ri.model = update.model;
     };
     chatCtx._onToolStart = (toolName, inputSummary) => {
-      status.setStatusText('Processing');
-      describeToolCall(tenant.claude.client, toolName, inputSummary).then(desc => {
-        if (desc) status.setStatusText(desc);
-      });
+      status.setStatusText(formatToolCall(toolName, inputSummary));
       status.start();
+      status.pushUpdate();
     };
 
     const { text: response, usage, model } = await tenant.claude.chat(prompt, chatCtx);
