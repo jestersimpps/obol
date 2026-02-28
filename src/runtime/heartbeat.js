@@ -87,13 +87,27 @@ async function runCuriosityOnce(config, allowedUsers) {
     console.log('[curiosity] Skipping — previous cycle still running');
     return;
   }
+
+  const enabledUsers = [];
+  for (const userId of allowedUsers) {
+    const tenant = await getTenant(userId, config);
+    const pref = tenant.toolPrefs?.get('curiosity');
+    const enabled = pref ? pref.enabled : true;
+    if (enabled) enabledUsers.push(userId);
+  }
+
+  if (!enabledUsers.length) {
+    console.log('[curiosity] Skipping — no users have curiosity enabled');
+    return;
+  }
+
   _curiosityRunning = true;
   try {
     const selfMemory = await createSelfMemory(config.supabase, 0);
-    const firstTenant = await getTenant(allowedUsers[0], config);
+    const firstTenant = await getTenant(enabledUsers[0], config);
     const client = firstTenant.claude.client;
 
-    const contexts = await Promise.all(allowedUsers.map(async (userId) => {
+    const contexts = await Promise.all(enabledUsers.map(async (userId) => {
       try {
         const tenant = await getTenant(userId, config);
         const parts = [];
@@ -120,7 +134,7 @@ async function runCuriosityOnce(config, allowedUsers) {
     const firstUserDir = firstTenant.userDir;
     await runCuriosity(client, selfMemory, 0, { peopleContext, userDir: firstUserDir });
 
-    const userDispatchData = await Promise.all(allowedUsers.map(async (userId) => {
+    const userDispatchData = await Promise.all(enabledUsers.map(async (userId) => {
       try {
         const tenant = await getTenant(userId, config);
         const patterns = tenant.patterns ? await tenant.patterns.format().catch(() => null) : null;

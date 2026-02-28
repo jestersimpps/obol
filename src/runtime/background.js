@@ -1,4 +1,4 @@
-const { buildStatusHtml, describeToolCall } = require('../status');
+const { buildStatusHtml, formatToolCall } = require('../status');
 
 const MAX_CONCURRENT_TASKS = 3;
 
@@ -88,10 +88,7 @@ TASK: ${task}`;
           if (update.model) routeInfo.model = update.model;
         },
         _onToolStart: (toolName, inputSummary) => {
-          statusText = 'Processing';
-          describeToolCall(claude.client, toolName, inputSummary).then(desc => {
-            if (desc) statusText = desc;
-          });
+          statusText = formatToolCall(toolName, inputSummary) || 'Processing';
           startStatusTimer();
         },
       });

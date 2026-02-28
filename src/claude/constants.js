@@ -42,6 +42,12 @@ const OPTIONAL_TOOLS = {
       topics: { label: 'Topics', default: [] },
     },
   },
+  curiosity: {
+    label: 'Curiosity',
+    tools: [],
+    config: {},
+    defaultEnabled: true,
+  },
 };
 
 const BLOCKED_EXEC_PATTERNS = [
