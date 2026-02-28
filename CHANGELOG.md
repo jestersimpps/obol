@@ -1,3 +1,7 @@
+## 0.3.21
+- update changelog
+- store one soul row per evolution in supabase
+
 ## 0.3.20
 - update changelog
 - rename tools to options, update readme
