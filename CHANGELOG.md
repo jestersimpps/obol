@@ -1,3 +1,7 @@
+## 0.3.18
+- store news in self-memory, boost humor output, fix analysis self-referential patterns
+- update readme with curiosity, analysis, news, voice, patterns, and remove traits
+
 ## 0.3.16
 - Merge pull request #7 from jestersimpps/fix/stt-whisper-transcribe
 - fix: STT pipeline - add missing whisper_transcribe.py and fix media handler
