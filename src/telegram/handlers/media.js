@@ -43,9 +43,9 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
         imageBlocks.push(media.bufferToImageBlock(item.buffer, item.fileInfo.mimeType));
       } else if (
         (item.fileInfo.mediaType === 'voice' || item.fileInfo.mediaType === 'audio') &&
-        tenant.toolPrefs?.get?.('speech_to_text')?.enabled === true
+        tenant.toolPrefs?.get?.('speech_to_text')?.enabled !== false
       ) {
-        const { transcribe } = require('../../stt');
+        const { transcribe } = require('../../media/stt');
         const transcription = await transcribe(savedPath);
         nonImageParts.push(transcription
           ? `[Voice message transcription: ${transcription}]`
