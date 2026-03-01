@@ -508,7 +508,7 @@ describe('telegram', () => {
       };
       await handlers['message:voice'](ctx);
       expect(mockTenant.claude.chat).toHaveBeenCalledWith(
-        expect.stringContaining('saved'),
+        expect.stringContaining('Voice message'),
         expect.any(Object),
       );
     });

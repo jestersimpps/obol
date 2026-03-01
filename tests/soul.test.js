@@ -43,13 +43,13 @@ describe('soul', () => {
       expect(body.content).toBe('content');
     });
 
-    it('uses merge-duplicates prefer header for upsert', async () => {
+    it('uses return=minimal prefer header', async () => {
       fetch.mockResolvedValue({ ok: true });
 
       await backup(supabaseConfig, 'soul', 'content');
 
       const headers = fetch.mock.calls[0][1].headers;
-      expect(headers['Prefer']).toContain('resolution=merge-duplicates');
+      expect(headers['Prefer']).toBe('return=minimal');
     });
 
     it('does nothing when supabaseConfig is missing url', async () => {
@@ -75,21 +75,21 @@ describe('soul', () => {
         json: async () => [{ content: '# Soul content' }],
       });
 
-      const result = await restore(supabaseConfig, 'soul');
+      const result = await restore(supabaseConfig);
 
       expect(result).toBe('# Soul content');
     });
 
-    it('queries the correct endpoint with key filter', async () => {
+    it('queries the correct endpoint with like filter', async () => {
       fetch.mockResolvedValue({
         ok: true,
         json: async () => [],
       });
 
-      await restore(supabaseConfig, 'soul');
+      await restore(supabaseConfig);
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://test.supabase.co/rest/v1/obol_soul?id=eq.soul&select=content',
+        'https://test.supabase.co/rest/v1/obol_soul?id=like.soul%25&order=updated_at.desc&limit=1&select=content',
         expect.any(Object)
       );
     });
@@ -97,7 +97,7 @@ describe('soul', () => {
     it('returns null when response is not ok', async () => {
       fetch.mockResolvedValue({ ok: false });
 
-      const result = await restore(supabaseConfig, 'soul');
+      const result = await restore(supabaseConfig);
 
       expect(result).toBeNull();
     });
@@ -108,13 +108,13 @@ describe('soul', () => {
         json: async () => [],
       });
 
-      const result = await restore(supabaseConfig, 'soul');
+      const result = await restore(supabaseConfig);
 
       expect(result).toBeNull();
     });
 
     it('returns null when supabaseConfig is null', async () => {
-      const result = await restore(null, 'soul');
+      const result = await restore(null);
       expect(result).toBeNull();
       expect(fetch).not.toHaveBeenCalled();
     });
