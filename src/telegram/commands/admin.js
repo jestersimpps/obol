@@ -168,6 +168,16 @@ Summarize what was cleaned and secrets migrated.`);
     }
   });
 
+  bot.command('restart', async (ctx) => {
+    if (!ctx.from) return;
+    await ctx.reply('🔄 Restarting...');
+    try {
+      execSync('pm2 restart obol', { encoding: 'utf-8', timeout: 15000 });
+    } catch (e) {
+      await ctx.reply(`⚠️ Restart failed: ${e.message.substring(0, 200)}`);
+    }
+  });
+
   bot.command('toolimit', async (ctx) => {
     if (!ctx.from) return;
     const args = ctx.message.text.split(' ').slice(1);

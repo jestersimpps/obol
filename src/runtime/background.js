@@ -1,4 +1,5 @@
 const { buildStatusHtml, formatToolCall } = require('../status');
+const { markdownToTelegramHtml } = require('../telegram/utils');
 
 const MAX_CONCURRENT_TASKS = 3;
 
@@ -160,27 +161,22 @@ function formatDuration(seconds) {
 
 async function sendLong(ctx, text) {
   if (!text?.trim()) return;
-  if (text.length <= 4096) {
-    await ctx.reply(text, { parse_mode: 'HTML' }).catch(() =>
-      ctx.reply(text)
-    );
+  const html = markdownToTelegramHtml(text);
+  if (html.length <= 4096) {
+    await ctx.reply(html, { parse_mode: 'HTML' }).catch(() => ctx.reply(text));
     return;
   }
 
-  let remaining = text;
+  let remaining = html;
   while (remaining.length > 0) {
     if (remaining.length <= 4096) {
-      await ctx.reply(remaining, { parse_mode: 'HTML' }).catch(() =>
-        ctx.reply(remaining)
-      );
+      await ctx.reply(remaining, { parse_mode: 'HTML' }).catch(() => ctx.reply(remaining));
       break;
     }
     let splitAt = remaining.lastIndexOf('\n', 4096);
     if (splitAt === -1 || splitAt < 2000) splitAt = 4096;
     const chunk = remaining.substring(0, splitAt);
-    await ctx.reply(chunk, { parse_mode: 'HTML' }).catch(() =>
-      ctx.reply(chunk)
-    );
+    await ctx.reply(chunk, { parse_mode: 'HTML' }).catch(() => ctx.reply(chunk));
     remaining = remaining.substring(splitAt).trimStart();
   }
 }

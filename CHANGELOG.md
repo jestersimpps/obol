@@ -1,3 +1,13 @@
+## 0.3.23
+- fix tts module path in text handler
+- clean up config.users when removing a user
+- add /restart command
+- convert background task output to telegram html
+
+## 0.3.22
+- update changelog
+- fix soul backup version number to use evolutionNumber
+
 ## 0.3.21
 - update changelog
 - store one soul row per evolution in supabase

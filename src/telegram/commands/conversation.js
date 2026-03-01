@@ -54,6 +54,7 @@ function register(bot, config) {
 /verbose — Toggle verbose mode on/off
 /toolimit — View or set max tool iterations
 /stop — Stop the current request
+/restart — Restart the bot
 /upgrade — Check for updates and upgrade
 /help — This message`);
   });

@@ -10,7 +10,7 @@ const VERBOSE_FLUSH_MS = 2000;
 async function sendTtsVoiceSummary(ctx, tenant, responseText) {
   const fs = require('fs');
   const { InputFile } = require('grammy');
-  const tts = require('../../tts');
+  const tts = require('../../media/tts');
 
   const ttsConfig = tenant.toolPrefs.get('text_to_speech')?.config || {};
   const voice = ttsConfig.voice || 'en-US-JennyNeural';

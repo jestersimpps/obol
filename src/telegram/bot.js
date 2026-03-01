@@ -103,6 +103,7 @@ function createBot(telegramConfig, config) {
     { command: 'options', description: 'Toggle optional features on/off' },
     { command: 'topics', description: 'Edit news topics' },
     { command: 'stop', description: 'Stop the current request' },
+    { command: 'restart', description: 'Restart the bot (pm2)' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },
     { command: 'help', description: 'Show available commands' },
   ]).catch(() => {});

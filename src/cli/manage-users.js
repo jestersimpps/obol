@@ -188,6 +188,7 @@ async function manageUsers(cfg, saveConfig) {
       if (removeId !== null) {
         const idx = currentUsers.indexOf(removeId);
         if (idx !== -1) currentUsers.splice(idx, 1);
+        if (cfg.users) delete cfg.users[String(removeId)];
         console.log(`  ✅ Removed ${removeId}`);
         console.log(`  ⚠️  Workspace at ${getUserDir(removeId)} was NOT deleted (remove manually if needed)`);
       }
