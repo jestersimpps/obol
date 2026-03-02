@@ -31,7 +31,20 @@ class BackgroundRunner {
     const verbose = parentContext?.verbose || false;
     const verboseNotify = parentContext?._verboseNotify;
 
-    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, opts.model, opts.extraContext || extraContext, opts.silent || false);
+    const inherited = parentContext ? {
+      toolPrefs: parentContext.toolPrefs,
+      config: parentContext.config,
+      scheduler: parentContext.scheduler,
+      messageLog: parentContext.messageLog,
+      userId: parentContext.userId,
+      userDir: parentContext.userDir,
+      telegramAsk: parentContext.telegramAsk,
+      _notifyFn: parentContext._notifyFn,
+    } : {};
+
+    const mergedExtra = { ...inherited, ...(opts.extraContext || extraContext) };
+
+    const promise = this._runTask(claude, task, taskState, ctx, memory, verbose, verboseNotify, opts.model, mergedExtra, opts.silent || false);
     taskState.promise = promise;
 
     return taskId;
@@ -94,18 +107,25 @@ TASK: ${task}`;
         },
       });
 
-      taskState.status = 'done';
-      taskState.result = result;
       claude.clearHistory(`bg-${taskState.id}`);
-
       clearStatus();
 
-      const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
-      if (silent) {
-        await sendLong(ctx, result);
+      if (!result?.trim()) {
+        taskState.status = 'error';
+        taskState.error = 'No result returned';
+        if (!silent) {
+          await ctx.reply(`⚠️ BG #${taskState.id} finished but produced no result.`).catch(() => {});
+        }
       } else {
-        const header = `✅ <b>BG #${taskState.id}</b> done (${formatDuration(elapsed)})\n\n`;
-        await sendLong(ctx, header + result);
+        taskState.status = 'done';
+        taskState.result = result;
+        const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
+        if (silent) {
+          await sendLong(ctx, result);
+        } else {
+          const header = `✅ <b>BG #${taskState.id}</b> done (${formatDuration(elapsed)})\n\n`;
+          await sendLong(ctx, header + result);
+        }
       }
 
       if (memory) {

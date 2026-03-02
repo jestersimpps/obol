@@ -33,4 +33,19 @@ function formatToolCall(toolName, inputSummary) {
   return `${toolName} "${truncated}"`;
 }
 
-module.exports = { buildStatusHtml, formatToolCall, TERM_WIDTH };
+/**
+ * @param {{ model: string, usage: { input_tokens: number, output_tokens: number }, startTime: number | null }} params
+ * @returns {string | null}
+ */
+function formatTokenStats({ model, usage, startTime }) {
+  if (!usage || !model) return null;
+  const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
+  const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens / 1000).toFixed(1)}k` : usage.input_tokens;
+  const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens / 1000).toFixed(1)}k` : usage.output_tokens;
+  const dur = startTime ? ((Date.now() - startTime) / 1000).toFixed(1) : null;
+  const parts = [`◈ ${tag}`, `${tokIn} in`, `${tokOut} out`];
+  if (dur) parts.push(`${dur}s`);
+  return `<code>${parts.join(' ▪ ')}</code>`;
+}
+
+module.exports = { buildStatusHtml, formatToolCall, formatTokenStats, TERM_WIDTH };

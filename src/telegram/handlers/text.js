@@ -1,6 +1,6 @@
 const { InlineKeyboard } = require('grammy');
 const { getTenant } = require('../../tenant');
-const { buildStatusHtml, formatToolCall } = require('../../status');
+const { buildStatusHtml, formatToolCall, formatTokenStats } = require('../../status');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
 const { TEXT_BUFFER_GAP_MS, TEXT_BUFFER_MAX_PARTS, TEXT_BUFFER_MAX_CHARS, TEXT_BUFFER_THRESHOLD } = require('../constants');
 
@@ -142,6 +142,18 @@ function createStatusTracker(ctx, botName) {
     deleteMsg() {
       if (statusMsgId) ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
     },
+    finalize(statsHtml) {
+      if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+      if (statsHtml && statusMsgId) {
+        ctx.api.editMessageText(ctx.chat.id, statusMsgId, statsHtml, { parse_mode: 'HTML' }).catch(() => {
+          ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {});
+        });
+        statusMsgId = null;
+      } else {
+        if (statusMsgId) { ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => {}); statusMsgId = null; }
+        if (statsHtml) ctx.reply(statsHtml, { parse_mode: 'HTML' }).catch(() => {});
+      }
+    },
   };
 }
 
@@ -233,17 +245,8 @@ async function processTextMessage(ctx, fullMessage, { config, allowedUsers, bot,
 
     const statsPref = tenant.toolPrefs?.get('model_stats');
     const showStats = statsPref ? statsPref.enabled : true;
-    if (showStats && usage && model) {
-      const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
-      const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens/1000).toFixed(1)}k` : usage.input_tokens;
-      const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens/1000).toFixed(1)}k` : usage.output_tokens;
-      const dur = status.statusStart ? ((Date.now() - status.statusStart)/1000).toFixed(1) : null;
-      const parts = [`◈ ${tag}`, `${tokIn} in`, `${tokOut} out`];
-      if (dur) parts.push(`${dur}s`);
-      await ctx.reply(`<code>${parts.join(' ▪ ')}</code>`, { parse_mode: 'HTML' }).catch(() => {});
-    }
-
-    status.deleteMsg();
+    const statsHtml = showStats ? formatTokenStats({ model, usage, startTime: status.statusStart }) : null;
+    status.finalize(statsHtml);
   } catch (e) {
     batcher?.flush();
     status.clear();

@@ -1,8 +1,8 @@
-## 0.3.23
-- fix tts module path in text handler
-- clean up config.users when removing a user
-- add /restart command
-- convert background task output to telegram html
+## 0.3.24
+- edit status message in-place to show token stats instead of delete+create
+- extract formatTokenStats helper to deduplicate stats formatting
+- fix bg tasks returning null by forwarding parent context to spawned tasks
+- guard against null/empty bg task results
 
 ## 0.3.22
 - update changelog

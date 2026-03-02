@@ -1,5 +1,5 @@
 const { getTenant } = require('../../tenant');
-const { formatToolCall } = require('../../status');
+const { formatToolCall, formatTokenStats } = require('../../status');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
 const { createChatContext, createStatusTracker } = require('./text');
 
@@ -120,17 +120,8 @@ async function processSpecial(ctx, prompt, deps) {
 
     const statsPref = tenant.toolPrefs?.get('model_stats');
     const showStats = statsPref ? statsPref.enabled : true;
-    if (showStats && usage && model) {
-      const tag = model.includes('opus') ? 'opus' : model.includes('haiku') ? 'haiku' : 'sonnet';
-      const tokIn = usage.input_tokens >= 1000 ? `${(usage.input_tokens / 1000).toFixed(1)}k` : usage.input_tokens;
-      const tokOut = usage.output_tokens >= 1000 ? `${(usage.output_tokens / 1000).toFixed(1)}k` : usage.output_tokens;
-      const dur = status.statusStart ? ((Date.now() - status.statusStart) / 1000).toFixed(1) : null;
-      const parts = [`◈ ${tag}`, `${tokIn} in`, `${tokOut} out`];
-      if (dur) parts.push(`${dur}s`);
-      await ctx.reply(`<code>${parts.join(' ▪ ')}</code>`, { parse_mode: 'HTML' }).catch(() => {});
-    }
-
-    status.deleteMsg();
+    const statsHtml = showStats ? formatTokenStats({ model, usage, startTime: status.statusStart }) : null;
+    status.finalize(statsHtml);
   } catch (e) {
     status.clear();
     stopTyping();
