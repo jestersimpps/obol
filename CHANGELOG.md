@@ -1,3 +1,7 @@
+## 0.3.25
+- auto-schedule events from images/time-sensitive messages with 30min reminder
+- route email and time/event queries to sonnet
+
 ## 0.3.24
 - edit status message in-place to show token stats instead of delete+create
 - extract formatTokenStats helper to deduplicate stats formatting

@@ -34,6 +34,8 @@ const TOOL_PATTERNS = [
   /\b(?:create|generate|make)\b.*\b(?:pdf|chart|diagram|flowchart|image)\b/,
   /\b(?:what|which)\b.*\b(?:api keys?|secrets?|credentials?|reminders?|events?)\b.*\b(?:stored|have|set|coming)\b/,
   /\b(?:what have you been|what are you)\b.*\b(?:research|learn|curious|explor)\b/,
+  /\b(?:email|e-mail|inbox|gmail|outlook|mail)\b/,
+  /\b(?:meeting|flight|appointment|deadline|booking|reservation|calendar|event|conference|itinerary)\b/,
 ];
 
 function likelyNeedsTools(message) {
