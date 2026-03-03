@@ -204,13 +204,7 @@ async function runNewsForUser(bot, config, userId) {
   }
 }
 
-function makeFakeCtx(bot, chatId) {
-  return {
-    chat: { id: chatId },
-    reply: (text, opts) => bot.api.sendMessage(chatId, text, opts),
-    api: bot.api,
-  };
-}
+const STALE_EVENT_MS = 24 * 60 * 60 * 1000;
 
 function setupHeartbeat(bot, config) {
   const supabaseConfig = config?.supabase;
@@ -233,6 +227,13 @@ function setupHeartbeat(bot, config) {
       const dueEvents = await scheduler.getDue();
       for (const event of dueEvents) {
         try {
+          const age = Date.now() - new Date(event.due_at).getTime();
+          if (age > STALE_EVENT_MS) {
+            console.warn(`[scheduler] Expiring stale event ${event.id} "${event.title}" (due ${event.due_at})`);
+            await scheduler.markSent(event.id);
+            continue;
+          }
+
           if (event.instructions) {
             await runAgenticEvent(bot, config, event);
           } else {
@@ -357,31 +358,25 @@ async function runAgenticEvent(bot, config, event) {
 
   const query = event.description || event.instructions;
   const context = await buildProactiveContext(tenant, timezone, query).catch(() => '');
-  const instructions = context
-    ? `[Context]\n${context}\n\n---\n\n${event.instructions}`
-    : event.instructions;
 
-  const fakeCtx = makeFakeCtx(bot, event.chat_id);
+  const systemParts = [];
+  if (tenant.personality?.soul) systemParts.push(tenant.personality.soul);
+  if (tenant.personality?.user) systemParts.push(`About this user:\n${tenant.personality.user}`);
+  if (context) systemParts.push(`Current context:\n${context}`);
 
-  const taskId = tenant.bg.spawn(
-    tenant.claude,
-    instructions,
-    fakeCtx,
-    tenant.memory,
-    null,
-    { silent: true },
-    {
-      userId: event.user_id,
-      chatId: event.chat_id,
-      config,
-      scheduler: tenant.scheduler,
-      toolPrefs: tenant.toolPrefs,
-    }
+  const response = await tenant.claude.client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 300,
+    system: systemParts.join('\n\n'),
+    messages: [{ role: 'user', content: event.instructions }],
+  });
+
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  if (!text) throw new Error('Empty response from model');
+
+  await bot.api.sendMessage(event.chat_id, text).catch(() =>
+    bot.api.sendMessage(event.chat_id, text, { parse_mode: undefined })
   );
-
-  if (taskId === null) {
-    await bot.api.sendMessage(event.chat_id, `⚠️ Could not run "${event.title}" — too many background tasks already running.`).catch(() => {});
-  }
 }
 
 module.exports = { setupHeartbeat };

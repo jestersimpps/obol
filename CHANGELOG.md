@@ -1,12 +1,6 @@
-## 0.3.25
-- auto-schedule events from images/time-sensitive messages with 30min reminder
-- route email and time/event queries to sonnet
-
-## 0.3.24
-- edit status message in-place to show token stats instead of delete+create
-- extract formatTokenStats helper to deduplicate stats formatting
-- fix bg tasks returning null by forwarding parent context to spawned tasks
-- guard against null/empty bg task results
+## 0.3.26
+- fix proactive follow-ups never delivered — replace bg.spawn with inline API call
+- auto-expire stale events older than 24h
 
 ## 0.3.22
 - update changelog
