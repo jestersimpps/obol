@@ -1,6 +1,5 @@
-## 0.3.26
-- fix proactive follow-ups never delivered — replace bg.spawn with inline API call
-- auto-expire stale events older than 24h
+## 0.3.27
+- cap proactive follow-up scheduling to max 3 days
 
 ## 0.3.22
 - update changelog

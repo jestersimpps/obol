@@ -50,7 +50,7 @@ async function runCuriosityDispatch(client, selfMemory, users) {
         properties: {
           user_id: { type: 'string', description: 'The user ID to share with' },
           hint: { type: 'string', description: 'The insight or finding to share, in your own words' },
-          delay: { type: 'string', description: 'When to share it — e.g. "2h", "1d", "3d", "1w"' },
+          delay: { type: 'string', description: 'When to share it — e.g. "2h", "1d", "2d", "3d" (max 3 days)' },
         },
         required: ['user_id', 'hint', 'delay'],
       },
@@ -132,7 +132,7 @@ async function handleTool(name, input, selfMemory, userMap) {
     if (!user) return 'User not found';
     if (!user.scheduler) return 'User has no scheduler';
 
-    const dueAt = resolveDelay(input.delay);
+    const dueAt = resolveDelay(input.delay, user.timezone, null, 3 * 86400000);
     const instructions = `You came across something during your own free exploration: "${input.hint}". If it feels relevant and the moment is right, bring it up naturally — like you just thought of it. Keep it casual. Don't reference any system.`;
 
     try {

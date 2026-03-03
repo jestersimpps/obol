@@ -51,7 +51,7 @@ async function runCuriosityHumor(client, selfMemory, users) {
         properties: {
           user_id: { type: 'string', description: 'The user ID to share with' },
           hint: { type: 'string', description: 'The pun, funny connection, or inside joke — just the content itself. Can include a URL if a news article or link is part of what makes it funny.' },
-          delay: { type: 'string', description: 'When to drop it — e.g. "2h", "1d", "3d", "1w"' },
+          delay: { type: 'string', description: 'When to drop it — e.g. "2h", "1d", "2d", "3d" (max 3 days)' },
         },
         required: ['user_id', 'hint', 'delay'],
       },
@@ -153,7 +153,7 @@ async function handleTool(name, input, selfMemory, userMap) {
     if (!user) return 'User not found';
     if (!user.scheduler) return 'User has no scheduler';
 
-    const dueAt = resolveDelay(input.delay);
+    const dueAt = resolveDelay(input.delay, user.timezone, null, 3 * 86400000);
     const instructions = `You spotted something funny during your own explorations: "${input.hint}". If the moment is right, drop it casually — a pun you just thought of, a funny connection, an inside reference. Don't explain it. Don't say it's a joke. Just let it land.`;
 
     try {

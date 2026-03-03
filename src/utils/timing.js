@@ -1,15 +1,21 @@
 const DEFAULT_PEAK_HOUR = 20;
 
-function resolveDelay(input, timezone, timingData) {
+function resolveDelay(input, timezone, timingData, maxMs) {
   const dt = parseDateTime(input, timezone, timingData);
-  if (dt) return dt;
+  if (dt) return clamp(dt, maxMs);
 
   const legacy = parseLegacy(input);
-  if (legacy) return legacy;
+  if (legacy) return clamp(legacy, maxMs);
 
   const peakHour = extractPeakHour(timingData);
   const now = localNow(timezone);
-  return targetPeak(now, peakHour, 1, timezone);
+  return clamp(targetPeak(now, peakHour, 1, timezone), maxMs);
+}
+
+function clamp(iso, maxMs) {
+  if (!maxMs) return iso;
+  const ceiling = new Date(Date.now() + maxMs);
+  return new Date(iso) > ceiling ? ceiling.toISOString() : iso;
 }
 
 function parseDateTime(input, timezone, timingData) {
