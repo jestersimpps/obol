@@ -78,36 +78,20 @@ async function stepTitle(ctx, userId) {
   trackMsg(userId, msg.chat.id, msg.message_id);
 }
 
-async function stepTime(ctx, userId) {
+async function stepTime(ctx, userId, config) {
   const draft = schedDrafts.get(userId);
   if (!draft) return;
   draft.step = 'time';
 
-  const { getTenant } = require('../tenant');
-  let tz = 'UTC';
-  try {
-    const tenant = await getTenant(userId, ctx._config || {});
-    if (tenant.memory) {
-      const hits = await tenant.memory.search('timezone', { limit: 1, threshold: 0.3 });
-      for (const h of hits) {
-        const match = h.content.match(/(?:timezone|time zone)[:\s]+([A-Za-z_/]+)/i);
-        if (match) { tz = match[1]; break; }
-      }
-    }
-  } catch {}
-
+  const { getUserTimezone } = require('../config');
+  const tz = getUserTimezone(config, userId);
   draft.timezone = tz;
   setPendingInput(userId, 'time', TIME_TTL_MS);
-
-  const kb = new InlineKeyboard()
-    .text(`Use ${tz}`, 'sched:tz:confirm')
-    .text('Change timezone', 'sched:tz:change');
 
   const msg = await sendHtml(ctx,
     `When should it ${draft.isRecurring ? 'first fire' : 'fire'}?\n\n` +
     `Examples: \`2026-03-10 14:00\`, \`tomorrow at 9am\`\n` +
-    `Timezone: ${tz}`,
-    { reply_markup: kb }
+    `Timezone: ${tz}`
   );
   trackMsg(userId, msg.chat.id, msg.message_id);
 }
@@ -331,29 +315,8 @@ async function handleSchedCallback(ctx, data, answer, { getTenant, config, bot }
     draft.isRecurring = value === 'recurring' || value === 'agentic-rec';
     draft.isAgentic = value === 'agentic' || value === 'agentic-rec';
     await answer();
-    ctx._config = config;
     await stepTitle(ctx, userId);
     return;
-  }
-
-  if (action === 'tz') {
-    const draft = schedDrafts.get(userId);
-    if (!draft) return answer({ text: 'Session expired' });
-
-    if (value === 'confirm') {
-      await answer({ text: `Using ${draft.timezone} — now type the date/time` });
-      return;
-    }
-    if (value === 'change') {
-      await answer();
-      cancelPending(userId);
-      setPendingInput(userId, 'timezone', TIME_TTL_MS);
-      const msg = await ctx.api.sendMessage(ctx.chat?.id || userId,
-        'Enter your timezone (e.g. Europe/Brussels, America/New_York, Asia/Tokyo):');
-      trackMsg(userId, msg.chat.id, msg.message_id);
-      return;
-    }
-    return answer();
   }
 
   if (action === 'cron') {
@@ -432,7 +395,7 @@ async function handleSchedCallback(ctx, data, answer, { getTenant, config, bot }
 
     switch (value) {
       case 'title': await stepTitle(ctx, userId); break;
-      case 'time': ctx._config = config; await stepTime(ctx, userId); break;
+      case 'time': await stepTime(ctx, userId, config); break;
       case 'cron': await stepCron(ctx, userId); break;
       case 'desc': await stepDescription(ctx, userId); break;
       case 'instr': await stepInstructions(ctx, userId); break;
@@ -458,23 +421,7 @@ async function handleSchedText(ctx, text, { getTenant, config, bot }) {
 
   if (field === 'title') {
     draft.title = text.substring(0, 200);
-    ctx._config = config;
-    await stepTime(ctx, userId);
-    return;
-  }
-
-  if (field === 'timezone') {
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: text.trim() });
-      draft.timezone = text.trim();
-      const msg = await ctx.reply(`Timezone set to ${draft.timezone}. Now enter the date/time.`);
-      trackMsg(userId, msg.chat.id, msg.message_id);
-      setPendingInput(userId, 'time', TIME_TTL_MS);
-    } catch {
-      const msg = await ctx.reply('Invalid timezone. Try again (e.g. Europe/Brussels, America/New_York):');
-      trackMsg(userId, msg.chat.id, msg.message_id);
-      setPendingInput(userId, 'timezone', TIME_TTL_MS);
-    }
+    await stepTime(ctx, userId, config);
     return;
   }
 
