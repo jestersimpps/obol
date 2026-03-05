@@ -59,7 +59,7 @@ function createBot(telegramConfig, config) {
 
   bot.use(sequentialize((ctx) => {
     const cbData = ctx.callbackQuery?.data;
-    if (cbData?.startsWith('stop:') || cbData?.startsWith('force:') || cbData?.startsWith('ask:')) return undefined;
+    if (cbData?.startsWith('stop:') || cbData?.startsWith('force:') || cbData?.startsWith('ask:') || cbData?.startsWith('sched:')) return undefined;
     return ctx.chat?.id.toString();
   }));
 
@@ -102,6 +102,7 @@ function createBot(telegramConfig, config) {
     { command: 'toolimit', description: 'View or set max tool iterations per message' },
     { command: 'options', description: 'Toggle optional features on/off' },
     { command: 'topics', description: 'Edit news topics' },
+    { command: 'schedule', description: 'Create a new scheduled event' },
     { command: 'stop', description: 'Stop the current request' },
     { command: 'restart', description: 'Restart the bot (pm2)' },
     { command: 'upgrade', description: 'Check for updates and upgrade' },
@@ -119,6 +120,12 @@ function createBot(telegramConfig, config) {
     if (!ctx.from) return;
     const { sendTopicEditor } = require('./topics');
     await sendTopicEditor(ctx, config);
+  });
+
+  bot.command('schedule', async (ctx) => {
+    if (!ctx.from) return;
+    const { startWizard } = require('./schedule-wizard');
+    await startWizard(ctx, config);
   });
 
   const deps = { config, allowedUsers, bot, createAsk };

@@ -1,6 +1,7 @@
 const { handleToolCallback } = require('../commands/tools');
 const { handleVoiceCallback } = require('../voice');
 const { handleTopicCallback } = require('../topics');
+const { handleSchedCallback } = require('../schedule-wizard');
 
 function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
   bot.on('callback_query:data', async (ctx) => {
@@ -40,6 +41,11 @@ function registerCallbackHandler(bot, { config, pendingAsks, getTenant }) {
 
     if (data.startsWith('topics:')) {
       await handleTopicCallback(ctx, data, answer, { getTenant, config, bot });
+      return;
+    }
+
+    if (data.startsWith('sched:')) {
+      await handleSchedCallback(ctx, data, answer, { getTenant, config, bot });
       return;
     }
 

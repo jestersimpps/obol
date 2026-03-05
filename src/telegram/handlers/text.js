@@ -304,6 +304,12 @@ function registerTextHandler(bot, { config, allowedUsers, createAsk }) {
       return;
     }
 
+    const { isPendingSchedInput, handleSchedText } = require('../schedule-wizard');
+    if (isPendingSchedInput(userId)) {
+      await handleSchedText(ctx, userMessage, { getTenant, config, bot });
+      return;
+    }
+
     const rateResult = bot._rateLimiter.check(userId);
     if (rateResult === 'cooldown' || rateResult === 'skip') return;
     if (rateResult === 'spam') {
