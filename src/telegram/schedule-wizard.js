@@ -59,9 +59,9 @@ async function startWizard(ctx, config) {
   schedDrafts.set(userId, { step: 'type', isRecurring: false, isAgentic: false });
 
   const kb = new InlineKeyboard()
-    .text('One-time reminder', 'sched:type:reminder')
+    .text('One-time reminder', 'sched:type:reminder').row()
     .text('Recurring reminder', 'sched:type:recurring').row()
-    .text('Agentic task', 'sched:type:agentic')
+    .text('Agentic task', 'sched:type:agentic').row()
     .text('Recurring agentic task', 'sched:type:agentic-rec');
 
   const msg = await ctx.reply('What would you like to schedule?', { reply_markup: kb });
