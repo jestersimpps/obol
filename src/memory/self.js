@@ -79,6 +79,11 @@ async function createSelfMemory(supabaseConfig, userId) {
     if (opts.source) parts.push(`source=eq.${opts.source}`);
     if (opts.minImportance) parts.push(`importance=gte.${opts.minImportance}`);
     if (opts.tags?.length) parts.push(`tags=ov.{${opts.tags.join(',')}}`);
+    if (opts.filters) {
+      for (const [col, op] of Object.entries(opts.filters)) {
+        if (/^[a-z_]+$/.test(col)) parts.push(`${col}=${op}`);
+      }
+    }
 
     const res = await fetch(
       `${url}/rest/v1/obol_self_memory?${parts.join('&')}&order=created_at.desc&limit=${limit}`,

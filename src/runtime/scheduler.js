@@ -37,7 +37,12 @@ function createScheduler(supabaseConfig, userId = 0) {
   async function list(opts = {}) {
     const status = opts.status || 'pending';
     const limit = opts.limit || 20;
-    const fetchUrl = `${url}/rest/v1/obol_events?user_id=eq.${userId}&status=eq.${status}&order=due_at.asc&limit=${limit}`;
+    let fetchUrl = `${url}/rest/v1/obol_events?user_id=eq.${userId}&status=eq.${status}&order=due_at.asc&limit=${limit}`;
+    if (opts.filters) {
+      for (const [col, op] of Object.entries(opts.filters)) {
+        if (/^[a-z_]+$/.test(col)) fetchUrl += `&${col}=${op}`;
+      }
+    }
     const res = await fetch(fetchUrl, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));

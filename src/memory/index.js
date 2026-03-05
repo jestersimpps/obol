@@ -159,9 +159,14 @@ async function createMemory(supabaseConfig, userId = 0) {
       parts.push(`created_at=gte.${start.toISOString()}`);
       parts.push(`created_at=lt.${end.toISOString()}`);
     }
+    if (opts.filters) {
+      for (const [col, op] of Object.entries(opts.filters)) {
+        if (/^[a-z_]+$/.test(col)) parts.push(`${col}=${op}`);
+      }
+    }
     const filter = parts.join('&');
     const res = await fetch(
-      `${url}/rest/v1/obol_memory?select=id,content,category,tags,importance,source,created_at&${filter}&order=created_at.desc&limit=${limit}`,
+      `${url}/rest/v1/obol_memory?${filter}&order=created_at.desc&limit=${limit}`,
       { headers }
     );
     const data = await res.json();

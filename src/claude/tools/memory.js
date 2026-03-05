@@ -40,7 +40,7 @@ const definitions = [
   },
   {
     name: 'memory_query',
-    description: 'Filter memories by tag, date, category, source, or importance. Use for "what did we do today", "anything tagged X", "all decisions this week".',
+    description: 'Filter memories by tag, date, category, source, importance, or any column. Use for "what did we do today", "anything tagged X", "all decisions this week".',
     input_schema: {
       type: 'object',
       properties: {
@@ -50,6 +50,7 @@ const definitions = [
         source: { type: 'string', description: 'Filter by source (e.g. "turn-extraction", "evolution-3")' },
         minImportance: { type: 'number', description: 'Minimum importance threshold (0-1)' },
         limit: { type: 'number', description: 'Max results (default 20)' },
+        filters: { type: 'object', description: 'PostgREST column filters. Key = column name, value = operator.value. E.g. {"importance":"gte.0.8","source":"eq.evolution-3","content":"like.*bitcoin*","access_count":"gte.5"}', additionalProperties: { type: 'string' } },
       },
     },
   },
@@ -98,6 +99,7 @@ const handlers = {
       source: input.source,
       minImportance: input.minImportance,
       limit: input.limit,
+      filters: input.filters,
     });
     return JSON.stringify(results.map(formatMemory));
   },
