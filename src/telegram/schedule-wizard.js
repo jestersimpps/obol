@@ -341,7 +341,7 @@ async function handleSchedCallback(ctx, data, answer, { getTenant, config, bot }
     if (!draft) return answer({ text: 'Session expired' });
 
     if (value === 'confirm') {
-      await answer();
+      await answer({ text: `Using ${draft.timezone} — now type the date/time` });
       return;
     }
     if (value === 'change') {
