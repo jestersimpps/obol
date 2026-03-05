@@ -80,7 +80,7 @@ async function createMemory(supabaseConfig, userId = 0) {
     const { start, end } = parseDateRange(dateStr);
     const limit = opts.limit || 50;
 
-    let fetchUrl = `${url}/rest/v1/obol_memory?select=id,content,category,tags,importance,source,created_at&created_at=gte.${start.toISOString()}&created_at=lt.${end.toISOString()}&order=created_at.asc&limit=${limit}&user_id=eq.${userId}`;
+    let fetchUrl = `${url}/rest/v1/obol_memory?created_at=gte.${start.toISOString()}&created_at=lt.${end.toISOString()}&order=created_at.asc&limit=${limit}&user_id=eq.${userId}`;
     if (opts.category) fetchUrl += `&category=eq.${opts.category}`;
 
     const res = await fetch(fetchUrl, { headers });
@@ -91,7 +91,7 @@ async function createMemory(supabaseConfig, userId = 0) {
 
   async function recent(opts = {}) {
     const limit = opts.limit || 10;
-    let fetchUrl = `${url}/rest/v1/obol_memory?select=id,content,category,tags,importance,source,created_at&order=created_at.desc&limit=${limit}&user_id=eq.${userId}`;
+    let fetchUrl = `${url}/rest/v1/obol_memory?order=created_at.desc&limit=${limit}&user_id=eq.${userId}`;
     if (opts.category) fetchUrl += `&category=eq.${opts.category}`;
 
     const res = await fetch(fetchUrl, { headers });
@@ -129,7 +129,7 @@ async function createMemory(supabaseConfig, userId = 0) {
 
   async function stats() {
     const countHeaders = { ...headers, 'Prefer': 'count=exact' };
-    const res = await fetch(`${url}/rest/v1/obol_memory?select=category&user_id=eq.${userId}`, { headers: countHeaders });
+    const res = await fetch(`${url}/rest/v1/obol_memory?user_id=eq.${userId}`, { headers: countHeaders });
     if (!res.ok) throw new Error(`Stats failed: HTTP ${res.status}`);
     const contentRange = res.headers?.get?.('content-range');
     const data = await res.json();

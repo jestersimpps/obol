@@ -64,7 +64,7 @@ async function createSelfMemory(supabaseConfig, userId) {
 
   async function recent(opts = {}) {
     const limit = opts.limit || 10;
-    let fetchUrl = `${url}/rest/v1/obol_self_memory?select=id,content,category,tags,importance,source,created_at&order=created_at.desc&limit=${limit}&user_id=eq.${userId}`;
+    let fetchUrl = `${url}/rest/v1/obol_self_memory?order=created_at.desc&limit=${limit}&user_id=eq.${userId}`;
     if (opts.category) fetchUrl += `&category=eq.${opts.category}`;
 
     const res = await fetch(fetchUrl, { headers });
@@ -81,7 +81,7 @@ async function createSelfMemory(supabaseConfig, userId) {
     if (opts.tags?.length) parts.push(`tags=ov.{${opts.tags.join(',')}}`);
 
     const res = await fetch(
-      `${url}/rest/v1/obol_self_memory?select=id,content,category,tags,importance,source,created_at&${parts.join('&')}&order=created_at.desc&limit=${limit}`,
+      `${url}/rest/v1/obol_self_memory?${parts.join('&')}&order=created_at.desc&limit=${limit}`,
       { headers }
     );
     const data = await res.json();
