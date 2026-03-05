@@ -166,7 +166,7 @@ async function createMemory(supabaseConfig, userId = 0) {
     }
     const filter = parts.join('&');
     const res = await fetch(
-      `${url}/rest/v1/obol_memory?${filter}&order=created_at.desc&limit=${limit}`,
+      `${url}/rest/v1/obol_memory?${filter}&order=${opts.order || 'created_at.desc'}&limit=${limit}`,
       { headers }
     );
     const data = await res.json();

@@ -86,7 +86,7 @@ async function createSelfMemory(supabaseConfig, userId) {
     }
 
     const res = await fetch(
-      `${url}/rest/v1/obol_self_memory?${parts.join('&')}&order=created_at.desc&limit=${limit}`,
+      `${url}/rest/v1/obol_self_memory?${parts.join('&')}&order=${opts.order || 'created_at.desc'}&limit=${limit}`,
       { headers }
     );
     const data = await res.json();

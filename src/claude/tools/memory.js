@@ -51,6 +51,7 @@ const definitions = [
         minImportance: { type: 'number', description: 'Minimum importance threshold (0-1)' },
         limit: { type: 'number', description: 'Max results (default 20)' },
         filters: { type: 'object', description: 'PostgREST column filters. Key = column name, value = operator.value. E.g. {"importance":"gte.0.8","source":"eq.evolution-3","content":"like.*bitcoin*","access_count":"gte.5"}', additionalProperties: { type: 'string' } },
+        order: { type: 'string', description: 'Sort order: column.direction. E.g. "access_count.desc", "importance.desc", "created_at.asc"' },
       },
     },
   },
@@ -100,6 +101,7 @@ const handlers = {
       minImportance: input.minImportance,
       limit: input.limit,
       filters: input.filters,
+      order: input.order,
     });
     return JSON.stringify(results.map(formatMemory));
   },

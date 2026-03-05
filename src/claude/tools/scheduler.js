@@ -35,6 +35,7 @@ Always search memory first for the user's timezone/location.`,
       properties: {
         status: { type: 'string', enum: ['pending', 'sent', 'cancelled', 'completed'], description: 'Filter by status (default: pending)' },
         filters: { type: 'object', description: 'PostgREST column filters. Key = column name, value = operator.value. E.g. {"title":"like.*briefing*","cron_expr":"not.is.null","run_count":"gte.5"}', additionalProperties: { type: 'string' } },
+        order: { type: 'string', description: 'Sort order: column.direction. E.g. "run_count.desc", "created_at.asc"' },
       },
     },
   },
@@ -108,7 +109,7 @@ const handlers = {
 
   async list_events(input, memory, context) {
     if (!context.scheduler) return 'Scheduler not available (Supabase not configured).';
-    const events = await context.scheduler.list({ status: input.status, filters: input.filters });
+    const events = await context.scheduler.list({ status: input.status, filters: input.filters, order: input.order });
     if (events.length === 0) return `No ${input.status || 'pending'} events.`;
     return JSON.stringify(events.map(e => {
       const entry = {
