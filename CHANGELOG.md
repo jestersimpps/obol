@@ -1,5 +1,6 @@
-## 0.3.27
-- cap proactive follow-up scheduling to max 3 days
+## 0.3.28
+- fix list_events not returning instructions field
+- fix update_event silently wiping instructions on unrelated edits
 
 ## 0.3.22
 - update changelog

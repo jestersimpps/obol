@@ -144,7 +144,7 @@ const handlers = {
     const fields = {};
     if (rest.title !== undefined) fields.title = rest.title;
     if (rest.description !== undefined) fields.description = rest.description;
-    if (rest.instructions !== undefined) fields.instructions = rest.instructions || null;
+    if (typeof rest.instructions === 'string') fields.instructions = rest.instructions || null;
     if (rest.timezone !== undefined) fields.timezone = rest.timezone;
     if (rest.cron_expr !== undefined) fields.cron_expr = rest.cron_expr;
     if (rest.max_runs !== undefined) fields.max_runs = rest.max_runs;
