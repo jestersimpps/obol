@@ -1,7 +1,3 @@
-## 0.3.28
-- fix list_events not returning instructions field
-- fix update_event silently wiping instructions on unrelated edits
-
 ## 0.3.22
 - update changelog
 - fix soul backup version number to use evolutionNumber
