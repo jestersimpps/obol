@@ -1,3 +1,7 @@
+## 0.3.37
+- changelog
+- fix media group race condition — buffer before download
+
 ## 0.3.36
 - save media assets instantly in date-based folders
 - fix agentic event raw JSON output and update_event wiping instructions

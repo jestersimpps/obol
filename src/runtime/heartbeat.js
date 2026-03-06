@@ -18,6 +18,8 @@ const NEWS_HOURS = new Set([8, 18]);
 const _evolutionRunning = new Set();
 const _newsRunning = new Set();
 let _curiosityRunning = false;
+let _schedulerBusy = false;
+const _analysisRunning = new Set();
 
 function getLocalHour(timezone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -155,6 +157,8 @@ async function runCuriosityOnce(config, allowedUsers) {
 }
 
 async function runAnalysisForUser(bot, config, userId) {
+  if (_analysisRunning.has(userId)) return;
+  _analysisRunning.add(userId);
   const timezone = getUserTimezone(config, userId);
   try {
     const tenant = await getTenant(userId, config);
@@ -162,6 +166,8 @@ async function runAnalysisForUser(bot, config, userId) {
     await runAnalysis(tenant.claude.client, tenant.messageLog, tenant.scheduler, tenant.patterns, tenant.memory, userId, userId, timezone);
   } catch (e) {
     console.error(`[analysis] Failed for user ${userId}:`, e.message);
+  } finally {
+    _analysisRunning.delete(userId);
   }
 }
 
@@ -222,9 +228,14 @@ function setupHeartbeat(bot, config) {
     }
 
     if (!scheduler || !bot) return;
+    if (_schedulerBusy) return;
+    _schedulerBusy = true;
 
     try {
       const dueEvents = await scheduler.getDue();
+      if (dueEvents.length > 0) {
+        console.log(`[scheduler] Processing ${dueEvents.length} due event(s)`);
+      }
       for (const event of dueEvents) {
         try {
           const age = Date.now() - new Date(event.due_at).getTime();
@@ -252,6 +263,8 @@ function setupHeartbeat(bot, config) {
       }
     } catch (e) {
       console.error('[scheduler] Failed to check due events:', e.message);
+    } finally {
+      _schedulerBusy = false;
     }
   });
 

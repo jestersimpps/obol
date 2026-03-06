@@ -28,6 +28,7 @@ function createScheduler(supabaseConfig, userId = 0) {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
@@ -43,7 +44,7 @@ function createScheduler(supabaseConfig, userId = 0) {
         if (/^[a-z_]+$/.test(col)) fetchUrl += `&${col}=${op}`;
       }
     }
-    const res = await fetch(fetchUrl, { headers });
+    const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
     return data;
@@ -54,6 +55,7 @@ function createScheduler(supabaseConfig, userId = 0) {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ status: 'cancelled' }),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
@@ -63,7 +65,7 @@ function createScheduler(supabaseConfig, userId = 0) {
   async function getDue() {
     const now = new Date().toISOString();
     const fetchUrl = `${url}/rest/v1/obol_events?status=eq.pending&due_at=lte.${now}`;
-    const res = await fetch(fetchUrl, { headers });
+    const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
     return data;
@@ -74,6 +76,7 @@ function createScheduler(supabaseConfig, userId = 0) {
       method: 'PATCH',
       headers: { ...headers, 'Prefer': 'return=minimal' },
       body: JSON.stringify(fields),
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       const err = await res.text();
@@ -116,6 +119,7 @@ function createScheduler(supabaseConfig, userId = 0) {
       method: 'PATCH',
       headers,
       body: JSON.stringify(fields),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
