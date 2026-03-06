@@ -1,3 +1,7 @@
+## 0.3.39
+- changelog
+- sequential media downloads and image vision in read_file
+
 ## 0.3.38
 - fix scheduler concurrency guard and fetch timeouts
 
