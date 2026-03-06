@@ -1,3 +1,6 @@
+## 0.3.38
+- fix scheduler concurrency guard and fetch timeouts
+
 ## 0.3.37
 - changelog
 - fix media group race condition — buffer before download
