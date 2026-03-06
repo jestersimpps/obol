@@ -1,3 +1,7 @@
+## 0.3.36
+- save media assets instantly in date-based folders
+- fix agentic event raw JSON output and update_event wiping instructions
+
 ## 0.3.35
 - add order param to memory, self-memory, and events queries
 
