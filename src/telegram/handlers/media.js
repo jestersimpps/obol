@@ -166,12 +166,15 @@ function registerMediaHandler(bot, telegramConfig, deps) {
   async function handleMedia(ctx) {
     if (!ctx.from) return;
     const userId = ctx.from.id;
-    const { createRateLimiter } = require('../rate-limit');
-    if (!bot._rateLimiter) bot._rateLimiter = createRateLimiter();
-    const rateResult = bot._rateLimiter.check(userId);
-    if (rateResult) return;
     const fileInfo = media.getFileInfo(ctx);
     if (!fileInfo) return;
+
+    if (!ctx.message.media_group_id) {
+      const { createRateLimiter } = require('../rate-limit');
+      if (!bot._rateLimiter) bot._rateLimiter = createRateLimiter();
+      const rateResult = bot._rateLimiter.check(userId);
+      if (rateResult) return;
+    }
 
     if (fileInfo.fileSize > MAX_MEDIA_SIZE) {
       await ctx.reply(`File too large (${(fileInfo.fileSize / 1024 / 1024).toFixed(1)}MB). Max is 50MB.`).catch(() => {});
