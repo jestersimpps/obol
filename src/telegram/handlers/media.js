@@ -16,6 +16,29 @@ async function downloadMediaItem(ctx, fileInfo, telegramToken) {
   return { buffer, filename, fileInfo, caption: ctx.message.caption || '' };
 }
 
+async function downloadAndProcess(ctx, entries, deps, token) {
+  const userId = ctx.from.id;
+  const userDir = ensureUserDir(userId);
+  const tz = getUserTimezone(deps.config, userId);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+  const assetsDir = path.join(userDir, 'assets', today);
+
+  const items = (await Promise.all(
+    entries.map(({ ctx: entryCtx, fileInfo }) =>
+      downloadMediaItem(entryCtx, fileInfo, token).then(item => {
+        if (item) item.savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
+        return item;
+      }).catch(e => {
+        console.error('Media download error:', e.message);
+        return null;
+      })
+    )
+  )).filter(Boolean);
+
+  if (items.length === 0) return;
+  await processMediaItems(ctx, items, deps);
+}
+
 async function processMediaItems(ctx, items, { config, allowedUsers, bot, createAsk }) {
   if (!ctx.from) return;
   const userId = ctx.from.id;
@@ -154,6 +177,35 @@ function registerMediaHandler(bot, telegramConfig, deps) {
       return;
     }
 
+    const groupId = ctx.message.media_group_id;
+    if (groupId) {
+      const existing = mediaGroups.get(groupId);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.entries.push({ ctx, fileInfo });
+        existing.latestCtx = ctx;
+        existing.timer = setTimeout(() => {
+          mediaGroups.delete(groupId);
+          downloadAndProcess(existing.latestCtx, existing.entries, deps, telegramConfig.token).catch(e =>
+            console.error('Media group error:', e.message)
+          );
+        }, MEDIA_GROUP_DELAY_MS);
+      } else {
+        const group = {
+          entries: [{ ctx, fileInfo }],
+          latestCtx: ctx,
+          timer: setTimeout(() => {
+            mediaGroups.delete(groupId);
+            downloadAndProcess(ctx, [{ ctx, fileInfo }], deps, telegramConfig.token).catch(e =>
+              console.error('Media group error:', e.message)
+            );
+          }, MEDIA_GROUP_DELAY_MS),
+        };
+        mediaGroups.set(groupId, group);
+      }
+      return;
+    }
+
     const item = await downloadMediaItem(ctx, fileInfo, telegramConfig.token).catch(e => {
       console.error('Media download error:', e.message);
       return null;
@@ -165,35 +217,6 @@ function registerMediaHandler(bot, telegramConfig, deps) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
     const assetsDir = path.join(userDir, 'assets', today);
     item.savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
-
-    const groupId = ctx.message.media_group_id;
-    if (groupId) {
-      const existing = mediaGroups.get(groupId);
-      if (existing) {
-        clearTimeout(existing.timer);
-        existing.items.push(item);
-        existing.ctx = ctx;
-        existing.timer = setTimeout(() => {
-          mediaGroups.delete(groupId);
-          processMediaItems(existing.ctx, existing.items, deps).catch(e =>
-            console.error('Media group error:', e.message)
-          );
-        }, MEDIA_GROUP_DELAY_MS);
-      } else {
-        const group = {
-          items: [item],
-          ctx,
-          timer: setTimeout(() => {
-            mediaGroups.delete(groupId);
-            processMediaItems(ctx, [item], deps).catch(e =>
-              console.error('Media group error:', e.message)
-            );
-          }, MEDIA_GROUP_DELAY_MS),
-        };
-        mediaGroups.set(groupId, group);
-      }
-      return;
-    }
 
     await processMediaItems(ctx, [item], deps);
   }
