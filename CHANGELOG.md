@@ -1,3 +1,29 @@
+## 0.3.35
+- add order param to memory, self-memory, and events queries
+
+## 0.3.34
+- generic PostgREST filters for memory, self-memory, and events
+- drop select= filters — return all columns from memory and events
+
+## 0.3.33
+- schedule wizard — use config timezone, drop tz selector
+
+## 0.3.32
+- tz confirm button shows toast feedback
+
+## 0.3.31
+- schedule wizard — one button per row
+
+## 0.3.30
+- add /schedule wizard for interactive event creation
+- 0.3.29 — republish scheduler fix
+- 0.3.28 — fix scheduler instructions not persisted in list, not wiped on update
+- 0.3.27 — cap proactive follow-ups to max 3 days
+- 0.3.26 — fix proactive follow-ups never delivered, expire stale events
+- 0.3.25 — auto-schedule from images, route email/event queries to sonnet
+- 0.3.24 — inline token stats, fix bg task null results
+- fix failing soul and telegram tests
+
 ## 0.3.22
 - update changelog
 - fix soul backup version number to use evolutionNumber

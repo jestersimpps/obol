@@ -1,5 +1,6 @@
 const path = require('path');
 const { getTenant } = require('../../tenant');
+const { ensureUserDir, getUserTimezone } = require('../../config');
 const { buildStatusHtml, formatToolCall, formatTokenStats } = require('../../status');
 const media = require('../../media');
 const { sendHtml, startTyping, splitMessage } = require('../utils');
@@ -23,13 +24,12 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
 
   try {
     const tenant = await getTenant(userId, config);
-    const assetsDir = path.join(tenant.userDir, 'assets');
     const imageBlocks = [];
     const nonImageParts = [];
     const caption = items.map(i => i.caption).filter(Boolean).join('\n') || '';
 
     for (const item of items) {
-      const savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
+      const savedPath = item.savedPath;
 
       if (tenant.memory && !media.isImage(item.fileInfo)) {
         const memContent = media.buildMemoryContent(item.fileInfo, item.filename, savedPath, item.caption);
@@ -57,6 +57,9 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
       }
     }
 
+    const fileList = items.map(i => `- ${i.savedPath}`).join('\n');
+    const fileRef = `Files saved:\n${fileList}`;
+
     let prompt, chatImages;
     if (imageBlocks.length > 0) {
       prompt = caption || `The user sent ${imageBlocks.length} image(s). Describe what you see and respond naturally.`;
@@ -65,6 +68,7 @@ async function processMediaItems(ctx, items, { config, allowedUsers, bot, create
     } else {
       prompt = nonImageParts.join('\n');
     }
+    prompt = fileRef + '\n\n' + prompt;
 
     const mediaChatCtx = createChatContext(ctx, tenant, config, { allowedUsers, bot, createAsk });
     if (chatImages) mediaChatCtx.images = chatImages;
@@ -155,6 +159,12 @@ function registerMediaHandler(bot, telegramConfig, deps) {
       return null;
     });
     if (!item) return;
+
+    const userDir = ensureUserDir(userId);
+    const tz = getUserTimezone(deps.config, userId);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const assetsDir = path.join(userDir, 'assets', today);
+    item.savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
 
     const groupId = ctx.message.media_group_id;
     if (groupId) {
