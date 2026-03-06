@@ -7,7 +7,7 @@ const { resolveUserPath } = require('../utils');
 const definitions = [
   {
     name: 'read_file',
-    description: 'Read contents of a file. Supports text files and PDFs. Use offset and limit for large files.',
+    description: 'Read contents of a file. Supports text files, PDFs, and images (jpg/png/gif/webp — returns the image for visual analysis). Use offset and limit for large text files.',
     input_schema: {
       type: 'object',
       properties: {
@@ -100,6 +100,14 @@ const handlers = {
     const filePath = path.basename(input.path) === 'SOUL.md'
       ? path.join(PERSONALITY_DIR, 'SOUL.md')
       : (userDir ? resolveUserPath(input.path, userDir) : input.path);
+    const IMAGE_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
+    const ext = path.extname(filePath).toLowerCase();
+    if (IMAGE_TYPES[ext]) {
+      const buffer = fs.readFileSync(filePath);
+      const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+      if (buffer.length > MAX_IMAGE_BYTES) return `Image too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB). Max 5MB for vision.`;
+      return [{ type: 'image', source: { type: 'base64', media_type: IMAGE_TYPES[ext], data: buffer.toString('base64') } }];
+    }
     if (filePath.toLowerCase().endsWith('.pdf')) {
       const pdfParse = require('pdf-parse');
       const { text } = await pdfParse(fs.readFileSync(filePath));

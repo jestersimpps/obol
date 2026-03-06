@@ -23,17 +23,18 @@ async function downloadAndProcess(ctx, entries, deps, token) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
   const assetsDir = path.join(userDir, 'assets', today);
 
-  const items = (await Promise.all(
-    entries.map(({ ctx: entryCtx, fileInfo }) =>
-      downloadMediaItem(entryCtx, fileInfo, token).then(item => {
-        if (item) item.savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
-        return item;
-      }).catch(e => {
-        console.error('Media download error:', e.message);
-        return null;
-      })
-    )
-  )).filter(Boolean);
+  const items = [];
+  for (const { ctx: entryCtx, fileInfo } of entries) {
+    try {
+      const item = await downloadMediaItem(entryCtx, fileInfo, token);
+      if (item) {
+        item.savedPath = media.saveFile(item.buffer, assetsDir, item.filename);
+        items.push(item);
+      }
+    } catch (e) {
+      console.error('Media download error:', e.message);
+    }
+  }
 
   if (items.length === 0) return;
   await processMediaItems(ctx, items, deps);
