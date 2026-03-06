@@ -59,7 +59,8 @@ Always search memory first for the user's timezone/location.`,
         event_id: { type: 'string', description: 'UUID of the event to update' },
         title: { type: 'string' },
         description: { type: 'string' },
-        instructions: { type: 'string', description: 'LLM instructions to execute when the event fires. Set to empty string to clear.' },
+        instructions: { type: 'string', description: 'New LLM instructions to execute when the event fires. Only provide if the user wants to change them.' },
+        clear_instructions: { type: 'boolean', description: 'Set to true to remove instructions and convert an agentic event to a plain reminder.' },
         timezone: { type: 'string' },
         cron_expr: { type: 'string' },
         max_runs: { type: 'number' },
@@ -146,7 +147,8 @@ const handlers = {
     const fields = {};
     if (rest.title !== undefined) fields.title = rest.title;
     if (rest.description !== undefined) fields.description = rest.description;
-    if (typeof rest.instructions === 'string') fields.instructions = rest.instructions || null;
+    if (rest.clear_instructions === true) fields.instructions = null;
+    else if (typeof rest.instructions === 'string' && rest.instructions.length > 0) fields.instructions = rest.instructions;
     if (rest.timezone !== undefined) fields.timezone = rest.timezone;
     if (rest.cron_expr !== undefined) fields.cron_expr = rest.cron_expr;
     if (rest.max_runs !== undefined) fields.max_runs = rest.max_runs;

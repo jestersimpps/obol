@@ -363,6 +363,10 @@ async function runAgenticEvent(bot, config, event) {
   if (tenant.personality?.soul) systemParts.push(tenant.personality.soul);
   if (tenant.personality?.user) systemParts.push(`About this user:\n${tenant.personality.user}`);
   if (context) systemParts.push(`Current context:\n${context}`);
+  systemParts.push(
+    'You are executing a scheduled task. Respond ONLY with a clean, natural-language message for the user. ' +
+    'Do NOT output JSON, code blocks, tool calls, or structured data. Write as a direct Telegram message.'
+  );
 
   const response = await tenant.claude.client.messages.create({
     model: 'claude-sonnet-4-6',
