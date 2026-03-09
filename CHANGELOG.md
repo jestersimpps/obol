@@ -1,3 +1,7 @@
+## 0.3.40
+- changelog
+- skip rate limiter for media group messages
+
 ## 0.3.39
 - changelog
 - sequential media downloads and image vision in read_file
