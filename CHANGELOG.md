@@ -1,3 +1,15 @@
+## 0.3.45
+- fix OAuth token expiry in heartbeat (scheduled events, evolution, analysis)
+
+## 0.3.44
+- exclude electron from npm package
+
+## 0.3.43
+- increase API retry limit to 5 for overloaded errors
+
+## 0.3.42
+- remove curiosity system, extract proactive news to standalone module
+
 ## 0.3.41
 - changelog
 - fix scheduler silent failures, remove haiku routing, improve memory format

@@ -6,6 +6,7 @@ const { ensureUserDir, getUserTimezone } = require('../config');
 const { runAnalysis } = require('../analysis');
 const { runProactiveNews } = require('../news');
 const { createSelfMemory } = require('../memory/self');
+const { createAnthropicClient, ensureFreshToken } = require('../claude/client');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
@@ -15,6 +16,14 @@ const _evolutionRunning = new Set();
 const _newsRunning = new Set();
 const _inflight = new Set();
 const _analysisRunning = new Set();
+
+async function getFreshClient(config) {
+  const ac = config.anthropic;
+  if (ac.oauth?.accessToken) await ensureFreshToken(ac);
+  return ac._oauthFailed
+    ? createAnthropicClient(ac, { useOAuth: false })
+    : createAnthropicClient(ac);
+}
 
 function getLocalHour(timezone) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -42,8 +51,9 @@ async function runEvolutionForUser(bot, config, userId) {
 
   try {
     const tenant = await getTenant(userId, config);
+    const client = await getFreshClient(config);
     const selfMemory = config.supabase ? await createSelfMemory(config.supabase, 0).catch(() => null) : null;
-    const result = await evolve(tenant.claude.client, tenant.messageLog, tenant.memory, tenant.userDir, config.supabase, selfMemory);
+    const result = await evolve(client, tenant.messageLog, tenant.memory, tenant.userDir, config.supabase, selfMemory);
     tenant.claude.reloadPersonality?.();
 
     let msg = `🪙 Evolution #${result.evolutionNumber} complete.`;
@@ -85,7 +95,8 @@ async function runAnalysisForUser(bot, config, userId) {
   try {
     const tenant = await getTenant(userId, config);
     if (!tenant.messageLog || !tenant.scheduler || !tenant.patterns) return;
-    await runAnalysis(tenant.claude.client, tenant.messageLog, tenant.scheduler, tenant.patterns, tenant.memory, userId, userId, timezone);
+    const client = await getFreshClient(config);
+    await runAnalysis(client, tenant.messageLog, tenant.scheduler, tenant.patterns, tenant.memory, userId, userId, timezone);
   } catch (e) {
     console.error(`[analysis] Failed for user ${userId}:`, e.message);
   } finally {
@@ -320,12 +331,14 @@ async function runAgenticEvent(bot, config, event) {
     'Do NOT output JSON, code blocks, tool calls, or structured data. Write as a direct Telegram message.'
   );
 
+  const client = await getFreshClient(config);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), EVENT_TIMEOUT_MS);
 
   let response;
   try {
-    response = await tenant.claude.client.messages.create({
+    response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: systemParts.join('\n\n'),
