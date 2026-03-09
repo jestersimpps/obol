@@ -3,6 +3,9 @@ tests/
 vitest.config.js
 coverage/
 
+# electron (desktop app is separate)
+electron/
+
 # dev/local files
 .claude/
 ISSUES.md
