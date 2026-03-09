@@ -62,9 +62,9 @@ function createScheduler(supabaseConfig, userId = 0) {
     return data[0];
   }
 
-  async function getDue() {
+  async function getDue(maxAttempts = 3) {
     const now = new Date().toISOString();
-    const fetchUrl = `${url}/rest/v1/obol_events?status=eq.pending&due_at=lte.${now}`;
+    const fetchUrl = `${url}/rest/v1/obol_events?status=eq.pending&due_at=lte.${now}&attempts=lt.${maxAttempts}`;
     const res = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(15000) });
     const data = await res.json();
     if (!res.ok) throw new Error(JSON.stringify(data));
@@ -88,6 +88,10 @@ function createScheduler(supabaseConfig, userId = 0) {
     return patch(eventId, { status: 'sent' });
   }
 
+  async function markFailed(eventId, error) {
+    return patch(eventId, { status: 'failed', last_error: (error || '').substring(0, 500) });
+  }
+
   async function reschedule(eventId, cronExpr, timezone, runCount, maxRuns, endsAt) {
     const newRunCount = (runCount || 0) + 1;
 
@@ -107,6 +111,7 @@ function createScheduler(supabaseConfig, userId = 0) {
         run_count: newRunCount,
         last_run_at: new Date().toISOString(),
         status: 'pending',
+        attempts: 0,
       });
     } catch (e) {
       console.error(`[scheduler] Failed to compute next cron occurrence for event ${eventId}:`, e.message);
@@ -126,7 +131,7 @@ function createScheduler(supabaseConfig, userId = 0) {
     return data[0];
   }
 
-  return { add, list, cancel, getDue, markSent, reschedule, update };
+  return { add, list, cancel, getDue, markSent, markFailed, patch, reschedule, update };
 }
 
 module.exports = { createScheduler };

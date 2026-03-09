@@ -239,20 +239,38 @@ function withRuntimeContext(msgs, runtimePrefix) {
   return sanitizeMessages(copy);
 }
 
-function formatMemoryBlock(topFacts, selfFacts = []) {
-  let block = null;
-  if (topFacts.length > 0) {
-    const lines = topFacts.map(m => {
+function formatMemoryBlock(topFacts) {
+  if (!topFacts.length) return null;
+
+  const parts = [];
+
+  parts.push(`## Memory recall
+Retrieved from your persistent memory store. These facts were selected by a combination of recency (last 7 days) and semantic similarity to this conversation, then ranked by relevance, importance, and recency. Use them as context — they represent what you know about this person from past interactions.`);
+
+  const groups = {};
+  for (const m of topFacts) {
+    const cat = m.category || 'general';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(m);
+  }
+
+  const order = ['person', 'preference', 'fact', 'goal', 'project', 'event', 'opinion', 'emotion', 'general'];
+  const sortedCats = Object.keys(groups).sort((a, b) => {
+    const ai = order.indexOf(a), bi = order.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  for (const cat of sortedCats) {
+    parts.push(`\n### ${cat}`);
+    const lines = groups[cat].map(m => {
       const date = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
-      return `- [${m.category}] ${m.content}${date ? ` (${date})` : ''}`;
+      const src = m.source ? ` [via ${m.source}]` : '';
+      return `- ${m.content}${date ? ` (${date})` : ''}${src}`;
     });
-    block = `## Relevant memories\n${lines.join('\n')}`;
+    parts.push(lines.join('\n'));
   }
-  if (selfFacts.length > 0) {
-    const selfLines = selfFacts.slice(0, 8).map(m => `- [${m.category}] ${m.content}`);
-    block = (block || '') + `\n\n## Self-knowledge\n${selfLines.join('\n')}`;
-  }
-  return block;
+
+  return parts.join('\n');
 }
 
 module.exports = { buildSystemPrompt, buildSystemBlock, buildRuntimePrefix, withRuntimeContext, formatMemoryBlock };

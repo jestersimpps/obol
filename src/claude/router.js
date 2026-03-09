@@ -24,36 +24,6 @@ function jaccardFromSets(setA, setB) {
   return inter / (setA.size + setB.size - inter);
 }
 
-const TOOL_PATTERNS = [
-  /\b(?:list|read|write|create|edit|delete|find|grep)\b.*\b(?:files?|folders?|director(?:y|ies)|scripts?|codebase)\b/,
-  /\b(?:run|execute)\b.*\b(?:tests?|suite|script|command)\b/,
-  /\b(?:save|store|remember)\b.*\b(?:note|that|memory|secret|password|key)\b/,
-  /\b(?:remind|schedule|set a reminder|cancel.*(?:event|reminder))\b/,
-  /\b(?:search the web|look up online|google)\b/,
-  /\b(?:deploy|build|install)\b.*\b(?:app|site|dashboard|project|package)\b/,
-  /\b(?:create|generate|make)\b.*\b(?:pdf|chart|diagram|flowchart|image)\b/,
-  /\b(?:what|which)\b.*\b(?:api keys?|secrets?|credentials?|reminders?|events?)\b.*\b(?:stored|have|set|coming)\b/,
-  /\b(?:what have you been|what are you)\b.*\b(?:research|learn|curious|explor)\b/,
-  /\b(?:email|e-mail|inbox|gmail|outlook|mail)\b/,
-  /\b(?:meeting|flight|appointment|deadline|booking|reservation|calendar|event|conference|itinerary)\b/,
-];
-
-function likelyNeedsTools(message) {
-  const lower = message.toLowerCase();
-  return TOOL_PATTERNS.some(p => p.test(lower));
-}
-
-function recentlyUsedTools(history) {
-  for (let i = history.length - 1; i >= Math.max(0, history.length - 4); i--) {
-    const msg = history[i];
-    if (msg.role === 'assistant' && Array.isArray(msg.content) &&
-        msg.content.some(b => b.type === 'tool_use')) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision, onRouteUpdate, recentHistory = [], selfMemory = null }) {
   let memoryBlock = null;
   let model = null;
@@ -68,13 +38,13 @@ async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision
 2. What model complexity does it need?
 
 Reply with ONLY a JSON object:
-{"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "haiku|sonnet|opus"}
+{"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "sonnet|opus"}
 
 search_queries: 1-5 optimized search queries based on the full conversation context. Cover distinct topics, people, entities, time periods, or projects referenced. Single-topic messages need just one query. Use more queries when the message references multiple people, projects, or threads.
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
-Model: Default to "sonnet". Use "haiku" ONLY for: greetings, brief acknowledgments (thanks/ok/bye), casual chitchat, quick yes/no questions, and short single-turn exchanges that don't need any tool calling AND don't need memory. If need_memory is true, use "sonnet" minimum — haiku cannot reason over recalled context well enough. Use "sonnet" for: code generation, data analysis, content creation, explanations, creative writing, agentic tool use, general questions, opinions, advice, memory-dependent questions, and most conversational exchanges with substance. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.
+Model: Default to "sonnet". Use "sonnet" for: general conversation, code generation, data analysis, content creation, explanations, creative writing, agentic tool use, questions, opinions, advice, memory-dependent questions, and most exchanges. Use "opus" for: professional software engineering tasks, advanced multi-step agent work, complex reasoning, scientific or mathematical problems, tasks requiring nuanced understanding, advanced coding challenges, in-depth research, and architecture or design decisions.
 
 If recent context shows an ongoing task (sonnet/opus was just used, multi-step work in progress), bias toward that model even for short follow-up messages.`,
       messages: buildRouterMessages(recentHistory, userMessage),
@@ -91,33 +61,25 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       ? decision.search_queries.slice(0, 3)
       : decision.search_query ? [decision.search_query] : [];
 
-    if (decision.model === 'haiku' && likelyNeedsTools(userMessage)) {
-      vlog('[router] haiku overridden → sonnet (tool-need heuristic)');
+    if (decision.model !== 'sonnet' && decision.model !== 'opus') {
       decision.model = 'sonnet';
     }
 
-    if (decision.model === 'haiku' && recentlyUsedTools(recentHistory)) {
-      vlog('[router] haiku overridden → sonnet (recent tool use in history)');
-      decision.model = 'sonnet';
-    }
-
-    vlog(`[router] model=${decision.model || 'sonnet'} memory=${decision.need_memory || false}${queries.length ? ` queries=${JSON.stringify(queries)}` : ''}`);
+    vlog(`[router] model=${decision.model} memory=${decision.need_memory || false}${queries.length ? ` queries=${JSON.stringify(queries)}` : ''}`);
 
     onRouteDecision?.({
-      model: decision.model || 'sonnet',
+      model: decision.model,
       needMemory: decision.need_memory || false,
       memoryCount: 0,
     });
 
     if (decision.model === 'opus') {
       model = 'claude-opus-4-6';
-    } else if (decision.model === 'haiku') {
-      model = 'claude-haiku-4-5';
     }
 
     if (decision.need_memory && memory) {
-      const budget = decision.model === 'opus' ? 40 : decision.model === 'haiku' ? 15 : 25;
-      const poolPerQuery = decision.model === 'opus' ? 20 : decision.model === 'haiku' ? 10 : 15;
+      const budget = decision.model === 'opus' ? 60 : 40;
+      const poolPerQuery = decision.model === 'opus' ? 25 : 20;
       const searchQueries = queries.length > 0 ? queries : [userMessage];
 
       const recentMemories = await memory.byDate('7d', { limit: Math.ceil(budget / 3) });
@@ -153,22 +115,7 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       vlog(`[memory] ${topFacts.length} facts (${recentMemories.length} recent, ${semanticMemories.length} semantic, budget=${budget})`);
       onRouteUpdate?.({ memoryCount: topFacts.length });
 
-      let selfFacts = [];
-      if (selfMemory) {
-        const selfResults = await Promise.all(
-          searchQueries.map(q => selfMemory.search(q, { limit: 5, threshold: 0.4 }))
-        );
-        const seen2 = new Set();
-        for (const m of selfResults.flat()) {
-          if (!seen2.has(m.id)) { seen2.add(m.id); selfFacts.push(m); }
-        }
-        if (selfFacts.length > 0) {
-          vlog(`[memory] +${selfFacts.length} self-memory facts`);
-          onRouteUpdate?.({ selfMemoryCount: selfFacts.length });
-        }
-      }
-
-      memoryBlock = formatMemoryBlock(topFacts, selfFacts);
+      memoryBlock = formatMemoryBlock(topFacts);
     }
   } catch (e) {
     console.error('[router] Memory/routing decision failed:', e.message);

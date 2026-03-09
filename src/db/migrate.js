@@ -287,6 +287,17 @@ async function migrate(supabaseConfig) {
       WHERE id = ANY(memory_ids);
     $$;`,
 
+    // Event retry tracking
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 0;`,
+    `ALTER TABLE obol_events ADD COLUMN IF NOT EXISTS last_error TEXT;`,
+
+    `DO $$ BEGIN
+      ALTER TABLE obol_events DROP CONSTRAINT IF EXISTS obol_events_status_check;
+      ALTER TABLE obol_events ADD CONSTRAINT obol_events_status_check
+        CHECK (status IN ('pending','sent','cancelled','completed','failed'));
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$;`,
+
     // Soul backup table (one row per file key: 'soul', 'agents')
     `CREATE TABLE IF NOT EXISTS obol_soul (
       id TEXT PRIMARY KEY,

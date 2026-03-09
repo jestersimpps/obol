@@ -18,7 +18,7 @@ const NEWS_HOURS = new Set([8, 18]);
 const _evolutionRunning = new Set();
 const _newsRunning = new Set();
 let _curiosityRunning = false;
-let _schedulerBusy = false;
+const _inflight = new Set();
 const _analysisRunning = new Set();
 
 function getLocalHour(timezone) {
@@ -210,7 +210,57 @@ async function runNewsForUser(bot, config, userId) {
   }
 }
 
-const STALE_EVENT_MS = 24 * 60 * 60 * 1000;
+const MAX_ATTEMPTS = 3;
+const STALE_MS = 2 * 60 * 60 * 1000;
+const EVENT_TIMEOUT_MS = 30_000;
+
+async function processEvent(bot, config, scheduler, event) {
+  const tz = event.timezone || 'UTC';
+  const age = Date.now() - new Date(event.due_at).getTime();
+
+  if (age > STALE_MS) {
+    console.warn(`[scheduler] Stale event ${event.id} "${event.title}" (due ${event.due_at})`);
+    if (event.cron_expr) {
+      await scheduler.reschedule(event.id, event.cron_expr, tz, event.run_count, event.max_runs, event.ends_at);
+    } else {
+      await scheduler.markFailed(event.id, 'Stale — exceeded 2h window');
+    }
+    return;
+  }
+
+  const attempts = (event.attempts || 0) + 1;
+  await scheduler.patch(event.id, { attempts });
+
+  try {
+    if (event.instructions) {
+      await runAgenticEvent(bot, config, event);
+    } else {
+      await sendReminderMessage(bot, event);
+    }
+
+    if (event.cron_expr) {
+      await scheduler.patch(event.id, { last_error: null });
+      await scheduler.reschedule(event.id, event.cron_expr, tz, event.run_count, event.max_runs, event.ends_at);
+    } else {
+      await scheduler.markSent(event.id);
+    }
+  } catch (e) {
+    const errMsg = (e.message || '').substring(0, 500);
+    console.error(`[scheduler] Event ${event.id} attempt ${attempts} failed:`, errMsg);
+    await scheduler.patch(event.id, { last_error: errMsg });
+
+    if (attempts >= MAX_ATTEMPTS) {
+      if (event.cron_expr) {
+        await scheduler.reschedule(event.id, event.cron_expr, tz, event.run_count, event.max_runs, event.ends_at);
+      } else {
+        await scheduler.markFailed(event.id, errMsg);
+      }
+      await bot.api.sendMessage(event.chat_id,
+        `⚠️ Scheduled event "${event.title}" failed: ${errMsg.substring(0, 200)}`
+      ).catch(() => {});
+    }
+  }
+}
 
 function setupHeartbeat(bot, config) {
   const supabaseConfig = config?.supabase;
@@ -228,43 +278,22 @@ function setupHeartbeat(bot, config) {
     }
 
     if (!scheduler || !bot) return;
-    if (_schedulerBusy) return;
-    _schedulerBusy = true;
 
     try {
-      const dueEvents = await scheduler.getDue();
+      const dueEvents = await scheduler.getDue(MAX_ATTEMPTS);
       if (dueEvents.length > 0) {
         console.log(`[scheduler] Processing ${dueEvents.length} due event(s)`);
       }
       for (const event of dueEvents) {
-        try {
-          const age = Date.now() - new Date(event.due_at).getTime();
-          if (age > STALE_EVENT_MS) {
-            console.warn(`[scheduler] Expiring stale event ${event.id} "${event.title}" (due ${event.due_at})`);
-            await scheduler.markSent(event.id);
-            continue;
-          }
+        if (_inflight.has(event.id)) continue;
 
-          if (event.instructions) {
-            await runAgenticEvent(bot, config, event);
-          } else {
-            await sendReminderMessage(bot, event);
-          }
-
-          const tz = event.timezone || 'UTC';
-          if (event.cron_expr) {
-            await scheduler.reschedule(event.id, event.cron_expr, tz, event.run_count, event.max_runs, event.ends_at);
-          } else {
-            await scheduler.markSent(event.id);
-          }
-        } catch (e) {
-          console.error(`[scheduler] Failed to process event ${event.id}:`, e.message);
-        }
+        _inflight.add(event.id);
+        processEvent(bot, config, scheduler, event)
+          .catch(e => console.error(`[scheduler] Unhandled error for event ${event.id}:`, e.message))
+          .finally(() => _inflight.delete(event.id));
       }
     } catch (e) {
       console.error('[scheduler] Failed to check due events:', e.message);
-    } finally {
-      _schedulerBusy = false;
     }
   });
 
@@ -381,12 +410,20 @@ async function runAgenticEvent(bot, config, event) {
     'Do NOT output JSON, code blocks, tool calls, or structured data. Write as a direct Telegram message.'
   );
 
-  const response = await tenant.claude.client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 300,
-    system: systemParts.join('\n\n'),
-    messages: [{ role: 'user', content: event.instructions }],
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), EVENT_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await tenant.claude.client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 300,
+      system: systemParts.join('\n\n'),
+      messages: [{ role: 'user', content: event.instructions }],
+    }, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
   if (!text) throw new Error('Empty response from model');
