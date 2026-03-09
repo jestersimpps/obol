@@ -130,13 +130,14 @@ class MessageLog {
         this._extractionClient = new Anthropic({
           apiKey: null,
           authToken: oauth.accessToken,
+          maxRetries: 5,
           defaultHeaders: {
             'anthropic-dangerous-direct-browser-access': 'true',
             'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20',
           },
         });
       } else if (key) {
-        this._extractionClient = new Anthropic({ apiKey: key });
+        this._extractionClient = new Anthropic({ apiKey: key, maxRetries: 5 });
       }
     }
     return this._extractionClient;

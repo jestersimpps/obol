@@ -7,6 +7,7 @@ function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
     return new Anthropic({
       apiKey: null,
       authToken: anthropicConfig.oauth.accessToken,
+      maxRetries: 5,
       defaultHeaders: {
         'anthropic-dangerous-direct-browser-access': 'true',
         'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,output-128k-2025-02-19',
@@ -16,6 +17,7 @@ function createAnthropicClient(anthropicConfig, { useOAuth = true } = {}) {
   if (anthropicConfig.apiKey) {
     return new Anthropic({
       apiKey: anthropicConfig.apiKey,
+      maxRetries: 5,
       defaultHeaders: {
         'anthropic-beta': 'output-128k-2025-02-19',
       },

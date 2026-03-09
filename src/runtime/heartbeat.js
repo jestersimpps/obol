@@ -108,7 +108,7 @@ async function runNewsForUser(bot, config, userId) {
 
   try {
     const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+    const client = new Anthropic({ apiKey: config.anthropic.apiKey, maxRetries: 5 });
     const timezone = getUserTimezone(config, userId);
 
     const selfMemory = config.supabase ? await createSelfMemory(config.supabase, 0).catch(() => null) : null;
