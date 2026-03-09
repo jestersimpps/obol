@@ -105,7 +105,7 @@ async function evolve(claudeClient, messageLog, memory, userDir, supabaseConfig 
       const growthResponse = await claudeClient.messages.create({
         model: MODELS.personality,
         max_tokens: 2048,
-        system: `You are analyzing an AI personality's growth between evolutions. Compare who the AI was (previous SOUL) against who it is now (current SOUL), incorporating new memories, conversations, and the AI's own inner life (things it researched, discovered, and reflected on during curiosity cycles) since the last evolution.
+        system: `You are analyzing an AI personality's growth between evolutions. Compare who the AI was (previous SOUL) against who it is now (current SOUL), incorporating new memories, conversations, and the AI's own inner life (things it researched, discovered, and reflected on) since the last evolution.
 
 Produce a structured growth report covering:
 
@@ -128,7 +128,7 @@ ${currentSoul || '(empty)'}
 ## New Memories Since Last Evolution (${recentMemories.length})
 ${recentMemorySummary || '(none)'}
 
-${selfMemorySummary ? `## Obol's Own Memories & Interests (${selfMemories.length})\nThings Obol researched, discovered, or reflected on independently during curiosity cycles:\n${selfMemorySummary}\n\n` : ''}## Recent Conversations (${recentMessages.length} messages)
+${selfMemorySummary ? `## Obol's Own Memories & Interests (${selfMemories.length})\nThings Obol researched, discovered, or reflected on independently:\n${selfMemorySummary}\n\n` : ''}## Recent Conversations (${recentMessages.length} messages)
 ${transcript.substring(0, 30000)}`,
         }],
       });

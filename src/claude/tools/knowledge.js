@@ -6,10 +6,10 @@ const definitions = [
       type: 'object',
       properties: {
         content: { type: 'string', description: 'What to store' },
-        category: { type: 'string', enum: ['research', 'interest', 'self', 'pattern'], description: 'research: findings from curiosity; interest: topics you want to explore; self: your own reflections/mood/thoughts; pattern: observed patterns about this user' },
+        category: { type: 'string', enum: ['research', 'interest', 'self', 'pattern'], description: 'research: findings from research; interest: topics you want to explore; self: your own reflections/mood/thoughts; pattern: observed patterns about this user' },
         importance: { type: 'number', description: 'Importance 0-1 (default 0.5)' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Keyword tags' },
-        source: { type: 'string', description: 'Where this came from (e.g. "curiosity-cycle", "conversation")' },
+        source: { type: 'string', description: 'Where this came from (e.g. "conversation", "research")' },
       },
       required: ['content', 'category'],
     },
@@ -39,7 +39,7 @@ const definitions = [
   },
   {
     name: 'interests_add',
-    description: 'Add a new interest — something you want to explore in a future curiosity cycle.',
+    description: 'Add a new interest — something you want to explore further.',
     input_schema: {
       type: 'object',
       properties: {

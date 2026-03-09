@@ -1,3 +1,7 @@
+## 0.3.41
+- changelog
+- fix scheduler silent failures, remove haiku routing, improve memory format
+
 ## 0.3.40
 - changelog
 - skip rate limiter for media group messages
