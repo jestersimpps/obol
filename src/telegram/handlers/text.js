@@ -20,7 +20,7 @@ async function sendTtsVoiceSummary(ctx, tenant, responseText) {
     max_tokens: 200,
     messages: [{
       role: 'user',
-      content: `Summarize the following assistant message in 1-2 short spoken sentences. Use plain conversational language — no markdown, no code, no lists. Just what was said or done:\n\n${responseText.substring(0, 3000)}`,
+      content: `Summarize the following message in 1-2 short spoken sentences. Write in first person as if YOU are speaking directly to the user — say "I" not "the assistant". Use plain conversational language — no markdown, no code, no lists:\n\n${responseText.substring(0, 3000)}`,
     }],
   });
 
