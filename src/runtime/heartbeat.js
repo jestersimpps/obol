@@ -354,6 +354,11 @@ async function runAgenticEvent(bot, config, event) {
   await bot.api.sendMessage(event.chat_id, text).catch(() =>
     bot.api.sendMessage(event.chat_id, text, { parse_mode: undefined })
   );
+
+  tenant.claude.injectHistory(event.chat_id, 'assistant', text);
+  if (tenant.messageLog) {
+    await tenant.messageLog.log(event.chat_id, 'assistant', text, { model: 'claude-sonnet-4-6' }).catch(() => {});
+  }
 }
 
 module.exports = { setupHeartbeat };

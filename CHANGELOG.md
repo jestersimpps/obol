@@ -1,3 +1,6 @@
+## 0.3.46
+- inject proactive follow-up messages into conversation history
+
 ## 0.3.45
 - fix OAuth token expiry in heartbeat (scheduled events, evolution, analysis)
 
