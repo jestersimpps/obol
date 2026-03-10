@@ -110,6 +110,8 @@ TASK: ${task}`;
       claude.clearHistory(`bg-${taskState.id}`);
       clearStatus();
 
+      const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
+
       if (!result?.trim()) {
         taskState.status = 'error';
         taskState.error = 'No result returned';
@@ -119,7 +121,6 @@ TASK: ${task}`;
       } else {
         taskState.status = 'done';
         taskState.result = result;
-        const elapsed = Math.floor((Date.now() - taskState.startedAt) / 1000);
         if (silent) {
           await sendLong(ctx, result);
         } else {
