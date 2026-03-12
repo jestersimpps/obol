@@ -1,8 +1,11 @@
-## 0.3.46
-- inject proactive follow-up messages into conversation history
+## 0.3.48
+- use conversation history for memory retrieval instead of router-generated queries
 
-## 0.3.45
-- fix OAuth token expiry in heartbeat (scheduled events, evolution, analysis)
+## 0.3.47
+- fix elapsed scope bug in background task completion
+- fix TTS summary to speak in first person
+- inject proactive follow-up messages into conversation history
+- fix OAuth token expiry in heartbeat scheduled events
 
 ## 0.3.44
 - exclude electron from npm package

@@ -14,6 +14,18 @@ function buildRouterMessages(recentHistory, userMessage) {
   return [...trimmed, { role: 'user', content: userMessage }];
 }
 
+function extractRecentUserMessages(recentHistory, userMessage, count = 5) {
+  const userMsgs = recentHistory
+    .filter(m => m.role === 'user')
+    .map(m => typeof m.content === 'string'
+      ? m.content
+      : m.content.filter(b => b.type === 'text').map(b => b.text).join(''))
+    .filter(Boolean)
+    .slice(-count);
+  userMsgs.push(userMessage);
+  return userMsgs;
+}
+
 function tokenize(s) {
   return new Set(s.toLowerCase().split(/\W+/).filter(Boolean));
 }
@@ -38,9 +50,7 @@ async function routeMessage(client, memory, userMessage, { vlog, onRouteDecision
 2. What model complexity does it need?
 
 Reply with ONLY a JSON object:
-{"need_memory": true/false, "search_queries": ["query1", "query2"], "model": "sonnet|opus"}
-
-search_queries: 1-5 optimized search queries based on the full conversation context. Cover distinct topics, people, entities, time periods, or projects referenced. Single-topic messages need just one query. Use more queries when the message references multiple people, projects, or threads.
+{"need_memory": true/false, "model": "sonnet|opus"}
 
 Memory: casual messages (greetings, jokes, simple questions) → false. References to past, people, projects, preferences → true.
 
@@ -57,15 +67,11 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
       if (jsonStr) decision = JSON.parse(jsonStr);
     } catch {}
 
-    const queries = Array.isArray(decision.search_queries) && decision.search_queries.length > 0
-      ? decision.search_queries.slice(0, 3)
-      : decision.search_query ? [decision.search_query] : [];
-
     if (decision.model !== 'sonnet' && decision.model !== 'opus') {
       decision.model = 'sonnet';
     }
 
-    vlog(`[router] model=${decision.model} memory=${decision.need_memory || false}${queries.length ? ` queries=${JSON.stringify(queries)}` : ''}`);
+    vlog(`[router] model=${decision.model} memory=${decision.need_memory || false}`);
 
     onRouteDecision?.({
       model: decision.model,
@@ -80,23 +86,19 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
     if (decision.need_memory && memory) {
       const budget = decision.model === 'opus' ? 60 : 40;
       const poolPerQuery = decision.model === 'opus' ? 25 : 20;
-      const searchQueries = queries.length > 0 ? queries : [userMessage];
-
-      const recentMemories = await memory.byDate('7d', { limit: Math.ceil(budget / 3) });
+      const conversationQueries = extractRecentUserMessages(recentHistory, userMessage);
 
       const semanticResults = await Promise.all(
-        searchQueries.map(q => memory.search(q, { limit: poolPerQuery, threshold: 0.4 }))
+        conversationQueries.map(q => memory.search(q, { limit: poolPerQuery, threshold: 0.4 }))
       );
       const semanticMemories = semanticResults.flat();
 
       const seen = new Set();
       const combined = [];
-      for (const m of [...recentMemories, ...semanticMemories]) {
+      for (const m of semanticMemories) {
         if (!seen.has(m.id)) {
           seen.add(m.id);
-          const ageDays = m.created_at ? (Date.now() - new Date(m.created_at).getTime()) / 86400000 : 7;
-          const recencyBonus = Math.max(0, 1 - ageDays / 7) * 0.3;
-          m._score = (m.similarity || 0.5) * 0.5 + (m.importance || 0.5) * 0.2 + recencyBonus;
+          m._score = (m.similarity || 0.5) * 0.7 + (m.importance || 0.5) * 0.3;
           combined.push(m);
         }
       }
@@ -112,7 +114,7 @@ If recent context shows an ongoing task (sonnet/opus was just used, multi-step w
         if (!isDup) topFacts.push(m);
       }
 
-      vlog(`[memory] ${topFacts.length} facts (${recentMemories.length} recent, ${semanticMemories.length} semantic, budget=${budget})`);
+      vlog(`[memory] ${topFacts.length} facts from ${conversationQueries.length} conversation queries (${semanticMemories.length} candidates, budget=${budget})`);
       onRouteUpdate?.({ memoryCount: topFacts.length });
 
       memoryBlock = formatMemoryBlock(topFacts);
