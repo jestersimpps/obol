@@ -7,6 +7,7 @@ const { runAnalysis } = require('../analysis');
 const { runProactiveNews } = require('../news');
 const { createSelfMemory } = require('../memory/self');
 const { createAnthropicClient, ensureFreshToken } = require('../claude/client');
+const { markdownToTelegramHtml } = require('../telegram/utils');
 
 
 const ANALYSIS_HOURS = new Set([4, 7, 10, 13, 16, 19, 22]);
@@ -145,7 +146,6 @@ async function runNewsForUser(bot, config, userId) {
 
 const MAX_ATTEMPTS = 3;
 const STALE_MS = 2 * 60 * 60 * 1000;
-const EVENT_TIMEOUT_MS = 30_000;
 
 async function processEvent(bot, config, scheduler, event) {
   const tz = event.timezone || 'UTC';
@@ -320,44 +320,61 @@ async function runAgenticEvent(bot, config, event) {
   const timezone = event.timezone || getUserTimezone(config, event.user_id);
 
   const query = event.description || event.instructions;
-  const context = await buildProactiveContext(tenant, timezone, query).catch(() => '');
+  const proactiveContext = await buildProactiveContext(tenant, timezone, query).catch(() => '');
 
-  const systemParts = [];
-  if (tenant.personality?.soul) systemParts.push(tenant.personality.soul);
-  if (tenant.personality?.user) systemParts.push(`About this user:\n${tenant.personality.user}`);
-  if (context) systemParts.push(`Current context:\n${context}`);
-  systemParts.push(
-    'You are executing a scheduled task. Respond ONLY with a clean, natural-language message for the user. ' +
-    'Do NOT output JSON, code blocks, tool calls, or structured data. Write as a direct Telegram message.'
-  );
+  const contextPrefix = proactiveContext
+    ? `[Scheduled task context — ${timezone}]\n${proactiveContext}\n\n`
+    : '';
+  const prompt = `${contextPrefix}Scheduled task "${event.title}":\n${event.instructions}`;
 
-  const client = await getFreshClient(config);
+  const chatId = `scheduled-${event.id}-${Date.now()}`;
+  const { text } = await tenant.claude.chat(prompt, {
+    chatId,
+    userName: 'ScheduledTask',
+    userId: event.user_id,
+    userDir: tenant.userDir,
+    toolPrefs: tenant.toolPrefs,
+    config,
+    scheduler: tenant.scheduler,
+    messageLog: tenant.messageLog,
+  });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), EVENT_TIMEOUT_MS);
+  tenant.claude.clearHistory(chatId);
 
-  let response;
-  try {
-    response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
-      system: systemParts.join('\n\n'),
-      messages: [{ role: 'user', content: event.instructions }],
-    }, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+  if (!text?.trim()) throw new Error('Empty response from model');
 
-  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-  if (!text) throw new Error('Empty response from model');
-
-  await bot.api.sendMessage(event.chat_id, text).catch(() =>
-    bot.api.sendMessage(event.chat_id, text, { parse_mode: undefined })
-  );
+  await sendScheduledMessage(bot, event.chat_id, text);
 
   tenant.claude.injectHistory(event.chat_id, 'assistant', text);
   if (tenant.messageLog) {
     await tenant.messageLog.log(event.chat_id, 'assistant', text, { model: 'claude-sonnet-4-6' }).catch(() => {});
+  }
+}
+
+async function sendScheduledMessage(bot, chatId, text) {
+  const html = markdownToTelegramHtml(text);
+  if (html.length <= 4096) {
+    await bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' }).catch(() =>
+      bot.api.sendMessage(chatId, text)
+    );
+    return;
+  }
+
+  let remaining = html;
+  while (remaining.length > 0) {
+    if (remaining.length <= 4096) {
+      await bot.api.sendMessage(chatId, remaining, { parse_mode: 'HTML' }).catch(() =>
+        bot.api.sendMessage(chatId, remaining)
+      );
+      break;
+    }
+    let splitAt = remaining.lastIndexOf('\n', 4096);
+    if (splitAt === -1 || splitAt < 2000) splitAt = 4096;
+    const chunk = remaining.substring(0, splitAt);
+    await bot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' }).catch(() =>
+      bot.api.sendMessage(chatId, chunk)
+    );
+    remaining = remaining.substring(splitAt).trimStart();
   }
 }
 
