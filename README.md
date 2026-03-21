@@ -18,7 +18,7 @@ obol start -d   # runs as background daemon (auto-installs pm2)
 </tr></table>
 
 ---
-
+gps-verify-am0frp
 🧬 **Self-evolving** — Grows its own personality through conversation. Rewrites SOUL.md, USER.md, and AGENTS.md nightly at 3am (per-user timezone). Pre-evolution growth analysis guides personality continuity.
 
 🔧 **Self-healing** — Writes tests for every script. Regressions get an automatic fix attempt before rollback. Failures stored as lessons.
